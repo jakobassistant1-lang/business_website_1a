@@ -1,13 +1,14 @@
-// StudyPlan local data model (PRD §8).
-// NOTE: password and Canvas token are stored in PLAINTEXT by design for this
-// single-user, localhost MVP (FR-1.6, FR-4.3). No hashing/encryption in scope.
+// StudyPlan data model (PRD §8).
+// Passwords are bcrypt-hashed (see lib/password.ts). NOTE: the Canvas API token
+// is still stored in plaintext — acceptable for a trusted-team deploy, but
+// encrypt-at-rest is a recommended follow-up before wider exposure.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

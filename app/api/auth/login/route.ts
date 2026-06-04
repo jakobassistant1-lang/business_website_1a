@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
+import { verifyPassword } from "@/lib/password";
 
 // FR-2: login. Generic error on bad credentials (FR-2.3).
 export async function POST(req: Request) {
@@ -9,7 +10,8 @@ export async function POST(req: Request) {
   const password = String(body.password ?? "");
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || user.password !== password) {
+  // Constant-ish work either way; bcrypt.compare returns false for a wrong hash.
+  if (!user || !(await verifyPassword(password, user.password))) {
     return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
   }
   await createSession(user.id);

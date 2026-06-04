@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 export function SignupForm() {
   const router = useRouter();
-  const [form, setForm] = useState({ email: "", password: "", fullName: "", phone: "" });
+  const [form, setForm] = useState({ inviteCode: "", email: "", password: "", fullName: "", phone: "" });
   const [tos, setTos] = useState(false); // FR-1.2: unchecked by default
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -35,6 +35,12 @@ export function SignupForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <label className="label" htmlFor="inviteCode">Invite code</label>
+        <input id="inviteCode" className="field" value={form.inviteCode}
+          onChange={(e) => set("inviteCode", e.target.value)} autoComplete="off" required />
+        {errors.inviteCode && <p className="mt-1 text-xs text-danger">{errors.inviteCode}</p>}
+      </div>
       <div>
         <label className="label" htmlFor="fullName">Full name</label>
         <input id="fullName" className="field" value={form.fullName}

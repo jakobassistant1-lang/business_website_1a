@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { hashPassword } from "@/lib/password";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -31,7 +32,11 @@ export async function PATCH(req: Request) {
       else data.email = email;
     }
   }
-  if (body.password) data.password = String(body.password);
+  if (body.password) {
+    const password = String(body.password);
+    if (password.length < 8) errors.password = "Password must be at least 8 characters.";
+    else data.password = await hashPassword(password);
+  }
 
   if (Object.keys(errors).length) return NextResponse.json({ errors }, { status: 400 });
 
