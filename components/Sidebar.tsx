@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BrandMark } from "./BrandMark";
+import { ThemeToggle } from "./ThemeToggle";
 
 const NAV = [
   { href: "/", label: "Plan", icon: "M4 6h16M4 12h16M4 18h10" },
@@ -11,7 +11,18 @@ const NAV = [
   { href: "/account", label: "Account", icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" },
 ];
 
-export function Sidebar({ userName, userEmail }: { userName: string; userEmail: string }) {
+// Kanban / board glyph for the admin section.
+const BOARD_ICON = "M4 5h16v14H4zM9 5v14M15 5v14";
+
+export function Sidebar({
+  userName,
+  userEmail,
+  isAdmin = false,
+}: {
+  userName: string;
+  userEmail: string;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -21,23 +32,31 @@ export function Sidebar({ userName, userEmail }: { userName: string; userEmail: 
     router.refresh();
   }
 
+  function linkClass(active: boolean) {
+    return `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+      active
+        ? "bg-accent text-accent-on"
+        : "text-gray-300 hover:bg-gray-800 hover:text-white"
+    }`;
+  }
+
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-gray-100 bg-white px-4 py-6">
-      <Link href="/" className="px-2">
-        <BrandMark />
+    <aside className="flex w-64 shrink-0 flex-col bg-sidebar px-4 py-6">
+      <Link href="/" className="mb-2 flex items-center gap-3 px-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path d="M5 4h9l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+            <path d="M9 12.5l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <span className="text-lg font-bold tracking-tight text-white">StudyPlan</span>
       </Link>
 
-      <nav className="mt-8 flex flex-col gap-1">
+      <nav className="mt-6 flex flex-col gap-1">
         {NAV.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                active ? "bg-accent-soft text-accent" : "text-muted hover:bg-gray-50 hover:text-ink"
-              }`}
-            >
+            <Link key={item.href} href={item.href} className={linkClass(active)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d={item.icon} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -45,16 +64,36 @@ export function Sidebar({ userName, userEmail }: { userName: string; userEmail: 
             </Link>
           );
         })}
+
+        {isAdmin && (
+          <>
+            <span className="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Admin
+            </span>
+            <Link href="/admin" className={linkClass(pathname.startsWith("/admin"))}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d={BOARD_ICON} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Board
+            </Link>
+          </>
+        )}
       </nav>
 
-      <div className="mt-auto border-t border-gray-100 pt-4">
+      <div className="mt-auto border-t border-gray-800 pt-4">
         <div className="px-2">
-          <p className="truncate text-sm font-medium text-ink">{userName}</p>
-          <p className="truncate text-xs text-muted">{userEmail}</p>
+          <p className="truncate text-sm font-medium text-white">{userName}</p>
+          <p className="truncate text-xs text-gray-400">{userEmail}</p>
         </div>
-        <button onClick={logout} className="mt-3 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-muted hover:bg-gray-50 hover:text-ink">
-          Log out
-        </button>
+        <div className="mt-3 flex flex-col gap-1">
+          <ThemeToggle className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white" />
+          <button
+            onClick={logout}
+            className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+          >
+            Log out
+          </button>
+        </div>
       </div>
     </aside>
   );

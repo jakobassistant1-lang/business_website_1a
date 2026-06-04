@@ -17,6 +17,9 @@ model User {
   password           String
   fullName           String
   phone              String?
+  // Gates the admin-only team Kanban board (see lib/admin.ts). Defaults false;
+  // the ADMIN_EMAILS env allowlist can also grant admin without setting this.
+  isAdmin            Boolean  @default(false)
   tosAcceptedAt      DateTime
   defaultHoursPerDay Float    @default(3)
   planningWindowDays Int      @default(7)
@@ -28,6 +31,24 @@ model User {
   courses       Course[]
   assignments   Assignment[]
   announcements Announcement[]
+  adminTasks    AdminTask[]
+}
+
+// Internal team task board (admin-only). Not user-facing and unrelated to
+// Canvas coursework — this is how the owner + team track building the business.
+model AdminTask {
+  id        Int      @id @default(autoincrement())
+  title     String
+  status    String   @default("todo") // "todo" | "progress" | "review" | "done"
+  position  Int      @default(0)       // order within a column
+  // Nullable + SetNull: the board is shared by the team, so a task must outlive
+  // the account that created it (deleting an admin nulls the author, not the task).
+  createdById Int?
+  createdBy User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, position])
 }
 
 model Session {
@@ -53,34 +74,44 @@ model CanvasCredential {
 model Course {
   id       Int    @id @default(autoincrement())
   userId   Int
-  canvasId Int    @unique
+  canvasId Int
   name     String
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments   Assignment[]
   announcements Announcement[]
+
+  // Canvas IDs are unique per user, not globally — two users in the same
+  // institution can share a course canvasId (multi-user scaling).
+  @@unique([userId, canvasId])
 }
 
 model Assignment {
-  id             Int       @id @default(autoincrement())
-  userId         Int
-  canvasId       Int       @unique
-  courseId       Int
-  courseCanvasId Int
-  name           String
-  dueAt          DateTime?
-  pointsPossible Float?
-  htmlUrl        String?
-  updatedAt      DateTime  @updatedAt
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  canvasId        Int
+  courseId        Int
+  courseCanvasId  Int
+  name            String
+  dueAt           DateTime?
+  pointsPossible  Float?
+  htmlUrl         String?
+  updatedAt       DateTime  @updatedAt
+  // Submission data from Canvas include[]=submission (canvas-mcp integration)
+  submittedAt     DateTime?
+  submissionScore Float?
+  submissionState String?   // "submitted" | "graded" | "unsubmitted" | "pending_review"
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, canvasId])
 }
 
 model Announcement {
   id             Int       @id @default(autoincrement())
   userId         Int
-  canvasId       Int       @unique
+  canvasId       Int
   courseId       Int
   courseCanvasId Int
   title          String
@@ -90,4 +121,6 @@ model Announcement {
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, canvasId])
 }

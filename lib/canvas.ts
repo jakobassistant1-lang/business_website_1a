@@ -106,6 +106,13 @@ export interface CanvasAssignment {
   due_at: string | null;
   points_possible: number | null;
   html_url: string;
+  /** Present when the request includes `include[]=submission` (canvas-mcp integration). */
+  submission?: {
+    submitted_at: string | null;
+    score: number | null;
+    submission_type: string | null;
+    workflow_state: string | null; // "submitted" | "graded" | "unsubmitted" | "pending_review"
+  };
 }
 export interface CanvasAnnouncement {
   id: number;
@@ -120,7 +127,8 @@ export function fetchCourses(host: string, token: string): Promise<CanvasCourse[
 }
 
 export function fetchAssignments(host: string, token: string, courseId: number): Promise<CanvasAssignment[]> {
-  return fetchAll<CanvasAssignment>(host, token, `/courses/${courseId}/assignments`);
+  // include[]=submission fetches each student's submission in the same request (no extra API calls).
+  return fetchAll<CanvasAssignment>(host, token, `/courses/${courseId}/assignments?include[]=submission`);
 }
 
 export function fetchAnnouncements(host: string, token: string, courseId: number): Promise<CanvasAnnouncement[]> {

@@ -32,7 +32,7 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
       )}
       <div>
         <label className="label" htmlFor="email">Email</label>

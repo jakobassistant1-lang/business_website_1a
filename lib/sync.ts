@@ -8,6 +8,14 @@ import {
 } from "./canvas";
 import { CanvasStatus, messageFor } from "./messages";
 
+/** Parse a Canvas date string, guarding against malformed values that would
+ *  otherwise produce an Invalid Date (which Prisma rejects at write time). */
+function toDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export interface SyncResult {
   ok: boolean;
   status: CanvasStatus;
@@ -59,7 +67,7 @@ export async function runSync(userId: number): Promise<SyncResult> {
   let lastCourseError: CanvasStatus | null = null; // representative status if courses fail
   for (const c of courses) {
     const course = await prisma.course.upsert({
-      where: { canvasId: c.id },
+      where: { userId_canvasId: { userId, canvasId: c.id } },
       create: { canvasId: c.id, userId, name: c.name ?? `Course ${c.id}` },
       update: { name: c.name ?? `Course ${c.id}` },
     });
@@ -76,11 +84,19 @@ export async function runSync(userId: number): Promise<SyncResult> {
           courseId: course.id,
           courseCanvasId: c.id,
           name: a.name ?? `Assignment ${a.id}`,
-          dueAt: a.due_at ? new Date(a.due_at) : null,
+          dueAt: toDate(a.due_at),
           pointsPossible: a.points_possible ?? null,
           htmlUrl: a.html_url ?? null,
+          // Submission data from include[]=submission (canvas-mcp integration).
+          submittedAt: toDate(a.submission?.submitted_at),
+          submissionScore: a.submission?.score ?? null,
+          submissionState: a.submission?.workflow_state ?? null,
         };
-        await prisma.assignment.upsert({ where: { canvasId: a.id }, create: { canvasId: a.id, ...data }, update: data });
+        await prisma.assignment.upsert({
+          where: { userId_canvasId: { userId, canvasId: a.id } },
+          create: { canvasId: a.id, ...data },
+          update: data,
+        });
       }
 
       for (const an of announcements) {
@@ -90,10 +106,14 @@ export async function runSync(userId: number): Promise<SyncResult> {
           courseCanvasId: c.id,
           title: an.title ?? `Announcement ${an.id}`,
           message: an.message ?? null,
-          postedAt: an.posted_at ? new Date(an.posted_at) : null,
+          postedAt: toDate(an.posted_at),
           htmlUrl: an.html_url ?? null,
         };
-        await prisma.announcement.upsert({ where: { canvasId: an.id }, create: { canvasId: an.id, ...data }, update: data });
+        await prisma.announcement.upsert({
+          where: { userId_canvasId: { userId, canvasId: an.id } },
+          create: { canvasId: an.id, ...data },
+          update: data,
+        });
       }
     } catch (e) {
       failedCourses.push(c.name ?? `Course ${c.id}`);

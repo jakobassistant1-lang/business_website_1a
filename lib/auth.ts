@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
 import { prisma } from "./prisma";
@@ -23,7 +24,10 @@ export async function destroySession() {
   jar.delete(COOKIE);
 }
 
-export async function getCurrentUser() {
+// Wrapped in React's cache() so multiple calls within one server request (e.g.
+// the (app) layout AND the page both resolving the user) share a single DB
+// round-trip instead of re-querying the session+user join each time.
+export const getCurrentUser = cache(async () => {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
@@ -32,7 +36,7 @@ export async function getCurrentUser() {
     include: { user: true },
   });
   return session?.user ?? null;
-}
+});
 
 /** For API routes: returns the user or null (caller returns 401). */
 export async function requireUser() {

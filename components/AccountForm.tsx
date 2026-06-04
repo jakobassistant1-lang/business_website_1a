@@ -58,12 +58,12 @@ export function AccountForm({ initial }: { initial: Initial }) {
         <div>
           <label className="label" htmlFor="fullName">Full name</label>
           <input id="fullName" className="field" value={form.fullName} onChange={(e) => set("fullName", e.target.value)} />
-          {errors.fullName && <p className="mt-1 text-xs text-red-600">{errors.fullName}</p>}
+          {errors.fullName && <p className="mt-1 text-xs text-danger">{errors.fullName}</p>}
         </div>
         <div>
           <label className="label" htmlFor="email">Email</label>
           <input id="email" type="email" className="field" value={form.email} onChange={(e) => set("email", e.target.value)} />
-          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+          {errors.email && <p className="mt-1 text-xs text-danger">{errors.email}</p>}
         </div>
         <div>
           <label className="label" htmlFor="phone">Phone <span className="font-normal text-muted">(optional)</span></label>
@@ -78,7 +78,7 @@ export function AccountForm({ initial }: { initial: Initial }) {
           <button type="submit" className="btn-primary" disabled={busy}>
             {busy ? "Saving…" : "Save changes"}
           </button>
-          {saved && <span className="text-sm text-emerald-700">Saved.</span>}
+          {saved && <span className="text-sm text-success">Saved.</span>}
         </div>
       </form>
     </div>

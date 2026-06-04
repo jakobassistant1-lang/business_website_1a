@@ -65,7 +65,7 @@ export function SettingsForm({ initial }: { initial: Initial }) {
           <button type="submit" className="btn-primary" disabled={busy}>
             {busy ? "Saving…" : "Save settings"}
           </button>
-          {saved && <span className="text-sm text-emerald-700">Saved.</span>}
+          {saved && <span className="text-sm text-success">Saved.</span>}
         </div>
       </form>
     </div>
@@ -84,7 +84,7 @@ function Field(props: {
         value={props.value} onChange={(e) => props.onChange(e.target.value)}
       />
       {props.hint && <p className="mt-1 text-xs text-muted">{props.hint}</p>}
-      {props.error && <p className="mt-1 text-xs text-red-600">{props.error}</p>}
+      {props.error && <p className="mt-1 text-xs text-danger">{props.error}</p>}
     </div>
   );
 }

@@ -14,3 +14,6 @@ next-env.d.ts
 
 # Env holds the local SQLite path; safe to keep, but ignore by default
 .env
+
+# Local agent/editor tooling (e.g. preview launch config)
+/.claude

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { PlanPayload } from "@/lib/plan";
+import type { PlanPayload, SubmittedItem } from "@/lib/plan";
+import { toneSoft } from "@/lib/tone";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -73,11 +74,16 @@ export function PlanView({ initial }: { initial: PlanPayload }) {
   }
 
   const { plan } = payload;
+  // Defensive default: a response that predates this field (e.g. mid-deploy)
+  // must not crash the render with `undefined.length`.
+  const submitted = payload.submitted ?? [];
   const statusPill = !payload.connected
-    ? { text: "Not connected", cls: "bg-gray-100 text-gray-600" }
+    ? { text: "Not connected", cls: toneSoft.neutral }
+    : payload.syncedAt === null
+    ? { text: "Not synced yet", cls: toneSoft.neutral }
     : payload.stale
-    ? { text: "Stale data", cls: "bg-amber-100 text-amber-800" }
-    : { text: "Up to date", cls: "bg-emerald-100 text-emerald-700" };
+    ? { text: "Stale data", cls: toneSoft.warning }
+    : { text: "Up to date", cls: toneSoft.success };
 
   const hasAssignments =
     plan.days.some((d) => d.blocks.length > 0) || plan.atRisk.length > 0 || plan.undated.length > 0;
@@ -108,11 +114,7 @@ export function PlanView({ initial }: { initial: PlanPayload }) {
       {notice && (
         <div
           className={`mt-4 rounded-lg px-4 py-3 text-sm ${
-            notice.kind === "ok"
-              ? "bg-emerald-50 text-emerald-800"
-              : notice.kind === "warn"
-              ? "bg-amber-50 text-amber-800"
-              : "bg-red-50 text-red-700"
+            notice.kind === "ok" ? toneSoft.success : notice.kind === "warn" ? toneSoft.warning : toneSoft.danger
           }`}
         >
           {notice.text}
@@ -141,15 +143,17 @@ export function PlanView({ initial }: { initial: PlanPayload }) {
               </div>
               <button type="submit" className="btn-primary">Apply</button>
             </form>
-            <div className="card grid grid-cols-3 divide-x divide-gray-100 p-4 text-center">
+            <div className="card grid grid-cols-4 divide-x divide-line-subtle p-4 text-center">
               <Stat label="Due in window" value={plan.inWindowDueCount} />
               <Stat label="At risk" value={plan.atRisk.filter((a) => a.kind === "insufficient_time").length} accent={plan.atRisk.length > 0} />
               <Stat label="Planned hrs" value={plan.totalPlannedHours} />
+              <Stat label="Submitted" value={submitted.length} positive={submitted.length > 0} />
             </div>
           </div>
 
-          {/* Empty state (FR-7.4) */}
-          {!hasAssignments && (
+          {/* Empty state (FR-7.4) — suppressed when everything is already submitted,
+              so it never contradicts the Completed section below. */}
+          {!hasAssignments && submitted.length === 0 && (
             <div className="card mt-6 p-8 text-center">
               <p className="text-sm font-medium text-ink">No assignments to plan yet.</p>
               <p className="mt-1 text-sm text-muted">
@@ -163,17 +167,17 @@ export function PlanView({ initial }: { initial: PlanPayload }) {
           {/* AT_RISK */}
           {plan.atRisk.length > 0 && (
             <section className="mt-8">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-red-600">Needs attention</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-danger">Needs attention</h2>
               <div className="mt-3 space-y-2">
                 {plan.atRisk.map((a) => (
-                  <div key={`risk-${a.canvasId}`} className="card flex items-center justify-between border-red-100 bg-red-50/40 p-3.5">
+                  <div key={`risk-${a.canvasId}`} className="card flex items-center justify-between border-danger/30 bg-danger-soft/40 p-3.5">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-ink">
                         {a.htmlUrl ? <a href={a.htmlUrl} target="_blank" rel="noreferrer" className="hover:text-accent">{a.name}</a> : a.name}
                       </p>
                       <p className="truncate text-xs text-muted">{a.courseName} · due {fmtDue(a.dueAt)}</p>
                     </div>
-                    <span className="ml-3 shrink-0 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                    <span className="ml-3 shrink-0 rounded-full bg-danger-soft px-2.5 py-0.5 text-xs font-medium text-danger">
                       {a.kind === "overdue" ? "Past due" : `+${a.shortfallHours}h won't fit`}
                     </span>
                   </div>
@@ -197,7 +201,7 @@ export function PlanView({ initial }: { initial: PlanPayload }) {
                         </p>
                         <span className="text-xs text-muted">{day.allocated}/{day.capacity}h</span>
                       </div>
-                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-soft">
                         <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="mt-3 space-y-2">
@@ -239,16 +243,51 @@ export function PlanView({ initial }: { initial: PlanPayload }) {
               </div>
             </section>
           )}
+
+          {/* Submitted / Completed */}
+          {submitted.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-success">Completed</h2>
+              <div className="mt-3 space-y-2">
+                {submitted.map((s: SubmittedItem) => (
+                  <div key={`sub-${s.canvasId}`} className="card flex items-center justify-between border-success/30 bg-success-soft/40 p-3.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">
+                        {s.htmlUrl
+                          ? <a href={s.htmlUrl} target="_blank" rel="noreferrer" className="hover:text-accent">{s.name}</a>
+                          : s.name}
+                      </p>
+                      <p className="truncate text-xs text-muted">
+                        {s.courseName} · submitted {fmtDue(s.submittedAt)}
+                      </p>
+                    </div>
+                    <div className="ml-3 shrink-0">
+                      {s.submissionScore !== null && s.pointsPossible !== null ? (
+                        <span className="rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success">
+                          {s.submissionScore}/{s.pointsPossible}pts
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success">
+                          ✓ Done
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+function Stat({ label, value, accent, positive }: { label: string; value: number; accent?: boolean; positive?: boolean }) {
+  const cls = accent ? "text-danger" : positive ? "text-success" : "text-ink";
   return (
     <div className="px-2">
-      <p className={`text-2xl font-semibold ${accent ? "text-red-600" : "text-ink"}`}>{value}</p>
+      <p className={`text-2xl font-semibold ${cls}`}>{value}</p>
       <p className="text-xs text-muted">{label}</p>
     </div>
   );

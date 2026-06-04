@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toneSoft, type Tone } from "@/lib/tone";
 
 interface Initial {
   host: string;
@@ -9,13 +10,13 @@ interface Initial {
   accountName: string | null;
 }
 
-const STATUS_PILL: Record<string, { text: string; cls: string }> = {
-  valid: { text: "Connected", cls: "bg-emerald-100 text-emerald-700" },
-  invalid_token: { text: "Token rejected", cls: "bg-red-100 text-red-700" },
-  bad_domain: { text: "Bad domain", cls: "bg-red-100 text-red-700" },
-  unreachable: { text: "Unreachable", cls: "bg-amber-100 text-amber-800" },
-  insufficient_scope: { text: "Insufficient scope", cls: "bg-amber-100 text-amber-800" },
-  error: { text: "Error", cls: "bg-red-100 text-red-700" },
+const STATUS_PILL: Record<string, { text: string; tone: Tone }> = {
+  valid: { text: "Connected", tone: "success" },
+  invalid_token: { text: "Token rejected", tone: "danger" },
+  bad_domain: { text: "Bad domain", tone: "danger" },
+  unreachable: { text: "Unreachable", tone: "warning" },
+  insufficient_scope: { text: "Insufficient scope", tone: "warning" },
+  error: { text: "Error", tone: "danger" },
 };
 
 export function ConnectionsForm({ initial }: { initial: Initial }) {
@@ -57,7 +58,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         <div className="mb-4 flex items-center justify-between">
           <span className="text-sm font-medium text-ink">Canvas</span>
           {pill && (
-            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${pill.cls}`}>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft[pill.tone]}`}>
               {pill.text}
               {status === "valid" && accountName ? ` · ${accountName}` : ""}
             </span>
@@ -87,7 +88,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
 
         {message && (
           <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${
-            status === "valid" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"
+            status === "valid" ? toneSoft.success : toneSoft.danger
           }`}>
             {message}
           </p>

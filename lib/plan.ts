@@ -1,6 +1,16 @@
 import { prisma } from "./prisma";
 import { generatePlan, Plan, SchedulerAssignment } from "./scheduler";
 
+export interface SubmittedItem {
+  canvasId: number;
+  name: string;
+  courseName: string;
+  submittedAt: string; // ISO — present because submittedAt is non-null
+  submissionScore: number | null;
+  pointsPossible: number | null;
+  htmlUrl: string | null;
+}
+
 export interface PlanPayload {
   connected: boolean;
   accountName: string | null;
@@ -10,12 +20,17 @@ export interface PlanPayload {
   hours: number;
   windowDays: number;
   plan: Plan;
+  submitted: SubmittedItem[]; // assignments already turned in — excluded from the plan
 }
 
 /**
  * Loads the cached assignments and runs the rule-based planner. `hoursOverride`
  * lets the Plan view regenerate with a different daily budget (FR-8) without
  * persisting it.
+ *
+ * Assignments with a non-null `submittedAt` are separated out: they are
+ * removed from the scheduler input (no need to plan work that is done) and
+ * surfaced in `payload.submitted` so the UI can show a "Completed" section.
  */
 export async function loadPlan(userId: number, hoursOverride?: number): Promise<PlanPayload> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
@@ -30,7 +45,26 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
       ? hoursOverride
       : user.defaultHoursPerDay;
 
-  const assignments: SchedulerAssignment[] = rows.map((a) => ({
+  // Split submitted vs. active assignments (canvas-mcp integration).
+  // "Done" = has a submission timestamp AND Canvas hasn't reset it. When an
+  // instructor reopens a submission, Canvas keeps the old submitted_at but flips
+  // workflow_state to "unsubmitted"; such rows must stay in the plan, not vanish.
+  const isDone = (a: (typeof rows)[number]) =>
+    a.submittedAt !== null && a.submissionState !== "unsubmitted";
+  const submittedRows = rows.filter(isDone);
+  const activeRows = rows.filter((a) => !isDone(a));
+
+  const submitted: SubmittedItem[] = submittedRows.map((a) => ({
+    canvasId: a.canvasId,
+    name: a.name,
+    courseName: a.course.name,
+    submittedAt: a.submittedAt!.toISOString(),
+    submissionScore: a.submissionScore,
+    pointsPossible: a.pointsPossible,
+    htmlUrl: a.htmlUrl,
+  }));
+
+  const assignments: SchedulerAssignment[] = activeRows.map((a) => ({
     canvasId: a.canvasId,
     name: a.name,
     courseName: a.course.name,
@@ -53,5 +87,6 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
     hours,
     windowDays: user.planningWindowDays,
     plan,
+    submitted,
   };
 }

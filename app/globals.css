@@ -2,20 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
+/* === FLOWBOARD DESIGN TOKENS ===
+   Colors are stored as RGB channel triplets ("r g b") so Tailwind can inject
+   alpha (`rgb(var(--accent) / <alpha-value>)`). Semantic tokens flip under
+   [data-theme="dark"] — every themed utility follows automatically. */
 :root {
   color-scheme: light;
+
+  /* surfaces & text */
+  --bg: 247 246 244;          /* warm off-white #f7f6f4 */
+  --surface: 255 255 255;     /* #ffffff */
+  --surface-soft: 244 244 245;/* #f4f4f5 subtle raised/hover */
+  --ink: 22 22 25;            /* #161619 deep charcoal */
+  --muted: 78 78 87;          /* #4e4e57 */
+  --faint: 142 142 152;       /* #8e8e98 */
+  --line: 214 214 218;        /* #d6d6da */
+  --line-subtle: 232 232 234; /* #e8e8ea */
+
+  /* accent (violet through-line) */
+  --accent: 124 92 240;       /* #7c5cf0 violet-500 */
+  --accent-hover: 106 71 224; /* #6a47e0 violet-600 */
+  --accent-soft: 243 240 255; /* #f3f0ff violet-50 */
+  --accent-ring: 176 155 255; /* #b09bff violet-300 */
+  --on-accent: 255 255 255;
+
+  /* feedback */
+  --success: 47 158 107;      --success-soft: 216 240 227;
+  --warning: 217 148 35;      --warning-soft: 248 234 203;
+  --danger: 214 69 61;        --danger-soft: 246 220 218;
+
+  /* charcoal sidebar — two-tone anchor, dark in BOTH themes */
+  --sidebar: 22 22 25;        /* #161619 */
+
+  /* shadows (airy) */
+  --shadow-sm: 0 1px 2px rgba(22, 22, 25, 0.05);
+  --shadow-md: 0 6px 18px rgba(22, 22, 25, 0.07);
+  --shadow-lg: 0 18px 48px rgba(22, 22, 25, 0.10);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: 22 22 25;             /* #161619 */
+  --surface: 35 35 40;        /* #232328 */
+  --surface-soft: 54 54 61;   /* #36363d */
+  --ink: 244 244 245;         /* #f4f4f5 */
+  --muted: 184 184 191;       /* #b8b8bf */
+  --faint: 107 107 117;       /* #6b6b75 */
+  --line: 54 54 61;           /* #36363d */
+  --line-subtle: 35 35 40;    /* #232328 */
+
+  --accent: 145 113 247;      /* #9171f7 violet-400 */
+  --accent-hover: 176 155 255;/* #b09bff violet-300 */
+  --accent-soft: 51 33 110;   /* #33216e violet-900 */
+  --accent-ring: 88 54 194;   /* #5836c2 violet-700 */
+  --on-accent: 22 22 25;
+
+  --success: 70 183 131;      --success-soft: 28 58 45;
+  --warning: 230 169 69;      --warning-soft: 58 47 23;
+  --danger: 232 100 93;       --danger-soft: 58 34 32;
+
+  --sidebar: 35 35 40;        /* #232328 */
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
 }
 
 body {
   @apply bg-canvas text-ink antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* Subtle ambient gradient for auth screens. */
+/* Subtle ambient gradient for auth screens (violet glow on the canvas). */
 .auth-bg {
   background:
-    radial-gradient(60rem 40rem at 15% -10%, rgba(124, 58, 237, 0.10), transparent 60%),
-    radial-gradient(50rem 40rem at 110% 10%, rgba(124, 58, 237, 0.08), transparent 55%),
-    #FAFAF9;
+    radial-gradient(60rem 40rem at 15% -10%, rgb(var(--accent) / 0.10), transparent 60%),
+    radial-gradient(50rem 40rem at 110% 10%, rgb(var(--accent) / 0.08), transparent 55%),
+    rgb(var(--bg));
 }
 
 @layer components {
@@ -24,20 +88,20 @@ body {
            transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-accent text-white hover:bg-accent-hover;
+    @apply btn bg-accent text-accent-on hover:bg-accent-hover;
   }
   .btn-ghost {
-    @apply btn border border-gray-200 bg-white text-ink hover:bg-gray-50;
+    @apply btn border border-line bg-surface text-ink hover:bg-surface-soft;
   }
   .field {
-    @apply w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-ink
-           placeholder:text-gray-400 outline-none transition
+    @apply w-full rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm text-ink
+           placeholder:text-faint outline-none transition
            focus:border-accent focus:ring-4 focus:ring-accent-ring/40;
   }
   .label {
     @apply mb-1.5 block text-sm font-medium text-ink;
   }
   .card {
-    @apply rounded-xl border border-gray-100 bg-white shadow-card;
+    @apply rounded-xl border border-line-subtle bg-surface shadow-card;
   }
 }
