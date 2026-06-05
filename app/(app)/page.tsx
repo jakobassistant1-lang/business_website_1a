@@ -11,7 +11,7 @@ export default async function PlanPage() {
   const payload = await loadPlan(user!.id); // layout guarantees auth
   return (
     <Container>
-      <PlanView initial={payload} />
+      <PlanView initial={payload} userName={user!.fullName} />
     </Container>
   );
 }
