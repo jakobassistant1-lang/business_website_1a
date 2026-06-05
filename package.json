@@ -8,6 +8,7 @@
     "start": "next start",
     "db:push": "prisma db push",
     "create-user": "node scripts/create-user.mjs",
+    "seed-canvas": "node scripts/seed-canvas.mjs",
     "test": "vitest run",
     "postinstall": "prisma generate"
   },
