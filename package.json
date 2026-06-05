@@ -8,6 +8,7 @@
     "start": "next start",
     "db:push": "prisma db push",
     "create-user": "node scripts/create-user.mjs",
+    "test": "vitest run",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "postcss": "8.4.49",
     "prisma": "6.2.1",
     "tailwindcss": "3.4.17",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "^2.1.9"
   }
 }
