@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { generatePlan, Plan, SchedulerAssignment } from "./scheduler";
+import { rankRecommendations, priorityInputsFromPlan, type ScoredAssignment } from "./priority";
 
 export interface SubmittedItem {
   canvasId: number;
@@ -21,6 +22,7 @@ export interface PlanPayload {
   windowDays: number;
   plan: Plan;
   submitted: SubmittedItem[]; // assignments already turned in — excluded from the plan
+  recommendations: ScoredAssignment[]; // top deterministic priorities (AI narrates these separately)
 }
 
 /**
@@ -75,6 +77,15 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
 
   const plan = generatePlan(assignments, hours, user.planningWindowDays, user.defaultEffortHours);
 
+  // Deterministic prioritization (pure logic). pointsById is threaded in because
+  // the scheduler drops pointsPossible from its output.
+  const submittedIds = new Set(submittedRows.map((a) => a.canvasId));
+  const pointsById = new Map<number, number | null>(activeRows.map((a) => [a.canvasId, a.pointsPossible]));
+  const recommendations = rankRecommendations(priorityInputsFromPlan(plan, submittedIds, pointsById), {
+    windowDays: user.planningWindowDays,
+    effortHours: user.defaultEffortHours,
+  }).top;
+
   const status = cred?.lastValidationStatus ?? null;
   const stale = !!cred && status !== null && status !== "valid";
 
@@ -88,5 +99,6 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
     windowDays: user.planningWindowDays,
     plan,
     submitted,
+    recommendations,
   };
 }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { PlanPayload, SubmittedItem } from "@/lib/plan";
 import type { PlanDay } from "@/lib/scheduler";
+import type { ScoredAssignment } from "@/lib/priority";
 import { toneSoft } from "@/lib/tone";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -60,6 +61,8 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<{ kind: "ok" | "warn" | "error"; text: string } | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [briefing, setBriefing] = useState<string | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
   const didAutoSync = useRef(false);
 
   // FR-6: sync automatically once per browser session (≈ on login).
@@ -78,6 +81,30 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
     if (res.ok) setPayload(await res.json());
   }
 
+  // AI briefing — fetched lazily after first paint and after each plan change,
+  // never on the server render path. Failure leaves the recommendations intact.
+  async function fetchBriefing(h?: string) {
+    if (!payload.connected) return;
+    setBriefingLoading(true);
+    try {
+      const q = h ? `?hours=${encodeURIComponent(h)}` : "";
+      const res = await fetch(`/api/briefing${q}`);
+      if (res.ok) {
+        const body = await res.json();
+        setBriefing(typeof body.text === "string" ? body.text : null);
+      }
+    } catch {
+      /* keep showing the recommendations without the AI line */
+    } finally {
+      setBriefingLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (payload.connected && (initial.recommendations?.length ?? 0) > 0) void fetchBriefing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function runSync() {
     setSyncing(true);
     setNotice(null);
@@ -91,6 +118,7 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
       setNotice({ kind: "error", text: result.message ?? "Sync failed." });
     }
     await reloadPlan(hours);
+    void fetchBriefing(hours);
   }
 
   async function applyHours(e: React.FormEvent) {
@@ -102,10 +130,12 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
     }
     setNotice(null);
     await reloadPlan(hours);
+    void fetchBriefing(hours);
   }
 
   const { plan } = payload;
   const submitted = payload.submitted ?? [];
+  const recs = payload.recommendations ?? [];
   const firstName = userName.trim().split(/\s+/)[0];
   const todayLong = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   const statusPill = !payload.connected
@@ -168,6 +198,8 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
 
       {payload.connected && (
         <>
+          {recs.length > 0 && <BriefingCard text={briefing} loading={briefingLoading} recs={recs} />}
+
           {/* Hours + summary */}
           <div className="mt-6 grid gap-4 sm:grid-cols-[auto_1fr]">
             <form onSubmit={applyHours} className="card p-4">
@@ -298,6 +330,38 @@ function SectionHeader({ icon, className, text }: { icon: string; className: str
     <h2 className={`flex items-center gap-2 text-sm font-semibold uppercase tracking-wide ${className}`}>
       <Glyph d={icon} size={15} />{text}
     </h2>
+  );
+}
+
+// Top-of-page card: the deterministic top priorities (always shown) plus an
+// optional AI sentence. If the AI is unavailable, the chips still render.
+function BriefingCard({ text, loading, recs }: { text: string | null; loading: boolean; recs: ScoredAssignment[] }) {
+  return (
+    <div className="card mt-6 border-accent-soft bg-accent-soft/30 p-5">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-accent">
+        <Glyph d={ICON.sun} size={15} /> Today&apos;s briefing
+      </h2>
+      {text ? (
+        <p className="mt-2 text-sm leading-snug text-ink">{text}</p>
+      ) : loading ? (
+        <p className="mt-2 text-sm text-muted">Thinking through your week…</p>
+      ) : null}
+      <div className="mt-3 space-y-2">
+        {recs.map((r) => (
+          <div key={`rec-${r.canvasId}`} className="flex items-center justify-between gap-3 rounded-md bg-surface/70 px-3 py-2">
+            <p className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
+              <CourseDot name={r.courseName} />
+              {r.htmlUrl ? (
+                <a href={r.htmlUrl} target="_blank" rel="noreferrer" className="truncate hover:text-accent">{r.name}</a>
+              ) : (
+                <span className="truncate">{r.name}</span>
+              )}
+            </p>
+            <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">{r.reason}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

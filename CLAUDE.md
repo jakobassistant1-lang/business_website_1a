@@ -44,8 +44,9 @@ _Known facts filled in; TBDs + the brand question need Massah Calvin's input._
 ## Architecture
 - `app/(app)/` — authed pages: Plan (`/`), `connections`, `settings`, `account`, `admin`. The group `layout.tsx` requires auth; `admin/layout.tsx` gates admins.
 - `app/api/` — route handlers (`auth`, `canvas/credentials`, `plan`, `sync`, `settings`, `account`, `admin/tasks`).
-- `lib/` — `auth`, `admin`, `kanban`, `tone`, `password`, `signup`, `plan`, `scheduler`, `sync`, `canvas`, `prisma`.
+- `lib/` — `auth`, `admin`, `kanban`, `tone`, `password`, `signup`, `plan`, `scheduler`, `priority`, `briefing`, `sync`, `canvas`, `prisma`.
 - `components/` — `PlanView`, `KanbanBoard`, `Sidebar`, `ThemeToggle`, forms.
+- **AI briefing:** `lib/priority.ts` ranks assignments with deterministic logic (testable); `lib/briefing.ts` + `/api/briefing` narrate the top picks via Gemini Flash-Lite. The AI **fails open** — the plan + recommendations always render without it. Needs `GEMINI_API_KEY` (server-only).
 
 ## Auth & admin
 - Cookie sessions (`lib/auth.ts`; `getCurrentUser` is request-cached). Passwords are bcrypt-hashed.
