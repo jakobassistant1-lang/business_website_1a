@@ -72,6 +72,7 @@ export async function GET(req: Request) {
   });
 
   if (result.ok) cacheSet(key, result.text);
+  else console.warn(`[briefing] gemini unavailable: ${result.reason}`); // reason only, never the key
   return NextResponse.json({
     ok: result.ok,
     text: result.ok ? result.text : null,
