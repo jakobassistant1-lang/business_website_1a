@@ -73,6 +73,8 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
     dueAt: a.dueAt,
     pointsPossible: a.pointsPossible,
     htmlUrl: a.htmlUrl,
+    estimatedEffortHours: a.estimatedEffortHours ?? null,
+    summary: a.aiSummary ?? null,
   }));
 
   const plan = generatePlan(assignments, hours, user.planningWindowDays, user.defaultEffortHours);

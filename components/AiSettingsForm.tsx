@@ -2,11 +2,18 @@
 
 import { useState } from "react";
 
+// One reusable editor for an admin-tunable prompt (briefing or analysis).
 export function AiSettingsForm({
+  title,
+  description,
+  endpoint,
   initialPrompt,
   defaultPrompt,
   isCustom,
 }: {
+  title: string;
+  description: string;
+  endpoint: string; // PUT target, e.g. /api/admin/briefing-prompt
   initialPrompt: string;
   defaultPrompt: string;
   isCustom: boolean;
@@ -26,7 +33,7 @@ export function AiSettingsForm({
     setBusy(true);
     setError(null);
     setSaved(false);
-    const res = await fetch("/api/admin/briefing-prompt", {
+    const res = await fetch(endpoint, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
@@ -42,18 +49,16 @@ export function AiSettingsForm({
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold tracking-tight">AI briefing settings</h1>
+    <section>
+      <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
       <p className="mt-1 text-sm text-muted">
-        Edit the instructions Gemini follows when writing each student&apos;s daily briefing. Changes take effect
-        within about a minute — no redeploy. {custom ? "A custom prompt is active." : "Using the built-in default."}
+        {description} {custom ? "A custom prompt is active." : "Using the built-in default."}
       </p>
-
-      <div className="card mt-6 p-6">
-        <label className="label" htmlFor="prompt">Briefing prompt</label>
+      <div className="card mt-3 p-6">
+        <label className="label" htmlFor={endpoint}>Prompt</label>
         <textarea
-          id="prompt"
-          className="field min-h-[220px] font-mono text-xs leading-relaxed"
+          id={endpoint}
+          className="field min-h-[200px] font-mono text-xs leading-relaxed"
           value={prompt}
           onChange={(e) => edit(e.target.value)}
           maxLength={4000}
@@ -69,16 +74,6 @@ export function AiSettingsForm({
           {saved && <span className="text-sm text-success">Saved.</span>}
         </div>
       </div>
-
-      <div className="card mt-4 p-5">
-        <h2 className="text-sm font-semibold text-ink">How this works</h2>
-        <ul className="mt-2 space-y-1.5 text-sm text-muted">
-          <li>• This is the <strong className="text-ink">style and coaching guidance</strong> only. The app automatically gives Gemini the student&apos;s plan and ranked priorities — you don&apos;t add assignment data here.</li>
-          <li>• Good things to tweak: tone (encouraging, blunt), length (&ldquo;under 3 sentences&rdquo;), and what to emphasize (&ldquo;always name the single most urgent item first&rdquo;).</li>
-          <li>• Tell it what to avoid too (&ldquo;no lists&rdquo;, &ldquo;don&apos;t invent deadlines&rdquo;).</li>
-          <li>• It does <strong className="text-ink">not</strong> change how assignments are ranked — that&apos;s deterministic logic, separate from the AI.</li>
-        </ul>
-      </div>
-    </div>
+    </section>
   );
 }

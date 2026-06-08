@@ -100,8 +100,26 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
     }
   }
 
+  // Per-assignment AI effort + summaries. Lazy: enriches the rows after first
+  // paint, reloads the plan + briefing only if something actually changed.
+  async function runAnalyze() {
+    if (!payload.connected) return;
+    try {
+      const res = await fetch("/api/analyze", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (body.analyzed > 0) {
+        await reloadPlan(hours);
+        void fetchBriefing(hours);
+      }
+    } catch {
+      /* fail-open: the plan already rendered with flat effort */
+    }
+  }
+
   useEffect(() => {
-    if (payload.connected && (initial.recommendations?.length ?? 0) > 0) void fetchBriefing();
+    if (!payload.connected) return;
+    void fetchBriefing();
+    void runAnalyze();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -119,6 +137,7 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
     }
     await reloadPlan(hours);
     void fetchBriefing(hours);
+    void runAnalyze();
   }
 
   async function applyHours(e: React.FormEvent) {
@@ -392,6 +411,7 @@ function DayCard({ day, today }: { day: PlanDay; today?: boolean }) {
               <p className="flex items-center gap-1.5 truncate text-xs text-muted">
                 <CourseDot name={b.courseName} />{b.courseName} · due {fmtDue(b.dueAt)}
               </p>
+              {b.summary && <p className="mt-0.5 truncate text-xs italic text-muted">{b.summary}</p>}
             </div>
           </div>
         ))}

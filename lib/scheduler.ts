@@ -15,6 +15,8 @@ export interface SchedulerAssignment {
   dueAt: Date | null;
   pointsPossible: number | null;
   htmlUrl: string | null;
+  estimatedEffortHours?: number | null; // AI per-assignment effort; falls back to the flat default
+  summary?: string | null; // AI one-line summary, carried through to the UI
 }
 
 export interface DayBlock {
@@ -24,6 +26,7 @@ export interface DayBlock {
   hours: number;
   htmlUrl: string | null;
   dueAt: string; // ISO
+  summary?: string | null;
 }
 
 export interface PlanDay {
@@ -45,6 +48,7 @@ export interface AtRiskItem {
   kind: AtRiskKind;
   shortfallHours: number; // effort that couldn't be placed before the due date
   htmlUrl: string | null;
+  summary?: string | null;
 }
 
 export interface UndatedItem {
@@ -164,7 +168,8 @@ export function generatePlan(
 
   // Greedy packing: fill earliest available day up to (and including) the due day.
   for (const { a, dueDayIndex } of inWindow) {
-    let remaining = E;
+    // AI per-assignment effort when present; otherwise the flat default E.
+    let remaining = a.estimatedEffortHours != null && a.estimatedEffortHours >= 0 ? a.estimatedEffortHours : E;
     for (let d = 0; d <= dueDayIndex && remaining > EPS; d++) {
       const avail = H - planDays[d].allocated;
       if (avail <= EPS) continue;
@@ -176,6 +181,7 @@ export function generatePlan(
         hours: take,
         htmlUrl: a.htmlUrl,
         dueAt: a.dueAt!.toISOString(),
+        summary: a.summary ?? null,
       });
       planDays[d].allocated += take;
       remaining -= take;
@@ -190,6 +196,7 @@ export function generatePlan(
         kind: "insufficient_time",
         shortfallHours: round1(remaining),
         htmlUrl: a.htmlUrl,
+        summary: a.summary ?? null,
       });
       representedInWindow.add(a.canvasId);
     }
@@ -203,6 +210,7 @@ export function generatePlan(
         hours: 0,
         htmlUrl: a.htmlUrl,
         dueAt: a.dueAt!.toISOString(),
+        summary: a.summary ?? null,
       });
       representedInWindow.add(a.canvasId);
     }
@@ -216,8 +224,9 @@ export function generatePlan(
       courseName: a.courseName,
       dueAt: a.dueAt!.toISOString(),
       kind: "overdue",
-      shortfallHours: round1(E),
+      shortfallHours: round1(a.estimatedEffortHours ?? E),
       htmlUrl: a.htmlUrl,
+      summary: a.summary ?? null,
     });
   }
 

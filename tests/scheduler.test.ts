@@ -77,3 +77,38 @@ describe("generatePlan", () => {
     expect(generatePlan(a, 3, 7, 2, NOW)).toEqual(generatePlan(a, 3, 7, 2, NOW));
   });
 });
+
+describe("generatePlan — per-assignment effort", () => {
+  const sumFor = (plan: ReturnType<typeof generatePlan>, id: number) =>
+    plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === id).reduce((s, b) => s + b.hours, 0);
+
+  it("schedules an assignment for its AI-estimated hours, else the flat default", () => {
+    const big = { ...mk(1, due(5)), estimatedEffortHours: 5 };
+    const flat = mk(2, due(5)); // no estimate → uses E=2
+    const plan = generatePlan([big, flat], 8, 7, 2, NOW);
+    expect(sumFor(plan, 1)).toBeCloseTo(5, 5);
+    expect(sumFor(plan, 2)).toBeCloseTo(2, 5);
+    expect(plan.atRisk).toHaveLength(0);
+  });
+
+  it("keeps the G1 guarantee with mixed efforts (0 / default / huge) under tight capacity", () => {
+    const items = [
+      { ...mk(1, due(1)), estimatedEffortHours: 0 },
+      mk(2, due(2)),
+      { ...mk(3, due(2)), estimatedEffortHours: 50 },
+    ];
+    const plan = generatePlan(items, 1, 7, 2, NOW);
+    expect(plan.representedCount).toBe(plan.inWindowDueCount);
+    const ids = new Set<number>();
+    plan.days.forEach((d) => d.blocks.forEach((b) => ids.add(b.canvasId)));
+    plan.atRisk.forEach((r) => ids.add(r.canvasId));
+    for (const id of [1, 2, 3]) expect(ids.has(id)).toBe(true);
+  });
+
+  it("surfaces a 0h marker for a zero-effort assignment (never dropped)", () => {
+    const plan = generatePlan([{ ...mk(1, due(2)), estimatedEffortHours: 0 }], 3, 7, 2, NOW);
+    const blocks = plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === 1);
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.every((b) => b.hours === 0)).toBe(true);
+  });
+});

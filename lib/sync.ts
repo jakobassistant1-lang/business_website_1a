@@ -87,6 +87,7 @@ export async function runSync(userId: number): Promise<SyncResult> {
           dueAt: toDate(a.due_at),
           pointsPossible: a.points_possible ?? null,
           htmlUrl: a.html_url ?? null,
+          description: a.description ?? null,
           // Submission data from include[]=submission (canvas-mcp integration).
           submittedAt: toDate(a.submission?.submitted_at),
           submissionScore: a.submission?.score ?? null,

@@ -44,9 +44,10 @@ _Known facts filled in; TBDs + the brand question need Massah Calvin's input._
 ## Architecture
 - `app/(app)/` — authed pages: Plan (`/`), `connections`, `settings`, `account`, `admin`. The group `layout.tsx` requires auth; `admin/layout.tsx` gates admins.
 - `app/api/` — route handlers (`auth`, `canvas/credentials`, `plan`, `sync`, `settings`, `account`, `admin/tasks`).
-- `lib/` — `auth`, `admin`, `kanban`, `tone`, `password`, `signup`, `plan`, `scheduler`, `priority`, `briefing`, `sync`, `canvas`, `prisma`.
+- `lib/` — `auth`, `admin`, `kanban`, `tone`, `password`, `signup`, `settings`, `plan`, `scheduler`, `priority`, `briefing`, `analysis`, `analysisStore`, `sync`, `canvas`, `prisma`.
 - `components/` — `PlanView`, `KanbanBoard`, `Sidebar`, `ThemeToggle`, forms.
 - **AI briefing:** `lib/priority.ts` ranks assignments with deterministic logic (testable); `lib/briefing.ts` + `/api/briefing` narrate the top picks via Gemini Flash-Lite. The AI **fails open** — the plan + recommendations always render without it. Needs `GEMINI_API_KEY` (server-only). The briefing **prompt is admin-editable at `/admin/ai`** (stored in the `Setting` table via `lib/settings.ts`; falls back to `DEFAULT_BRIEFING_INSTRUCTION`).
+- **AI assignment analysis:** `lib/analysis.ts` + `lib/analysisStore.ts` + `/api/analyze` (lazy, batched, cached on the Assignment row via a content hash) have Gemini estimate each assignment's **effort** (hours + quick/medium/long → feeds the scheduler per-assignment instead of the flat default) and a **one-line summary** (shown on plan blocks). Fails open; its prompt is the second editor on `/admin/ai`.
 
 ## Auth & admin
 - Cookie sessions (`lib/auth.ts`; `getCurrentUser` is request-cached). Passwords are bcrypt-hashed.
