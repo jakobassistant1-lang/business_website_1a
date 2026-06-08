@@ -5,6 +5,8 @@ import {
   exchangeCodeForTokens,
   refreshAccessToken,
   isGoogleConfigured,
+  signState,
+  verifyState,
   CALENDAR_READONLY_SCOPE,
 } from "@/lib/googleCalendar/auth";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
@@ -31,9 +33,9 @@ describe("normalizeEvent (Google → internal adapter)", () => {
     });
   });
 
-  it("maps an all-day (date-only) event", () => {
+  it("anchors an all-day (date-only) event to noon UTC so the date is stable in every timezone", () => {
     const r = normalizeEvent({ id: "a2", summary: "Holiday", start: { date: "2026-06-12" }, end: { date: "2026-06-13" } });
-    expect(r?.startTime).toBe("2026-06-12T00:00:00.000Z");
+    expect(r?.startTime).toBe("2026-06-12T12:00:00.000Z");
     expect(r?.source).toBe("google");
   });
 
@@ -99,6 +101,34 @@ describe("token exchange + refresh", () => {
     const t = await refreshAccessToken("OLD_RT");
     expect(t.accessToken).toBe("AT2");
     expect(t.refreshToken).toBe("OLD_RT");
+  });
+});
+
+describe("OAuth state binding (CSRF + session)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("round-trips a state signed for a session", () => {
+    vi.stubEnv("ENCRYPTION_KEY", "k");
+    const state = signState("nonce123", "sessionA");
+    expect(state.startsWith("nonce123.")).toBe(true);
+    expect(verifyState(state, "nonce123", "sessionA")).toBe(true);
+  });
+
+  it("rejects when the cookie nonce doesn't match (double-submit guard)", () => {
+    vi.stubEnv("ENCRYPTION_KEY", "k");
+    const state = signState("nonce123", "sessionA");
+    expect(verifyState(state, "different-nonce", "sessionA")).toBe(false);
+  });
+
+  it("rejects when redeemed in a different session (login-CSRF guard)", () => {
+    vi.stubEnv("ENCRYPTION_KEY", "k");
+    const state = signState("nonce123", "sessionA");
+    expect(verifyState(state, "nonce123", "sessionB")).toBe(false);
+  });
+
+  it("rejects a malformed state with no signature", () => {
+    vi.stubEnv("ENCRYPTION_KEY", "k");
+    expect(verifyState("garbage", "garbage", "sessionA")).toBe(false);
   });
 });
 

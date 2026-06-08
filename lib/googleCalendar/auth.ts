@@ -2,7 +2,9 @@
 // no-SDK convention). Server-only. Reads GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
 // / GOOGLE_REDIRECT_URI from the environment; never exposes them to the client.
 
+import { createHmac, timingSafeEqual } from "crypto";
 import type { GoogleTokens } from "./types";
+import { fetchWithTimeout } from "./http";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -35,6 +37,35 @@ export function appOrigin(fallback: string): string {
   return fallback;
 }
 
+// --- CSRF state, bound to the user's session ---------------------------------
+// The `state` param carries a random nonce + an HMAC over (nonce, sessionToken).
+// The connect route also drops the bare nonce in an httpOnly cookie. At callback
+// we require BOTH: the cookie nonce matches (double-submit, blocks a forged
+// callback) AND the HMAC recomputes against the *current* session (blocks
+// redeeming someone else's code/state into your account — login CSRF).
+function stateSecret(): string {
+  // ENCRYPTION_KEY is already required for this feature; reuse it as the HMAC
+  // secret. The fallback only applies in dev and still gives double-submit CSRF.
+  return process.env.ENCRYPTION_KEY || "google-oauth-state-dev-fallback";
+}
+
+export function signState(nonce: string, sessionToken: string): string {
+  const sig = createHmac("sha256", stateSecret()).update(`${nonce}:${sessionToken}`).digest("hex");
+  return `${nonce}.${sig}`;
+}
+
+export function verifyState(state: string, cookieNonce: string, sessionToken: string): boolean {
+  const dot = state.indexOf(".");
+  if (dot < 0) return false;
+  const nonce = state.slice(0, dot);
+  const sig = state.slice(dot + 1);
+  if (!nonce || !sig || nonce !== cookieNonce) return false; // double-submit check
+  const expected = createHmac("sha256", stateSecret()).update(`${nonce}:${sessionToken}`).digest("hex");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b); // session binding check
+}
+
 export function buildAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
@@ -56,12 +87,11 @@ function parseTokens(json: any): GoogleTokens {
     refreshToken: json.refresh_token ?? null,
     expiresAt: json.expires_in ? new Date(Date.now() + Number(json.expires_in) * 1000) : null,
     scope: json.scope ?? null,
-    tokenType: json.token_type,
   };
 }
 
 export async function exchangeCodeForTokens(code: string): Promise<GoogleTokens> {
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetchWithTimeout(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -77,7 +107,7 @@ export async function exchangeCodeForTokens(code: string): Promise<GoogleTokens>
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<GoogleTokens> {
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetchWithTimeout(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -96,7 +126,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<GoogleTo
 /** Best-effort token revocation at Google (disconnect). Never throws. */
 export async function revokeToken(token: string): Promise<void> {
   try {
-    await fetch(`${REVOKE_URL}?token=${encodeURIComponent(token)}`, { method: "POST" });
+    await fetchWithTimeout(`${REVOKE_URL}?token=${encodeURIComponent(token)}`, { method: "POST" });
   } catch {
     /* ignore — local disconnect proceeds regardless */
   }
@@ -104,7 +134,7 @@ export async function revokeToken(token: string): Promise<void> {
 
 export async function fetchGoogleEmail(accessToken: string): Promise<string | null> {
   try {
-    const res = await fetch(USERINFO_URL, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const res = await fetchWithTimeout(USERINFO_URL, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!res.ok) return null;
     const json = await res.json().catch(() => ({}));
     return typeof json.email === "string" ? json.email : null;

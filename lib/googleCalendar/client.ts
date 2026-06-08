@@ -5,10 +5,10 @@
 import { prisma } from "../prisma";
 import { decryptSecret, encryptSecret } from "../crypto";
 import { refreshAccessToken } from "./auth";
+import { fetchWithTimeout } from "./http";
 
 const SKEW_MS = 60_000; // refresh a minute before expiry
 const API_BASE = "https://www.googleapis.com/calendar/v3";
-const TIMEOUT_MS = 10_000;
 
 export class CalendarApiError extends Error {
   constructor(public status: number, message?: string) {
@@ -22,39 +22,37 @@ export async function getValidAccessToken(userId: number): Promise<string> {
   const conn = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
   if (!conn || !conn.accessToken) throw new Error("not_connected");
 
-  const valid = conn.expiresAt && conn.expiresAt.getTime() - SKEW_MS > Date.now();
-  if (valid) return decryptSecret(conn.accessToken);
+  try {
+    const valid = conn.expiresAt && conn.expiresAt.getTime() - SKEW_MS > Date.now();
+    if (valid) return decryptSecret(conn.accessToken);
 
-  if (!conn.refreshToken) throw new Error("token_expired");
-  const refreshed = await refreshAccessToken(decryptSecret(conn.refreshToken));
-  await prisma.googleCalendarConnection.update({
-    where: { userId },
-    data: {
-      accessToken: encryptSecret(refreshed.accessToken),
-      expiresAt: refreshed.expiresAt,
-      ...(refreshed.scope ? { scope: refreshed.scope } : {}),
-      // Google may rotate the refresh token — persist it so we don't keep using a dead one.
-      ...(refreshed.refreshToken ? { refreshToken: encryptSecret(refreshed.refreshToken) } : {}),
-    },
-  });
-  return refreshed.accessToken;
+    if (!conn.refreshToken) throw new Error("token_expired");
+    const refreshed = await refreshAccessToken(decryptSecret(conn.refreshToken));
+    await prisma.googleCalendarConnection.update({
+      where: { userId },
+      data: {
+        accessToken: encryptSecret(refreshed.accessToken),
+        expiresAt: refreshed.expiresAt,
+        ...(refreshed.scope ? { scope: refreshed.scope } : {}),
+        // Google may rotate the refresh token — persist it so we don't keep using a dead one.
+        ...(refreshed.refreshToken ? { refreshToken: encryptSecret(refreshed.refreshToken) } : {}),
+      },
+    });
+    return refreshed.accessToken;
+  } catch {
+    // A dead refresh token (Google `invalid_grant` after revoke/expiry) or an
+    // undecryptable token (ENCRYPTION_KEY changed) can't be recovered without
+    // re-consent. Normalize to "token_expired" so the UI prompts a reconnect
+    // instead of a vague "sync failed" the user would just retry forever.
+    throw new Error("token_expired");
+  }
 }
 
 /** Authenticated GET against the Calendar API, with one auto-retry on 401. */
 export async function calendarApiGet(userId: number, path: string): Promise<unknown> {
-  const doFetch = async (token: string) => {
-    // Bound the request so a hung Google connection can't stall a sync forever.
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-    try {
-      return await fetch(`${API_BASE}${path}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: ctrl.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-  };
+  // fetchWithTimeout bounds the request so a hung Google connection can't stall a sync forever.
+  const doFetch = (token: string) =>
+    fetchWithTimeout(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
 
   let res = await doFetch(await getValidAccessToken(userId));
   if (res.status === 401) {

@@ -42,3 +42,10 @@ export const getCurrentUser = cache(async () => {
 export async function requireUser() {
   return getCurrentUser();
 }
+
+/** The raw session token (or null). Used to bind OAuth `state` to the session
+ *  so a code/state pair can't be redeemed in a different session. */
+export async function getSessionToken(): Promise<string | null> {
+  const jar = await cookies();
+  return jar.get(COOKIE)?.value ?? null;
+}

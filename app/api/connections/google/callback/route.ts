@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { requireUser } from "@/lib/auth";
+import { getSessionToken, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { appOrigin, exchangeCodeForTokens, fetchGoogleEmail } from "@/lib/googleCalendar/auth";
+import { appOrigin, exchangeCodeForTokens, fetchGoogleEmail, verifyState } from "@/lib/googleCalendar/auth";
 import { encryptSecret } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
@@ -19,10 +19,13 @@ export async function GET(req: Request) {
   const state = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
   const jar = await cookies();
-  const expected = jar.get("g_oauth_state")?.value;
+  const nonce = jar.get("g_oauth_state")?.value;
   jar.delete("g_oauth_state");
 
-  if (oauthError || !code || !state || !expected || state !== expected) {
+  // Require the cookie nonce AND a signature that recomputes against THIS
+  // session — a code/state pair minted in another session won't validate.
+  const sessionToken = (await getSessionToken()) ?? "";
+  if (oauthError || !code || !state || !nonce || !verifyState(state, nonce, sessionToken)) {
     return NextResponse.redirect(`${base}/connections?google=error`);
   }
 

@@ -10,8 +10,13 @@ import type { GoogleApiEvent, InternalCalendarEvent } from "./types";
  *  for events we can't represent (no id, or missing start/end). */
 export function normalizeEvent(e: GoogleApiEvent): InternalCalendarEvent | null {
   if (!e.id) return null;
-  const start = e.start?.dateTime ?? (e.start?.date ? `${e.start.date}T00:00:00.000Z` : null);
-  const end = e.end?.dateTime ?? (e.end?.date ? `${e.end.date}T00:00:00.000Z` : null);
+  // All-day events carry a floating `date` (no time, no zone). Anchor them to
+  // NOON UTC, not midnight: midnight-UTC renders as the *previous day* for any
+  // user west of UTC, whereas noon keeps the calendar date correct across all
+  // real-world offsets (UTC-12 … UTC+12).
+  const allDay = (d: string) => `${d}T12:00:00.000Z`;
+  const start = e.start?.dateTime ?? (e.start?.date ? allDay(e.start.date) : null);
+  const end = e.end?.dateTime ?? (e.end?.date ? allDay(e.end.date) : null);
   if (!start || !end) return null;
   const startTime = new Date(start);
   const endTime = new Date(end);
@@ -93,7 +98,10 @@ export async function syncCalendar(userId: number): Promise<{ synced: number }> 
 
 /** Status for the Connections UI. */
 export async function getConnectionStatus(userId: number) {
-  const conn = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
-  const eventCount = conn ? await prisma.googleCalendarEvent.count({ where: { userId } }) : 0;
+  // Independent reads — run them together to halve the latency this adds to the page.
+  const [conn, eventCount] = await Promise.all([
+    prisma.googleCalendarConnection.findUnique({ where: { userId } }),
+    prisma.googleCalendarEvent.count({ where: { userId } }),
+  ]);
   return { conn, eventCount };
 }

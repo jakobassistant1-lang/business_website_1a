@@ -12,10 +12,12 @@ export const dynamic = "force-dynamic";
 export default async function ConnectionsPage() {
   const user = await getCurrentUser();
   // Canvas (existing — untouched) and Google Calendar (new — isolated) are loaded
-  // independently and in parallel; neither depends on the other.
+  // independently and in parallel; neither depends on the other. The Google read
+  // is fail-open: any error there resolves to "not connected" so a calendar-side
+  // fault can never take down the Canvas section of this page.
   const [cred, { conn, eventCount }] = await Promise.all([
     prisma.canvasCredential.findUnique({ where: { userId: user!.id } }),
-    getConnectionStatus(user!.id),
+    getConnectionStatus(user!.id).catch(() => ({ conn: null, eventCount: 0 })),
   ]);
 
   return (

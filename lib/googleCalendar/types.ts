@@ -6,7 +6,6 @@ export interface GoogleTokens {
   refreshToken: string | null;
   expiresAt: Date | null; // when accessToken expires
   scope: string | null;
-  tokenType?: string;
 }
 
 /** Raw Google Calendar API v3 event (the subset we read). */
@@ -29,12 +28,4 @@ export interface InternalCalendarEvent {
   endTime: string; // ISO
   location?: string;
   source: "google";
-}
-
-export interface GoogleConnectionStatus {
-  configured: boolean; // server has Google OAuth env configured
-  connected: boolean;
-  email: string | null;
-  syncedAt: string | null;
-  eventCount: number;
 }

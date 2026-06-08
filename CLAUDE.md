@@ -62,4 +62,8 @@ _Known facts filled in; TBDs + the brand question need Massah Calvin's input._
 - Prisma + Postgres. Change `prisma/schema.prisma` then `npm run db:push` (no migrations dir). Per-user uniqueness uses `@@unique([userId, canvasId])` → Prisma key `userId_canvasId`.
 
 ## Known follow-ups
-- Canvas API token is still stored **plaintext** — encrypt-at-rest before wider exposure.
+- Canvas API token is still stored **plaintext** — encrypt-at-rest (reuse `lib/crypto.ts`) before wider exposure. Currently only Google tokens are encrypted, which is an inconsistent half-measure.
+- **Google Calendar — wire events into planning.** `GoogleCalendarEvent` rows are synced + stored but nothing reads them yet; the scheduler (`lib/scheduler.ts`, which has a per-day `capacity` seam) should consume them so the plan accounts for busy time. Until then the integration is storage-only.
+- **Google Calendar — typed errors.** Failure reasons (`not_connected`/`token_expired`/`rate_limited`) are string-matched across client/route/UI. Promote to a typed error enum so a rename can't silently fall through to a generic message.
+- **Google Calendar — provider generality.** Schema/routes/UI are Google-specific. A 2nd provider or a write scope (`calendar.events`) would mean parallel copies; consider a row-discriminated `Connection` model.
+- **`lib/crypto.ts` fail-closed.** In production with no `ENCRYPTION_KEY` it warns but still stores plaintext; consider refusing to store secrets instead.
