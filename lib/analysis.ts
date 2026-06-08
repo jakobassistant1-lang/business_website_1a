@@ -133,18 +133,21 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
   } catch {
     return [];
   }
-  if (!Array.isArray(arr)) {
+  let list: unknown[];
+  if (Array.isArray(arr)) {
+    list = arr;
+  } else if (arr && typeof arr === "object") {
     // Tolerate a wrapping object, e.g. { "assignments": [...] } or { "items": [...] }.
-    if (arr && typeof arr === "object") {
-      const nested = Object.values(arr as Record<string, unknown>).find((v) => Array.isArray(v));
-      if (Array.isArray(nested)) arr = nested;
-      else return [];
-    } else return [];
+    const nested = Object.values(arr as Record<string, unknown>).find((v) => Array.isArray(v));
+    if (!Array.isArray(nested)) return [];
+    list = nested;
+  } else {
+    return [];
   }
 
   const byId = new Map(inputs.map((i) => [i.canvasId, i]));
   const out: AnalysisItemResult[] = [];
-  for (const el of arr) {
+  for (const el of list) {
     if (!el || typeof el !== "object") continue;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const e = el as any;
