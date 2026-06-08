@@ -58,8 +58,16 @@ export function parseGeminiText(json: unknown): string | null {
   return text.length ? text : null;
 }
 
+// Env var names are case-sensitive; tolerate a mis-cased key (e.g. a dashboard
+// typo like "Gemini_API_Key") so the feature isn't silently disabled.
+function geminiKey(): string | undefined {
+  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+  const hit = Object.entries(process.env).find(([k]) => k.toLowerCase() === "gemini_api_key");
+  return hit?.[1] || undefined;
+}
+
 export async function generateBriefing(input: BriefingInput): Promise<BriefingResult> {
-  const key = process.env.GEMINI_API_KEY;
+  const key = geminiKey();
   if (!key) return { ok: false, reason: "no_key" }; // zero network, zero cost
 
   const body = {
