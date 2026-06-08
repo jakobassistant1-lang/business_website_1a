@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { requireUser } from "@/lib/auth";
 import { loadPlan } from "@/lib/plan";
-import { generateBriefing } from "@/lib/briefing";
+import { generateBriefing, DEFAULT_BRIEFING_INSTRUCTION } from "@/lib/briefing";
+import { getSetting, BRIEFING_PROMPT_KEY } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -50,12 +51,14 @@ export async function GET(req: Request) {
   }
 
   const atRiskCount = payload.plan.atRisk.length;
+  const instruction = (await getSetting(BRIEFING_PROMPT_KEY)) || DEFAULT_BRIEFING_INSTRUCTION;
   const sig = JSON.stringify({
     u: user.id,
     w: payload.windowDays,
     h: payload.hours,
     d: payload.plan.inWindowDueCount,
     r: atRiskCount,
+    p: instruction, // a prompt change must bust the cache
     t: top.map((t) => `${t.canvasId}:${t.score}:${t.reason}`),
   });
   const key = createHash("sha1").update(sig).digest("hex");
@@ -63,13 +66,16 @@ export async function GET(req: Request) {
   const cached = cacheGet(key);
   if (cached) return NextResponse.json({ ok: true, text: cached, recommendations: top, cached: true });
 
-  const result = await generateBriefing({
-    firstName: user.fullName.trim().split(/\s+/)[0] ?? "",
-    windowDays: payload.windowDays,
-    inWindowDueCount: payload.plan.inWindowDueCount,
-    atRiskCount,
-    top,
-  });
+  const result = await generateBriefing(
+    {
+      firstName: user.fullName.trim().split(/\s+/)[0] ?? "",
+      windowDays: payload.windowDays,
+      inWindowDueCount: payload.plan.inWindowDueCount,
+      atRiskCount,
+      top,
+    },
+    instruction,
+  );
 
   if (result.ok) cacheSet(key, result.text);
   else console.warn(`[briefing] gemini unavailable: ${result.reason}`); // reason only, never the key

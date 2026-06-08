@@ -10,7 +10,9 @@ const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const TIMEOUT_MS = 6000;
 
-const INSTRUCTION =
+// Editable from /admin/ai (stored in the Setting table). This is the fallback
+// when no custom prompt has been saved.
+export const DEFAULT_BRIEFING_INSTRUCTION =
   "You are StudyPlan's study coach. Given the student's plan summary and their top priorities, " +
   "write a warm, plain-English briefing of 2-4 short sentences telling them what to focus on today and why. " +
   "Do not invent assignments, points, or deadlines beyond what is given. No markdown, no lists, no headings.";
@@ -66,12 +68,15 @@ function geminiKey(): string | undefined {
   return hit?.[1] || undefined;
 }
 
-export async function generateBriefing(input: BriefingInput): Promise<BriefingResult> {
+export async function generateBriefing(
+  input: BriefingInput,
+  instruction: string = DEFAULT_BRIEFING_INSTRUCTION,
+): Promise<BriefingResult> {
   const key = geminiKey();
   if (!key) return { ok: false, reason: "no_key" }; // zero network, zero cost
 
   const body = {
-    contents: [{ role: "user", parts: [{ text: `${INSTRUCTION}\n\n${buildPrompt(input)}` }] }],
+    contents: [{ role: "user", parts: [{ text: `${instruction}\n\n${buildPrompt(input)}` }] }],
     generationConfig: { temperature: 0.4, maxOutputTokens: 200 },
   };
 

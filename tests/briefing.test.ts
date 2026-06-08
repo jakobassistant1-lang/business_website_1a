@@ -99,6 +99,15 @@ describe("generateBriefing", () => {
     await expect(generateBriefing(INPUT)).resolves.toEqual({ ok: false, reason: "bad_response" });
   });
 
+  it("uses a custom instruction when one is provided", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "k");
+    const fetchSpy = vi.fn(async () => geminiResponse("ok"));
+    vi.stubGlobal("fetch", fetchSpy);
+    await generateBriefing(INPUT, "BE VERY TERSE AND BLUNT.");
+    const [, opts] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(opts.body)).toContain("BE VERY TERSE AND BLUNT.");
+  });
+
   it("sends the key in the URL, not in the request body", async () => {
     vi.stubEnv("GEMINI_API_KEY", "secret-123");
     const fetchSpy = vi.fn(async () => geminiResponse("ok"));

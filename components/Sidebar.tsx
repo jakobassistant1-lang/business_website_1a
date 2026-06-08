@@ -13,6 +13,7 @@ const NAV = [
 
 // Kanban / board glyph for the admin section.
 const BOARD_ICON = "M4 5h16v14H4zM9 5v14M15 5v14";
+const AI_ICON = "M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4L12 3Z";
 
 export function Sidebar({
   userName,
@@ -70,11 +71,17 @@ export function Sidebar({
             <span className="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wider text-gray-500">
               Admin
             </span>
-            <Link href="/admin" className={linkClass(pathname.startsWith("/admin"))}>
+            <Link href="/admin" className={linkClass(pathname === "/admin")}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d={BOARD_ICON} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               Board
+            </Link>
+            <Link href="/admin/ai" className={linkClass(pathname.startsWith("/admin/ai"))}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d={AI_ICON} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              AI settings
             </Link>
           </>
         )}

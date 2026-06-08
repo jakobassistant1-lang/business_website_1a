@@ -52,6 +52,14 @@ model AdminTask {
   @@index([status, position])
 }
 
+// Global app settings (key/value). Currently holds the editable Gemini briefing
+// prompt (key "briefing_prompt"); admin-editable via /admin/ai.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model Session {
   token     String   @id
   userId    Int
