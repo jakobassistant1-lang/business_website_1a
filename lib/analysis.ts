@@ -133,7 +133,14 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
   } catch {
     return [];
   }
-  if (!Array.isArray(arr)) return [];
+  if (!Array.isArray(arr)) {
+    // Tolerate a wrapping object, e.g. { "assignments": [...] } or { "items": [...] }.
+    if (arr && typeof arr === "object") {
+      const nested = Object.values(arr as Record<string, unknown>).find((v) => Array.isArray(v));
+      if (Array.isArray(nested)) arr = nested;
+      else return [];
+    } else return [];
+  }
 
   const byId = new Map(inputs.map((i) => [i.canvasId, i]));
   const out: AnalysisItemResult[] = [];
@@ -174,7 +181,7 @@ export async function analyzeAssignments(
     contents: [{ role: "user", parts: [{ text: `${instruction}\n\n${buildAnalysisPrompt(items)}` }] }],
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: Math.min(2000, 120 + items.length * 40),
+      maxOutputTokens: Math.min(4000, 256 + items.length * 80),
       responseMimeType: "application/json",
     },
   };
@@ -191,7 +198,12 @@ export async function analyzeAssignments(
     if (!res.ok) return { ok: false, reason: "http_error" };
     const json = await res.json().catch(() => null);
     if (json === null) return { ok: false, reason: "bad_response" };
-    return { ok: true, items: parseAnalysis(json, items), source: "gemini" };
+    const parsed = parseAnalysis(json, items);
+    if (parsed.length === 0) {
+      // eslint-disable-next-line no-console
+      console.warn("[analysis] 0 parsed from", items.length, "items; raw:", extractGeminiText(json)?.slice(0, 300));
+    }
+    return { ok: true, items: parsed, source: "gemini" };
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") return { ok: false, reason: "timeout" };
     return { ok: false, reason: "http_error" };
