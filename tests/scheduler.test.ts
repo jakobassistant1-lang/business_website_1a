@@ -100,6 +100,26 @@ describe("generatePlan — importance-weighted allocation", () => {
     const light = generatePlan([{ ...mk(1, due(5)), estimatedEffortHours: 3 }], 3, 7, 2, NOW);
     expect(light.overloadHours).toBe(0);
   });
+
+  it("does NOT miss feasible deadlines when a high-importance later item competes (deadline-safety regression)", () => {
+    // Two items due day 3 (18h each) + a huge-importance item due day 6 (30h).
+    // Total 66h fits in 7×10=70h. An earlier weighted floor starved the day-3 items.
+    const i1 = { ...mk(1, due(3), 50), estimatedEffortHours: 18 };
+    const i2 = { ...mk(2, due(3), 50), estimatedEffortHours: 18 };
+    const i9 = { ...mk(3, due(6), 5000), estimatedEffortHours: 30, aiImportance: 5 };
+    const plan = generatePlan([i1, i2, i9], 10, 7, 2, NOW);
+    expect(totalFor(plan, 1)).toBeCloseTo(18, 1);
+    expect(totalFor(plan, 2)).toBeCloseTo(18, 1);
+    expect(totalFor(plan, 3)).toBeCloseTo(30, 1);
+    expect(plan.overloadHours).toBeCloseTo(0, 1);
+  });
+
+  it("protects a small feasible deadline from a huge same-day item (collide regression)", () => {
+    const small = { ...mk(1, due(0), 10), estimatedEffortHours: 1 }; // due today, 1h — fits
+    const huge = { ...mk(2, due(0), 200), estimatedEffortHours: 40 }; // due today, impossible
+    const plan = generatePlan([small, huge], 8, 7, 2, NOW);
+    expect(totalFor(plan, 1)).toBeCloseTo(1, 1); // the small one still finishes
+  });
 });
 
 describe("generatePlan — study sessions (exam/quiz lead window)", () => {

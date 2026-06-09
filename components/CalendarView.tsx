@@ -159,7 +159,7 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
             onNext={() => navigate(1)}
             onToday={() => setAnchor(now)}
             atToday={atToday}
-            trailing={view !== "day" ? <LoadHint overloadHours={data.overloadHours} weekKey={todayYmd} /> : undefined}
+            trailing={view === "week" && atToday ? <LoadHint overloadHours={data.overloadHours} weekKey={todayYmd} /> : undefined}
           />
           <PeriodSummary view={view} start={ymd(start)} days={days} />
 

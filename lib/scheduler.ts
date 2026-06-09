@@ -107,7 +107,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // Importance multiplier from the AI's 1-5 difficulty/stakes rating (null → 1).
 function importanceMult(v: number | null | undefined): number {
-  if (v == null) return 1;
+  if (v == null || !Number.isFinite(v)) return 1;
   const x = Math.max(1, Math.min(5, v));
   return 0.6 + (x - 1) * 0.2; // 1→0.6, 3→1.0, 5→1.4
 }
@@ -182,50 +182,72 @@ export function generatePlan(
   const floorReserved = new Array<number>(days).fill(0);
 
   // 1) Study day-before floors — reserved first so a small assessment isn't all
-  //    front-loaded with nothing right before the test.
+  //    front-loaded with nothing right before the test. Capped so floors can't
+  //    exceed a day's budget (which would push allocated past capacity, or — when
+  //    they fully consume the day — strand a regular item due that same day).
   for (const it of inWindow) {
     if (!it.isStudy || it.remaining <= EPS) continue;
     const db = it.dueDayIndex - 1;
     if (db < 0 || db < it.startDayIdx) continue;
-    const floor = Math.min(MIN_STUDY_DAY_BEFORE, it.remaining);
+    const floor = Math.min(MIN_STUDY_DAY_BEFORE, it.remaining, H - floorReserved[db]);
+    if (floor <= EPS) continue;
     give(it, db, floor);
     floorReserved[db] += floor;
   }
 
-  // 2) Day by day: first guarantee deadlines (a "must-do-today" floor keeps every
-  //    item feasible), then split the rest of the day's hours by IMPORTANCE weight
-  //    (points × AI difficulty) — so a big essay outpulls a tiny homework that's
-  //    merely due a day sooner, while both still finish on time.
+  // Capacity left per day after floors + a prefix sum, so we can ask "how much
+  // capacity is available on days (d .. D]". That makes the deadline floor below
+  // CORRECT: it accounts for other items sharing those future days and for the
+  // study floors already reserved on them (the old `(dueDayIndex - d) * H` assumed
+  // each item owned every future day — letting an important late item starve an
+  // earlier deadline that was actually feasible).
+  const availCap = floorReserved.map((f) => Math.max(0, H - f));
+  const capPrefix = new Array<number>(days + 1).fill(0);
+  for (let d = 0; d < days; d++) capPrefix[d + 1] = capPrefix[d] + availCap[d];
+  const capAfter = (d: number, throughDay: number) =>
+    capPrefix[Math.min(days, throughDay + 1)] - capPrefix[Math.min(days, d + 1)]; // Σ availCap on (d, throughDay]
+
+  // 2) Day by day. The DEADLINE FLOOR is the minimum that must happen today to keep
+  //    every deadline feasible — the EDF feasibility test: max over deadlines of
+  //    (cumulative remaining work due by D) − (capacity still available before D).
+  //    It's placed earliest-deadline-first (EDF is optimal for feasibility). Only
+  //    the leftover SLACK is split by IMPORTANCE weight, which can never miss a
+  //    deadline because the floor already reserved every deadline-critical hour.
   for (let d = 0; d < days; d++) {
-    const cap = H - floorReserved[d];
+    const cap = availCap[d];
     if (cap <= EPS) continue;
     const active = inWindow.filter((it) => it.startDayIdx <= d && d <= it.dueDayIndex && it.remaining > EPS);
     if (active.length === 0) continue;
 
-    let totalMust = 0;
-    const must = new Map<number, number>();
-    for (const it of active) {
-      const futureCap = (it.dueDayIndex - d) * H; // capacity on its remaining days after today
-      const m = Math.max(0, Math.min(it.remaining, it.remaining - futureCap));
-      must.set(it.a.canvasId, m);
-      totalMust += m;
+    // Earliest deadline first; among equal deadlines, the smaller item first (so a
+    // tiny feasible item isn't crowded out by a huge over-capacity one), then id.
+    const edf = [...active].sort(
+      (x, y) => x.dueDayIndex - y.dueDayIndex || x.remaining - y.remaining || x.a.canvasId - y.a.canvasId,
+    );
+    let cum = 0;
+    let mandatory = 0;
+    for (const it of edf) {
+      cum += it.remaining;
+      mandatory = Math.max(mandatory, cum - capAfter(d, it.dueDayIndex));
+    }
+    mandatory = Math.max(0, Math.min(cap, mandatory));
+
+    // Place the mandatory hours earliest-deadline-first.
+    let m = mandatory;
+    for (const it of edf) {
+      if (m <= EPS) break;
+      const take = Math.min(it.remaining, m);
+      give(it, d, take);
+      m -= take;
     }
 
-    if (totalMust >= cap - EPS) {
-      // Deadlines collide — can't meet every floor today. Split proportionally to
-      // the floors; the unmet remainder stays and surfaces as overload.
-      const scale = totalMust > EPS ? cap / totalMust : 0;
-      for (const it of active) give(it, d, Math.min(it.remaining, (must.get(it.a.canvasId) ?? 0) * scale));
-      continue;
-    }
-
-    for (const it of active) give(it, d, must.get(it.a.canvasId) ?? 0);
-    let slack = cap - totalMust;
+    // Split the remaining capacity by importance weight (capped at each item's need).
+    let slack = cap - mandatory;
     let pool = active.filter((it) => it.remaining > EPS);
     let guard = 0;
     while (slack > EPS && pool.length > 0 && guard++ < 64) {
       const totalW = pool.reduce((s, it) => s + it.weight, 0);
-      if (totalW <= 0) break;
+      if (!(totalW > 0)) break; // also guards a NaN weight (NaN > 0 is false)
       let given = 0;
       for (const it of pool) {
         const share = Math.min((slack * it.weight) / totalW, it.remaining);
