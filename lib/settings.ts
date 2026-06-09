@@ -4,6 +4,7 @@ import { prisma } from "./prisma";
 // briefing prompt so the owner can tune it from /admin/ai without a redeploy.
 export const BRIEFING_PROMPT_KEY = "briefing_prompt";
 export const ANALYSIS_PROMPT_KEY = "analysis_prompt";
+export const PERIOD_COACH_PROMPT_KEY = "period_coach_prompt";
 
 export async function getSetting(key: string): Promise<string | null> {
   const row = await prisma.setting.findUnique({ where: { key } });

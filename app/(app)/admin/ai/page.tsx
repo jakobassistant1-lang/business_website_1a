@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
-import { getSetting, BRIEFING_PROMPT_KEY, ANALYSIS_PROMPT_KEY } from "@/lib/settings";
-import { DEFAULT_BRIEFING_INSTRUCTION } from "@/lib/briefing";
+import { getSetting, BRIEFING_PROMPT_KEY, ANALYSIS_PROMPT_KEY, PERIOD_COACH_PROMPT_KEY } from "@/lib/settings";
+import { DEFAULT_BRIEFING_INSTRUCTION, DEFAULT_PERIOD_COACH_INSTRUCTION } from "@/lib/briefing";
 import { DEFAULT_ANALYSIS_INSTRUCTION } from "@/lib/analysis";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 
@@ -12,9 +12,10 @@ export default async function AiSettingsPage() {
   const admin = await getAdminUser();
   if (!admin) notFound();
 
-  const [savedBriefing, savedAnalysis] = await Promise.all([
+  const [savedBriefing, savedAnalysis, savedCoach] = await Promise.all([
     getSetting(BRIEFING_PROMPT_KEY),
     getSetting(ANALYSIS_PROMPT_KEY),
+    getSetting(PERIOD_COACH_PROMPT_KEY),
   ]);
 
   return (
@@ -27,8 +28,16 @@ export default async function AiSettingsPage() {
 
       <div className="mt-8 space-y-10">
         <AiSettingsForm
-          title="Daily briefing"
-          description="The friendly note at the top of the Plan page. The app supplies the student's plan and ranked priorities automatically; this is the tone/coaching guidance."
+          title="Study coach (Calendar & Timeline)"
+          description="The game-plan note at the top of each Calendar/Timeline period. The app supplies the student's scheduled, deadline-safe priorities for that day/week/month automatically; this is where you tune the tone and which learning-science techniques it leans on."
+          endpoint="/api/admin/period-coach-prompt"
+          initialPrompt={savedCoach ?? DEFAULT_PERIOD_COACH_INSTRUCTION}
+          defaultPrompt={DEFAULT_PERIOD_COACH_INSTRUCTION}
+          isCustom={savedCoach !== null}
+        />
+        <AiSettingsForm
+          title="Daily briefing (legacy)"
+          description="The friendly note used by the original Plan view. The app supplies the student's plan and ranked priorities automatically; this is the tone/coaching guidance."
           endpoint="/api/admin/briefing-prompt"
           initialPrompt={savedBriefing ?? DEFAULT_BRIEFING_INSTRUCTION}
           defaultPrompt={DEFAULT_BRIEFING_INSTRUCTION}

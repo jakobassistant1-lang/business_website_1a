@@ -16,4 +16,19 @@ export const googleCalendarProvider: CalendarProvider = {
     });
     return computeBusyHours(rows);
   },
+  async events(userId: number) {
+    const rows = await prisma.googleCalendarEvent.findMany({
+      where: { userId },
+      orderBy: { startTime: "asc" },
+      select: { title: true, startTime: true, endTime: true, allDay: true, location: true },
+    });
+    return rows.map((r) => ({
+      title: r.title,
+      startTime: r.startTime.toISOString(),
+      endTime: r.endTime.toISOString(),
+      allDay: r.allDay,
+      location: r.location,
+      source: "google" as const,
+    }));
+  },
 };

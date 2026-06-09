@@ -3,7 +3,7 @@
 // downstream (the planner) picks it up automatically.
 
 import { googleCalendarProvider } from "../googleCalendar/provider";
-import type { CalendarProvider } from "./types";
+import type { CalendarEvent, CalendarProvider } from "./types";
 
 const PROVIDERS: CalendarProvider[] = [googleCalendarProvider];
 
@@ -25,4 +25,22 @@ export async function loadBusyHoursByDate(userId: number): Promise<Map<string, n
     }),
   );
   return merged;
+}
+
+/**
+ * Displayable events across every configured provider (for the Calendar's busy
+ * blocks). FAIL-OPEN: a provider that errors contributes nothing.
+ */
+export async function loadCalendarEvents(userId: number): Promise<CalendarEvent[]> {
+  const out: CalendarEvent[] = [];
+  await Promise.all(
+    PROVIDERS.filter((p) => p.isConfigured()).map(async (p) => {
+      try {
+        out.push(...(await p.events(userId)));
+      } catch {
+        /* fail-open */
+      }
+    }),
+  );
+  return out;
 }

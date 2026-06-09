@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 
 const NAV = [
-  { href: "/", label: "Plan", icon: "M4 6h16M4 12h16M4 18h10" },
+  { href: "/calendar", label: "Calendar", icon: "M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" },
+  { href: "/timeline", label: "Timeline", icon: "M3 4v16M4 7h9M4 12h13M4 17h6" },
   { href: "/connections", label: "Connections", icon: "M8 7a4 4 0 1 1 8 0M5 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2" },
   { href: "/settings", label: "Settings", icon: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7-3a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1l-.4-2.5H9.6L9.2 5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4L5 10a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4.8l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.06-.32.1-.65.1-1Z" },
   { href: "/account", label: "Account", icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" },
@@ -43,7 +44,7 @@ export function Sidebar({
 
   return (
     <aside className="flex w-64 shrink-0 flex-col bg-sidebar px-4 py-6">
-      <Link href="/" className="mb-2 flex items-center gap-3 px-2">
+      <Link href="/calendar" className="mb-2 flex items-center gap-3 px-2">
         <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M5 4h9l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
@@ -55,7 +56,7 @@ export function Sidebar({
 
       <nav className="mt-6 flex flex-col gap-1">
         {NAV.map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const active = pathname.startsWith(item.href);
           return (
             <Link key={item.href} href={item.href} className={linkClass(active)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>

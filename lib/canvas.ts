@@ -107,6 +107,7 @@ export interface CanvasAssignment {
   points_possible: number | null;
   html_url: string;
   description: string | null; // assignment body (HTML); used as AI context
+  submission_types?: string[]; // e.g. ["online_quiz"], ["online_upload"] — used to classify item TYPE
   /** Present when the request includes `include[]=submission` (canvas-mcp integration). */
   submission?: {
     submitted_at: string | null;

@@ -68,16 +68,15 @@ function geminiKey(): string | undefined {
   return hit?.[1] || undefined;
 }
 
-export async function generateBriefing(
-  input: BriefingInput,
-  instruction: string = DEFAULT_BRIEFING_INSTRUCTION,
-): Promise<BriefingResult> {
+/** Shared Gemini call. `fullPrompt` already includes the instruction + data.
+ *  Fails open: every path returns a typed BriefingResult, never throws. */
+async function runGemini(fullPrompt: string, maxOutputTokens: number): Promise<BriefingResult> {
   const key = geminiKey();
   if (!key) return { ok: false, reason: "no_key" }; // zero network, zero cost
 
   const body = {
-    contents: [{ role: "user", parts: [{ text: `${instruction}\n\n${buildPrompt(input)}` }] }],
-    generationConfig: { temperature: 0.4, maxOutputTokens: 200 },
+    contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+    generationConfig: { temperature: 0.4, maxOutputTokens },
   };
 
   const controller = new AbortController();
@@ -101,4 +100,70 @@ export async function generateBriefing(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function generateBriefing(
+  input: BriefingInput,
+  instruction: string = DEFAULT_BRIEFING_INSTRUCTION,
+): Promise<BriefingResult> {
+  return runGemini(`${instruction}\n\n${buildPrompt(input)}`, 200);
+}
+
+// --- Period study coach (Calendar / Timeline) --------------------------------
+// A learning-science "game plan" for a selected period. Advisory only — it
+// narrates the already-scheduled, already-ranked work; it never reorders or
+// invents deadlines. Admin-tunable (PERIOD_COACH_PROMPT_KEY); fails open.
+
+export const DEFAULT_PERIOD_COACH_INSTRUCTION =
+  "You are StudyPlan's study coach. You are given a student's workload for a specific period " +
+  "(today, this week, or this month) plus their top priorities, which our system has ALREADY ranked " +
+  "and scheduled to be deadline-safe. Write a warm, practical game plan of 2-5 short sentences that " +
+  "helps them approach the period using evidence-based learning techniques where relevant: start early " +
+  "and space practice out instead of cramming; use active recall (self-testing) over re-reading; " +
+  "interleave different subjects; work in focused blocks with short breaks; and do the hardest or " +
+  "highest-stakes work when energy is freshest. Tie the advice to their ACTUAL items and deadlines. " +
+  "Never invent assignments, points, or due dates beyond what is given, and never suggest doing " +
+  "something after its due date. Plain English. No markdown, no lists, no headings.";
+
+export interface PeriodTopItem {
+  name: string;
+  courseName: string;
+  dueLabel: string;
+  effort: string | null; // e.g. "2h", "quick"
+}
+
+export interface PeriodBriefingInput {
+  firstName: string;
+  period: "day" | "week" | "month";
+  rangeLabel: string; // "today", "Jun 9–15", "June 2026"
+  dueCount: number;
+  atRiskCount: number;
+  busyHours: number; // calendar busy hours within the period
+  top: PeriodTopItem[];
+}
+
+export function buildPeriodPrompt(input: PeriodBriefingInput): string {
+  const lines: string[] = [];
+  lines.push(`Student: ${input.firstName || "there"}. Period: ${input.period} (${input.rangeLabel}).`);
+  lines.push(
+    `Items due in this period: ${input.dueCount}. At risk: ${input.atRiskCount}. ` +
+      `Calendar busy hours in the period: ${Math.round(input.busyHours)}.`,
+  );
+  if (input.top.length) {
+    lines.push("Priorities (already ranked + scheduled deadline-safe by our system, most urgent first):");
+    input.top.forEach((t, i) => {
+      lines.push(`${i + 1}. ${t.name} (${t.courseName}) — due ${t.dueLabel}${t.effort ? `, ~${t.effort}` : ""}`);
+    });
+  } else {
+    lines.push("Nothing is due in this period.");
+  }
+  lines.push("Write the study-coach game plan for this period.");
+  return lines.join("\n");
+}
+
+export async function generatePeriodBriefing(
+  input: PeriodBriefingInput,
+  instruction: string = DEFAULT_PERIOD_COACH_INSTRUCTION,
+): Promise<BriefingResult> {
+  return runGemini(`${instruction}\n\n${buildPeriodPrompt(input)}`, 320);
 }

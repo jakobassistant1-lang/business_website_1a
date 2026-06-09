@@ -14,7 +14,17 @@ export interface BusyEvent {
   allDay: boolean;
 }
 
-/** A calendar provider the app can read busy-time from. Kept minimal on purpose;
+/** A displayable calendar event (for the Calendar's "busy" blocks). */
+export interface CalendarEvent {
+  title: string;
+  startTime: string; // ISO
+  endTime: string; // ISO
+  allDay: boolean;
+  location: string | null;
+  source: CalendarSource;
+}
+
+/** A calendar provider the app can read from. Kept minimal on purpose;
  *  OAuth/sync/disconnect stay provider-specific until a 2nd provider justifies
  *  generalizing them too. */
 export interface CalendarProvider {
@@ -23,6 +33,8 @@ export interface CalendarProvider {
   isConfigured(): boolean;
   /** Busy hours per local calendar day (YYYY-MM-DD) for this user. */
   busyHoursByDate(userId: number): Promise<Map<string, number>>;
+  /** Displayable events for this user (for the Calendar's busy blocks). */
+  events(userId: number): Promise<CalendarEvent[]>;
 }
 
 /** Stable, typed failure codes shared across the calendar client, API routes,
