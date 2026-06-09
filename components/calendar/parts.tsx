@@ -478,7 +478,8 @@ export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "m
   );
 }
 
-/** Prev/Today/Next + range label + Day/Week/Month switcher. */
+/** Prev/Today/Next + range label + Day/Week/Month switcher. `trailing` rides the
+ *  right cluster (used for the overload chip) without adding a row. */
 export function PeriodToolbar({
   view,
   views,
@@ -488,6 +489,7 @@ export function PeriodToolbar({
   onNext,
   onToday,
   atToday,
+  trailing,
 }: {
   view: string;
   views: readonly string[];
@@ -497,6 +499,7 @@ export function PeriodToolbar({
   onNext: () => void;
   onToday: () => void;
   atToday: boolean;
+  trailing?: React.ReactNode;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -512,21 +515,71 @@ export function PeriodToolbar({
         </button>
         <span className="ml-1.5 text-sm font-semibold text-ink">{label}</span>
       </div>
-      <div role="tablist" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
-        {views.map((v) => (
-          <button
-            key={v}
-            role="tab"
-            aria-selected={v === view}
-            onClick={() => onView(v)}
-            className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${
-              v === view ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"
-            }`}
-          >
-            {v}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="tablist" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
+          {views.map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={v === view}
+              onClick={() => onView(v)}
+              className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${
+                v === view ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        {trailing}
       </div>
+    </div>
+  );
+}
+
+/** Slim amber chip (warning tone, NOT red) — flags that the week's work needs more
+ *  hours than the student's budget. Expands to a nudge; dismissible per session per
+ *  week. Hidden below ~1h. Lives in the toolbar/header row → costs no vertical space. */
+export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; weekKey: string }) {
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      setDismissed(sessionStorage.getItem(`sp_overload_dismissed_${weekKey}`) === "1");
+    } catch {
+      /* ignore */
+    }
+  }, [weekKey]);
+  if (overloadHours < 1 || dismissed) return null;
+  const n = Math.round(overloadHours);
+  function dismiss() {
+    setDismissed(true);
+    setOpen(false);
+    try {
+      sessionStorage.setItem(`sp_overload_dismissed_${weekKey}`, "1");
+    } catch {
+      /* ignore */
+    }
+  }
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={`This week is over your study budget by about ${n} hours`}
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}
+      >
+        <Glyph d={ICON.clock} size={13} /> ~{n}h over this week
+      </button>
+      {open && (
+        <div className="absolute right-0 z-30 mt-1.5 w-64 rounded-lg border border-warning/30 bg-warning-soft/40 px-3 py-2 text-xs shadow-md">
+          <p className="font-medium text-ink">This week needs ~{n}h more than you&apos;ve set aside.</p>
+          <p className="mt-0.5 text-muted">Add study time in Settings, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
+          <button onClick={dismiss} className="btn-ghost mt-1.5 text-xs">
+            Got it
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -49,6 +49,7 @@ export async function runAnalysis(userId: number): Promise<{ analyzed: number; s
           // undefined = "leave unchanged" (don't clobber effort with a summary-only result).
           estimatedEffortHours: item.estimatedEffortHours ?? undefined,
           effortBucket: item.bucket ?? undefined,
+          aiImportance: item.importance ?? undefined,
           aiSummary: item.summary ?? undefined,
           analysisHash: analysisInputHash(input),
           analyzedAt: new Date(),

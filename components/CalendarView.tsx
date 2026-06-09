@@ -28,6 +28,7 @@ import {
   Glyph,
   ICON,
   fmtHours,
+  LoadHint,
 } from "@/components/calendar/parts";
 import { toneSoft } from "@/lib/tone";
 import { courseColor } from "@/lib/courseColor";
@@ -158,6 +159,7 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
             onNext={() => navigate(1)}
             onToday={() => setAnchor(now)}
             atToday={atToday}
+            trailing={view !== "day" ? <LoadHint overloadHours={data.overloadHours} weekKey={todayYmd} /> : undefined}
           />
           <PeriodSummary view={view} start={ymd(start)} days={days} />
 

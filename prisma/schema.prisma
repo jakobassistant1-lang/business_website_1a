@@ -160,6 +160,7 @@ model Assignment {
   description          String?
   estimatedEffortHours Float?
   effortBucket         String?   // "quick" | "medium" | "long"
+  aiImportance         Int?      // 1-5 AI importance/difficulty → weights the planner's time allocation
   aiSummary            String?
   analysisHash         String?   // sha1 of the analyzed inputs (for re-analysis detection)
   analyzedAt           DateTime?

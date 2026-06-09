@@ -16,28 +16,30 @@ function mk(id: number, dueAt: Date | null, points: number | null = 10): Schedul
 function ymdLocal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+const totalFor = (plan: ReturnType<typeof generatePlan>, id: number) =>
+  plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === id).reduce((s, b) => s + b.hours, 0);
+const dayFor = (plan: ReturnType<typeof generatePlan>, dayIdx: number, id: number) =>
+  plan.days[dayIdx].blocks.filter((b) => b.canvasId === id).reduce((s, b) => s + b.hours, 0);
 
-describe("generatePlan", () => {
-  it("schedules an assignment that fits before its due date", () => {
-    const plan = generatePlan([mk(1, due(2))], 3, 7, 2, NOW);
-    const blocks = plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === 1);
-    expect(blocks.length).toBeGreaterThan(0);
-    expect(blocks.reduce((s, b) => s + b.hours, 0)).toBeCloseTo(2, 5);
+describe("generatePlan — core", () => {
+  it("schedules a single assignment's full effort before its due date", () => {
+    const plan = generatePlan([{ ...mk(1, due(2)), estimatedEffortHours: 2 }], 3, 7, 2, NOW);
+    expect(totalFor(plan, 1)).toBeCloseTo(2, 5);
+    expect(plan.overloadHours).toBe(0);
     expect(plan.atRisk).toHaveLength(0);
   });
 
-  it("G1: every in-window due assignment is represented (scheduled and/or at-risk)", () => {
+  it("G1: every in-window due assignment is represented", () => {
     const assignments = [mk(1, due(0)), mk(2, due(1)), mk(3, due(3)), mk(4, due(6))];
-    const plan = generatePlan(assignments, 1, 7, 2, NOW); // tight capacity → some at-risk
+    const plan = generatePlan(assignments, 1, 7, 2, NOW); // tight capacity
     expect(plan.inWindowDueCount).toBe(4);
     expect(plan.representedCount).toBe(plan.inWindowDueCount);
     const ids = new Set<number>();
     plan.days.forEach((d) => d.blocks.forEach((b) => ids.add(b.canvasId)));
-    plan.atRisk.forEach((r) => ids.add(r.canvasId));
     for (const id of [1, 2, 3, 4]) expect(ids.has(id)).toBe(true);
   });
 
-  it("never allocates more than H hours on any day", () => {
+  it("never allocates more than the daily budget on any day", () => {
     const assignments = Array.from({ length: 10 }, (_, i) => mk(i + 1, due(2)));
     const H = 4;
     const plan = generatePlan(assignments, H, 7, 2, NOW);
@@ -65,53 +67,43 @@ describe("generatePlan", () => {
     expect(plan.atRisk.some((r) => r.canvasId === 1 && r.kind === "overdue")).toBe(true);
   });
 
-  it("flags work that can't fit before its deadline as at-risk (insufficient_time)", () => {
-    const plan = generatePlan([mk(1, due(1))], 1, 7, 10, NOW); // needs 10h, ~2h available
-    const r = plan.atRisk.find((x) => x.canvasId === 1);
-    expect(r?.kind).toBe("insufficient_time");
-    expect(r?.shortfallHours).toBeGreaterThan(0);
-  });
-
   it("is deterministic for identical inputs", () => {
     const a = [mk(1, due(1)), mk(2, due(1), 50), mk(3, due(2))];
     expect(generatePlan(a, 3, 7, 2, NOW)).toEqual(generatePlan(a, 3, 7, 2, NOW));
   });
 });
 
-describe("generatePlan — calendar busy-time", () => {
-  it("subtracts busy hours from a day's capacity", () => {
-    const busy = new Map([[ymdLocal(NOW), 2]]); // 2 busy hours today
-    const plan = generatePlan([mk(1, due(3))], 3, 7, 2, NOW, busy);
-    expect(plan.days[0].capacity).toBeCloseTo(1, 5); // 3 - 2
-    expect(plan.days[1].capacity).toBeCloseTo(3, 5); // unaffected
+describe("generatePlan — importance-weighted allocation", () => {
+  it("front-loads the higher-importance (more points) assignment", () => {
+    const essay = { ...mk(1, due(3), 200), estimatedEffortHours: 2 };
+    const homework = { ...mk(2, due(3), 10), estimatedEffortHours: 2 };
+    const plan = generatePlan([essay, homework], 3, 7, 2, NOW);
+    // Day 0 favors the big essay…
+    expect(dayFor(plan, 0, 1)).toBeGreaterThan(dayFor(plan, 0, 2));
+    // …yet both still finish on time (deadline-safe), and the week isn't overloaded.
+    expect(totalFor(plan, 1)).toBeCloseTo(2, 1);
+    expect(totalFor(plan, 2)).toBeCloseTo(2, 1);
+    expect(plan.overloadHours).toBe(0);
   });
 
-  it("never drives capacity below zero even if busy exceeds the daily budget", () => {
-    const busy = new Map([[ymdLocal(NOW), 10]]); // more busy than the 3h budget
-    const plan = generatePlan([mk(1, due(3))], 3, 7, 2, NOW, busy);
-    expect(plan.days[0].capacity).toBe(0);
+  it("an AI importance rating boosts a low-point item's share", () => {
+    // Same points, but item 1 is rated max importance → it should get more of day 0.
+    const a = { ...mk(1, due(3), 20), estimatedEffortHours: 2, aiImportance: 5 };
+    const b = { ...mk(2, due(3), 20), estimatedEffortHours: 2, aiImportance: 1 };
+    const plan = generatePlan([a, b], 3, 7, 2, NOW);
+    expect(dayFor(plan, 0, 1)).toBeGreaterThan(dayFor(plan, 0, 2));
   });
 
-  it("flags work as at-risk when busy-time leaves no room before the due date", () => {
-    // Due tomorrow, needs 4h, but today and tomorrow are both fully booked.
-    const busy = new Map([
-      [ymdLocal(NOW), 3],
-      [ymdLocal(due(1)), 3],
-    ]);
-    const plan = generatePlan([{ ...mk(1, due(1)), estimatedEffortHours: 4 }], 3, 7, 2, NOW, busy);
-    expect(plan.atRisk.some((r) => r.canvasId === 1 && r.kind === "insufficient_time")).toBe(true);
-  });
-
-  it("ignores busy-time with no connected calendar (empty map) — unchanged behavior", () => {
-    const withMap = generatePlan([mk(1, due(2))], 3, 7, 2, NOW, new Map());
-    const without = generatePlan([mk(1, due(2))], 3, 7, 2, NOW);
-    expect(withMap).toEqual(without);
+  it("reports overloadHours when the week can't fit everything, 0 when it can", () => {
+    const heavy = [1, 2, 3].map((i) => ({ ...mk(i, due(1)), estimatedEffortHours: 10 }));
+    expect(generatePlan(heavy, 3, 7, 2, NOW).overloadHours).toBeGreaterThan(0);
+    const light = generatePlan([{ ...mk(1, due(5)), estimatedEffortHours: 3 }], 3, 7, 2, NOW);
+    expect(light.overloadHours).toBe(0);
   });
 });
 
 describe("generatePlan — study sessions (exam/quiz lead window)", () => {
   it("only schedules study within `studyLeadDays` before the due day", () => {
-    // Exam due in 5 days (idx 5), 4h effort, 2-day lead → study only on idx >= 3.
     const exam = { ...mk(1, due(5)), estimatedEffortHours: 4, studyLeadDays: 2 };
     const plan = generatePlan([exam], 3, 7, 2, NOW);
     plan.days.forEach((d, idx) => {
@@ -121,12 +113,10 @@ describe("generatePlan — study sessions (exam/quiz lead window)", () => {
   });
 
   it("keeps a floor of study the day before, even when the rest front-loads", () => {
-    // Exam due in 4 days (idx4), 2h effort, 6-day lead → greedy alone would dump it all on day 0.
     const exam = { ...mk(1, due(4)), estimatedEffortHours: 2, studyLeadDays: 6 };
     const plan = generatePlan([exam], 5, 7, 2, NOW);
-    const sumFor = (idx: number) => plan.days[idx].blocks.filter((b) => b.canvasId === 1).reduce((s, b) => s + b.hours, 0);
-    expect(sumFor(3)).toBeGreaterThan(0); // ~20 min reserved the day before (idx 3)
-    expect(sumFor(0)).toBeGreaterThan(sumFor(3)); // bulk still earlier (usual sequence)
+    expect(dayFor(plan, 3, 1)).toBeGreaterThan(0); // ~20 min reserved the day before (idx 3)
+    expect(dayFor(plan, 0, 1)).toBeGreaterThan(dayFor(plan, 3, 1)); // bulk still earlier
   });
 
   it("flags study blocks with study=true and leaves regular work unflagged", () => {
@@ -142,30 +132,13 @@ describe("generatePlan — study sessions (exam/quiz lead window)", () => {
 });
 
 describe("generatePlan — per-assignment effort", () => {
-  const sumFor = (plan: ReturnType<typeof generatePlan>, id: number) =>
-    plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === id).reduce((s, b) => s + b.hours, 0);
-
   it("schedules an assignment for its AI-estimated hours, else the flat default", () => {
     const big = { ...mk(1, due(5)), estimatedEffortHours: 5 };
     const flat = mk(2, due(5)); // no estimate → uses E=2
     const plan = generatePlan([big, flat], 8, 7, 2, NOW);
-    expect(sumFor(plan, 1)).toBeCloseTo(5, 5);
-    expect(sumFor(plan, 2)).toBeCloseTo(2, 5);
-    expect(plan.atRisk).toHaveLength(0);
-  });
-
-  it("keeps the G1 guarantee with mixed efforts (0 / default / huge) under tight capacity", () => {
-    const items = [
-      { ...mk(1, due(1)), estimatedEffortHours: 0 },
-      mk(2, due(2)),
-      { ...mk(3, due(2)), estimatedEffortHours: 50 },
-    ];
-    const plan = generatePlan(items, 1, 7, 2, NOW);
-    expect(plan.representedCount).toBe(plan.inWindowDueCount);
-    const ids = new Set<number>();
-    plan.days.forEach((d) => d.blocks.forEach((b) => ids.add(b.canvasId)));
-    plan.atRisk.forEach((r) => ids.add(r.canvasId));
-    for (const id of [1, 2, 3]) expect(ids.has(id)).toBe(true);
+    expect(totalFor(plan, 1)).toBeCloseTo(5, 5);
+    expect(totalFor(plan, 2)).toBeCloseTo(2, 5);
+    expect(plan.overloadHours).toBe(0);
   });
 
   it("surfaces a 0h marker for a zero-effort assignment (never dropped)", () => {

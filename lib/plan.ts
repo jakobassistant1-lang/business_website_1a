@@ -1,7 +1,6 @@
 import { prisma } from "./prisma";
 import { generatePlan, Plan, SchedulerAssignment } from "./scheduler";
 import { rankRecommendations, priorityInputsFromPlan, type ScoredAssignment } from "./priority";
-import { loadBusyHoursByDate } from "./calendar";
 
 export interface SubmittedItem {
   canvasId: number;
@@ -36,13 +35,10 @@ export interface PlanPayload {
  * surfaced in `payload.submitted` so the UI can show a "Completed" section.
  */
 export async function loadPlan(userId: number, hoursOverride?: number): Promise<PlanPayload> {
-  // Independent reads run together. loadBusyHoursByDate is fail-open (never
-  // throws), so a calendar problem can't break the plan.
-  const [user, cred, rows, busyHoursByDate] = await Promise.all([
+  const [user, cred, rows] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
     prisma.canvasCredential.findUnique({ where: { userId } }),
     prisma.assignment.findMany({ where: { userId }, include: { course: true } }),
-    loadBusyHoursByDate(userId),
   ]);
 
   const hours =
@@ -80,14 +76,7 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
     summary: a.aiSummary ?? null,
   }));
 
-  const plan = generatePlan(
-    assignments,
-    hours,
-    user.planningWindowDays,
-    user.defaultEffortHours,
-    new Date(),
-    busyHoursByDate,
-  );
+  const plan = generatePlan(assignments, hours, user.planningWindowDays, user.defaultEffortHours, new Date());
 
   // Deterministic prioritization (pure logic). pointsById is threaded in because
   // the scheduler drops pointsPossible from its output.

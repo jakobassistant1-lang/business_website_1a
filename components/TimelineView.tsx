@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { courseColor, pickTextOn } from "@/lib/courseColor";
 import { WEEKDAYS, parseYmd } from "@/lib/calendarDates";
-import { AttentionBanner, PeriodSummary, ItemDetail, CourseDot, Glyph, ICON, fmtHours } from "@/components/calendar/parts";
+import { AttentionBanner, PeriodSummary, ItemDetail, CourseDot, Glyph, ICON, fmtHours, LoadHint } from "@/components/calendar/parts";
 import { toneSoft } from "@/lib/tone";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { PlanDay } from "@/lib/scheduler";
@@ -107,18 +107,21 @@ export function TimelineView({ data }: { data: CalendarData }) {
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">Timeline</h1>
-        <div role="tablist" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
-          {(["day", "week"] as const).map((v) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={v === view}
-              onClick={() => setView(v)}
-              className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${v === view ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"}`}
-            >
-              {v}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
+            {(["day", "week"] as const).map((v) => (
+              <button
+                key={v}
+                role="tab"
+                aria-selected={v === view}
+                onClick={() => setView(v)}
+                className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${v === view ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"}`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          {view === "week" && data.connected && <LoadHint overloadHours={data.overloadHours} weekKey={data.plan.days[0]?.date ?? "x"} />}
         </div>
       </div>
 

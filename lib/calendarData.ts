@@ -9,7 +9,7 @@
 import { prisma } from "./prisma";
 import { generatePlan, type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
 import { rankRecommendations, priorityInputsFromPlan, type ScoredAssignment } from "./priority";
-import { loadBusyHoursByDate, loadCalendarEvents } from "./calendar";
+import { loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
 import { itemType, isStudyType, type ItemType } from "./itemType";
 
@@ -40,6 +40,7 @@ export interface CalendarData {
   stale: boolean;
   hoursPerDay: number;
   windowDays: number;
+  overloadHours: number; // hours the week is over-subscribed (0 = everything fits)
   items: CalendarItem[]; // active coursework (includes undated, dueAt === null)
   completed: CalendarItem[]; // submitted/graded
   events: CalendarEvent[]; // calendar "busy" blocks
@@ -54,11 +55,10 @@ function loadAssignmentRows(userId: number) {
 }
 
 export async function loadCalendarData(userId: number, hoursOverride?: number): Promise<CalendarData> {
-  const [user, cred, rows, busyHoursByDate, events] = await Promise.all([
+  const [user, cred, rows, events] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
     prisma.canvasCredential.findUnique({ where: { userId } }),
     loadAssignmentRows(userId),
-    loadBusyHoursByDate(userId),
     loadCalendarEvents(userId),
   ]);
 
@@ -89,9 +89,10 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     estimatedEffortHours: a.estimatedEffortHours ?? null,
     summary: a.aiSummary ?? null,
     studyLeadDays: leadDaysFor(a),
+    aiImportance: a.aiImportance ?? null,
   }));
 
-  const plan = generatePlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, new Date(), busyHoursByDate);
+  const plan = generatePlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, new Date());
 
   const submittedIds = new Set(submittedRows.map((a) => a.canvasId));
   const pointsById = new Map<number, number | null>(activeRows.map((a) => [a.canvasId, a.pointsPossible]));
@@ -125,6 +126,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     stale: !!cred && status !== null && status !== "valid",
     hoursPerDay: hours,
     windowDays: PLAN_WINDOW_DAYS,
+    overloadHours: plan.overloadHours,
     // Only overdue surfaces as an alert now — "won't fit" was removed as noise.
     atRisk: plan.atRisk.filter((r) => r.kind === "overdue"),
     items: activeRows.map((a) => toItem(a, false)),

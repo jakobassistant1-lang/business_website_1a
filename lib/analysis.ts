@@ -13,7 +13,9 @@ export const MAX_BATCH = 40;
 // Editable from /admin/ai (stored under ANALYSIS_PROMPT_KEY); this is the fallback.
 export const DEFAULT_ANALYSIS_INSTRUCTION =
   "You are StudyPlan's workload estimator. For EACH assignment given, estimate how long a typical " +
-  "college student needs, and write one short factual sentence summarizing the task. " +
+  "college student needs, write one short factual sentence summarizing the task, AND rate its " +
+  "importance 1-5 (how high-stakes / weighty / cumulative it is for the grade: a final exam, midterm, " +
+  "or major project ≈ 5; a routine low-point homework ≈ 2; use 3 if unsure). " +
   "hours is your best numeric estimate (0.25–20); if unsure, still give your best number and set the " +
   "bucket as the coarse fallback (quick≈1h, medium≈3h, long≈6h). Keep summaries under 1 sentence.";
 
@@ -33,6 +35,7 @@ export interface AnalysisItemResult {
   estimatedEffortHours: number | null;
   bucket: EffortBucket | null;
   summary: string | null;
+  importance: number | null; // 1-5: how high-stakes; feeds the planner's time allocation
 }
 
 export type AnalysisResult =
@@ -71,9 +74,12 @@ export function cleanDescription(html: string | null | undefined, maxLen = 500):
 }
 
 /** sha1 over the CONTENT that affects the estimate (name/points/description) — NOT
- *  the due date, so a deadline change doesn't burn a re-analysis. */
+ *  the due date, so a deadline change doesn't burn a re-analysis. The version tag
+ *  is bumped when the analysis output shape changes (e.g. adding `importance`), so
+ *  previously-analyzed rows re-run once to pick up the new field. */
+const ANALYSIS_VERSION = 2;
 export function analysisInputHash(i: AnalysisItemInput): string {
-  const basis = JSON.stringify({ n: i.name, c: i.courseName, p: i.pointsPossible, d: cleanDescription(i.description) });
+  const basis = JSON.stringify({ v: ANALYSIS_VERSION, n: i.name, c: i.courseName, p: i.pointsPossible, d: cleanDescription(i.description) });
   return createHash("sha1").update(basis).digest("hex");
 }
 
@@ -107,7 +113,7 @@ export function buildAnalysisPrompt(items: AnalysisItemInput[]): string {
     "Assignments (estimate each, SAME ORDER):",
     ...lines,
     'Return ONLY a JSON array, one object per assignment: ' +
-      '{"id":<number>,"hours":<number>,"bucket":"quick|medium|long","summary":"<one sentence>"}.',
+      '{"id":<number>,"hours":<number>,"bucket":"quick|medium|long","summary":"<one sentence>","importance":<1-5>}.',
   ].join("\n");
 }
 
@@ -160,8 +166,11 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
     if (bucket === null && hours !== null) bucket = hoursToBucket(hours);
 
     const summary = cleanSummary(e.summary);
-    if (hours === null && summary === null) continue; // nothing usable
-    out.push({ canvasId: id, estimatedEffortHours: hours, bucket, summary });
+    const importance = Number.isFinite(Number(e.importance))
+      ? Math.max(1, Math.min(5, Math.round(Number(e.importance))))
+      : null;
+    if (hours === null && summary === null && importance === null) continue; // nothing usable
+    out.push({ canvasId: id, estimatedEffortHours: hours, bucket, summary, importance });
   }
   return out;
 }
