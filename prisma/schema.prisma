@@ -1,7 +1,7 @@
 // StudyPlan data model (PRD §8).
-// Passwords are bcrypt-hashed (see lib/password.ts). NOTE: the Canvas API token
-// is still stored in plaintext — acceptable for a trusted-team deploy, but
-// encrypt-at-rest is a recommended follow-up before wider exposure.
+// Passwords are bcrypt-hashed (see lib/password.ts). The Canvas API token and
+// Google OAuth tokens are encrypted at rest via lib/crypto.ts (AES-256-GCM when
+// ENCRYPTION_KEY is set; tagged-plaintext safe fallback otherwise).
 
 generator client {
   provider = "prisma-client-js"
