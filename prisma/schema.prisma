@@ -88,6 +88,7 @@ model GoogleCalendarEvent {
   description   String?
   startTime     DateTime
   endTime       DateTime
+  allDay        Boolean  @default(false) // all-day events are skipped by the planner's busy-time calc
   location      String?
   source        String   @default("google")
   updatedAt     DateTime @updatedAt

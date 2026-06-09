@@ -26,6 +26,7 @@ export interface InternalCalendarEvent {
   description?: string;
   startTime: string; // ISO
   endTime: string; // ISO
+  allDay: boolean; // date-only event (no time); the planner ignores these for busy-time
   location?: string;
   source: "google";
 }

@@ -78,6 +78,37 @@ describe("generatePlan", () => {
   });
 });
 
+describe("generatePlan — calendar busy-time", () => {
+  it("subtracts busy hours from a day's capacity", () => {
+    const busy = new Map([[ymdLocal(NOW), 2]]); // 2 busy hours today
+    const plan = generatePlan([mk(1, due(3))], 3, 7, 2, NOW, busy);
+    expect(plan.days[0].capacity).toBeCloseTo(1, 5); // 3 - 2
+    expect(plan.days[1].capacity).toBeCloseTo(3, 5); // unaffected
+  });
+
+  it("never drives capacity below zero even if busy exceeds the daily budget", () => {
+    const busy = new Map([[ymdLocal(NOW), 10]]); // more busy than the 3h budget
+    const plan = generatePlan([mk(1, due(3))], 3, 7, 2, NOW, busy);
+    expect(plan.days[0].capacity).toBe(0);
+  });
+
+  it("flags work as at-risk when busy-time leaves no room before the due date", () => {
+    // Due tomorrow, needs 4h, but today and tomorrow are both fully booked.
+    const busy = new Map([
+      [ymdLocal(NOW), 3],
+      [ymdLocal(due(1)), 3],
+    ]);
+    const plan = generatePlan([{ ...mk(1, due(1)), estimatedEffortHours: 4 }], 3, 7, 2, NOW, busy);
+    expect(plan.atRisk.some((r) => r.canvasId === 1 && r.kind === "insufficient_time")).toBe(true);
+  });
+
+  it("ignores busy-time with no connected calendar (empty map) — unchanged behavior", () => {
+    const withMap = generatePlan([mk(1, due(2))], 3, 7, 2, NOW, new Map());
+    const without = generatePlan([mk(1, due(2))], 3, 7, 2, NOW);
+    expect(withMap).toEqual(without);
+  });
+});
+
 describe("generatePlan — per-assignment effort", () => {
   const sumFor = (plan: ReturnType<typeof generatePlan>, id: number) =>
     plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === id).reduce((s, b) => s + b.hours, 0);

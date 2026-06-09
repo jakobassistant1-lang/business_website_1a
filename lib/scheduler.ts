@@ -102,7 +102,10 @@ export function generatePlan(
   hoursPerDay: number,
   windowDays: number,
   effortHours: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  // Busy hours per day (YYYY-MM-DD) from connected calendars — subtracted from
+  // that day's study capacity so the plan schedules around real commitments.
+  busyHoursByDate: Map<string, number> = new Map()
 ): Plan {
   const days = Math.max(1, Math.floor(windowDays));
   const H = Math.max(0, hoursPerDay);
@@ -153,13 +156,15 @@ export function generatePlan(
   const planDays: PlanDay[] = [];
   for (let d = 0; d < days; d++) {
     const date = addDays(startDay, d);
+    const busy = busyHoursByDate.get(ymd(date)) ?? 0;
     planDays.push({
       date: ymd(date),
       weekday: WEEKDAYS[date.getDay()],
       isToday: d === 0,
       blocks: [],
       allocated: 0,
-      capacity: H,
+      // Calendar busy-time eats into the day's study budget (never below 0).
+      capacity: round1(Math.max(0, H - busy)),
     });
   }
 
@@ -171,7 +176,7 @@ export function generatePlan(
     // AI per-assignment effort when present; otherwise the flat default E.
     let remaining = a.estimatedEffortHours != null && a.estimatedEffortHours >= 0 ? a.estimatedEffortHours : E;
     for (let d = 0; d <= dueDayIndex && remaining > EPS; d++) {
-      const avail = H - planDays[d].allocated;
+      const avail = planDays[d].capacity - planDays[d].allocated;
       if (avail <= EPS) continue;
       const take = Math.min(avail, remaining);
       planDays[d].blocks.push({

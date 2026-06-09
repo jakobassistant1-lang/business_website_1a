@@ -4,19 +4,21 @@
 
 import { prisma } from "../prisma";
 import { calendarApiGet } from "./client";
+import { CalendarError } from "../calendar/types";
 import type { GoogleApiEvent, InternalCalendarEvent } from "./types";
 
 /** Adapter: Google API event → internal format. Pure + unit-tested. Returns null
  *  for events we can't represent (no id, or missing start/end). */
 export function normalizeEvent(e: GoogleApiEvent): InternalCalendarEvent | null {
   if (!e.id) return null;
-  // All-day events carry a floating `date` (no time, no zone). Anchor them to
-  // NOON UTC, not midnight: midnight-UTC renders as the *previous day* for any
-  // user west of UTC, whereas noon keeps the calendar date correct across all
-  // real-world offsets (UTC-12 … UTC+12).
-  const allDay = (d: string) => `${d}T12:00:00.000Z`;
-  const start = e.start?.dateTime ?? (e.start?.date ? allDay(e.start.date) : null);
-  const end = e.end?.dateTime ?? (e.end?.date ? allDay(e.end.date) : null);
+  // An event is "all-day" when it carries a floating `date` instead of a
+  // `dateTime`. Anchor all-day events to NOON UTC, not midnight: midnight-UTC
+  // renders as the *previous day* for any user west of UTC, whereas noon keeps
+  // the calendar date correct across all real-world offsets (UTC-12 … UTC+12).
+  const isAllDay = !e.start?.dateTime;
+  const anchor = (d: string) => `${d}T12:00:00.000Z`;
+  const start = e.start?.dateTime ?? (e.start?.date ? anchor(e.start.date) : null);
+  const end = e.end?.dateTime ?? (e.end?.date ? anchor(e.end.date) : null);
   if (!start || !end) return null;
   const startTime = new Date(start);
   const endTime = new Date(end);
@@ -27,6 +29,7 @@ export function normalizeEvent(e: GoogleApiEvent): InternalCalendarEvent | null 
     description: e.description ?? undefined,
     startTime: startTime.toISOString(),
     endTime: endTime.toISOString(),
+    allDay: isAllDay,
     location: e.location ?? undefined,
     source: "google",
   };
@@ -63,7 +66,7 @@ export async function fetchUpcomingEvents(userId: number, days = 30): Promise<In
 /** Fetch the next 30 days and replace the user's stored Google events. */
 export async function syncCalendar(userId: number): Promise<{ synced: number }> {
   const conn = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
-  if (!conn) throw new Error("not_connected");
+  if (!conn) throw new CalendarError("not_connected");
 
   const events = await fetchUpcomingEvents(userId, 30);
   // De-dupe by Google event id: recurring-instance overrides / page overlap can
@@ -83,6 +86,7 @@ export async function syncCalendar(userId: number): Promise<{ synced: number }> 
               description: ev.description ?? null,
               startTime: new Date(ev.startTime),
               endTime: new Date(ev.endTime),
+              allDay: ev.allDay,
               location: ev.location ?? null,
               source: "google",
             })),

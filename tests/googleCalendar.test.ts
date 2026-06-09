@@ -28,14 +28,16 @@ describe("normalizeEvent (Google → internal adapter)", () => {
       description: "CS 350",
       startTime: "2026-06-10T14:00:00.000Z",
       endTime: "2026-06-10T15:00:00.000Z",
+      allDay: false,
       location: "Hall A",
       source: "google",
     });
   });
 
-  it("anchors an all-day (date-only) event to noon UTC so the date is stable in every timezone", () => {
+  it("anchors an all-day (date-only) event to noon UTC and flags it allDay", () => {
     const r = normalizeEvent({ id: "a2", summary: "Holiday", start: { date: "2026-06-12" }, end: { date: "2026-06-13" } });
     expect(r?.startTime).toBe("2026-06-12T12:00:00.000Z");
+    expect(r?.allDay).toBe(true);
     expect(r?.source).toBe("google");
   });
 
@@ -146,5 +148,10 @@ describe("token encryption at rest", () => {
   it("round-trips in plaintext mode when no key is set", () => {
     vi.stubEnv("ENCRYPTION_KEY", "");
     expect(decryptSecret(encryptSecret("tok"))).toBe("tok");
+  });
+
+  it("passes a legacy raw (unprefixed) token through unchanged — backward compat for existing Canvas tokens", () => {
+    vi.stubEnv("ENCRYPTION_KEY", "some-key");
+    expect(decryptSecret("legacy-plaintext-canvas-token-7f3a")).toBe("legacy-plaintext-canvas-token-7f3a");
   });
 });

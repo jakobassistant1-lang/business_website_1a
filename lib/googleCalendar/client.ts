@@ -6,10 +6,13 @@ import { prisma } from "../prisma";
 import { decryptSecret, encryptSecret } from "../crypto";
 import { refreshAccessToken } from "./auth";
 import { fetchWithTimeout } from "./http";
+import { CalendarError } from "../calendar/types";
 
 const SKEW_MS = 60_000; // refresh a minute before expiry
 const API_BASE = "https://www.googleapis.com/calendar/v3";
 
+/** Raw HTTP error from the Calendar API (carries the status for logging). The
+ *  route maps anything that isn't a typed CalendarError to a generic failure. */
 export class CalendarApiError extends Error {
   constructor(public status: number, message?: string) {
     super(message ?? `calendar_api_${status}`);
@@ -17,16 +20,16 @@ export class CalendarApiError extends Error {
 }
 
 /** A currently-valid access token, refreshing + persisting if the stored one
- *  has expired. Throws "not_connected" / "token_expired" for callers to map. */
+ *  has expired. Throws a typed CalendarError ("not_connected"/"token_expired"). */
 export async function getValidAccessToken(userId: number): Promise<string> {
   const conn = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
-  if (!conn || !conn.accessToken) throw new Error("not_connected");
+  if (!conn || !conn.accessToken) throw new CalendarError("not_connected");
 
   try {
     const valid = conn.expiresAt && conn.expiresAt.getTime() - SKEW_MS > Date.now();
     if (valid) return decryptSecret(conn.accessToken);
 
-    if (!conn.refreshToken) throw new Error("token_expired");
+    if (!conn.refreshToken) throw new CalendarError("token_expired");
     const refreshed = await refreshAccessToken(decryptSecret(conn.refreshToken));
     await prisma.googleCalendarConnection.update({
       where: { userId },
@@ -44,7 +47,7 @@ export async function getValidAccessToken(userId: number): Promise<string> {
     // undecryptable token (ENCRYPTION_KEY changed) can't be recovered without
     // re-consent. Normalize to "token_expired" so the UI prompts a reconnect
     // instead of a vague "sync failed" the user would just retry forever.
-    throw new Error("token_expired");
+    throw new CalendarError("token_expired");
   }
 }
 
@@ -62,7 +65,7 @@ export async function calendarApiGet(userId: number, path: string): Promise<unkn
       .catch(() => {});
     res = await doFetch(await getValidAccessToken(userId));
   }
-  if (res.status === 429) throw new CalendarApiError(429, "rate_limited");
+  if (res.status === 429) throw new CalendarError("rate_limited");
   if (!res.ok) throw new CalendarApiError(res.status);
   return res.json();
 }
