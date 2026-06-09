@@ -1,15 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { itemType } from "@/lib/itemType";
+import { itemType, isStudyType } from "@/lib/itemType";
 
 describe("itemType", () => {
-  it("classifies quizzes by Canvas submission type", () => {
-    expect(itemType("online_quiz", "Week 3 Check-in")).toBe("quiz");
+  it("classifies exams/midterms/tests (long study lead)", () => {
+    expect(itemType(null, "Midterm Exam")).toBe("exam");
+    expect(itemType(null, "Exam 2")).toBe("exam");
+    expect(itemType(null, "Final Exam")).toBe("exam");
+    expect(itemType(null, "Unit Test 1")).toBe("exam");
   });
 
-  it("classifies quizzes/tests by name when the type doesn't say so", () => {
-    expect(itemType("online_upload", "Midterm Exam")).toBe("quiz");
+  it("does NOT treat a 'final project' as an exam", () => {
+    expect(itemType("online_upload", "Final project proposal")).toBe("assignment");
+  });
+
+  it("classifies quizzes by Canvas type and name", () => {
+    expect(itemType("online_quiz", "Week 3 Check-in")).toBe("quiz");
     expect(itemType(null, "Quiz 4")).toBe("quiz");
-    expect(itemType(null, "Final")).toBe("quiz");
   });
 
   it("classifies discussions and external tools as other", () => {
@@ -20,6 +26,12 @@ describe("itemType", () => {
   it("defaults to assignment", () => {
     expect(itemType("online_upload", "Problem Set 4")).toBe("assignment");
     expect(itemType(null, "Essay outline")).toBe("assignment");
-    expect(itemType("", "Reading response")).toBe("assignment");
+  });
+
+  it("isStudyType is true only for exams and quizzes", () => {
+    expect(isStudyType("exam")).toBe(true);
+    expect(isStudyType("quiz")).toBe(true);
+    expect(isStudyType("assignment")).toBe(false);
+    expect(isStudyType("other")).toBe(false);
   });
 });

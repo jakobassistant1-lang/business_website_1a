@@ -117,19 +117,24 @@ export async function generateBriefing(
 export const DEFAULT_PERIOD_COACH_INSTRUCTION =
   "You are StudyPlan's study coach. You are given a student's workload for a specific period " +
   "(today, this week, or this month) plus their top priorities, which our system has ALREADY ranked " +
-  "and scheduled to be deadline-safe. Write a warm, practical game plan of 2-5 short sentences that " +
-  "helps them approach the period using evidence-based learning techniques where relevant: start early " +
-  "and space practice out instead of cramming; use active recall (self-testing) over re-reading; " +
-  "interleave different subjects; work in focused blocks with short breaks; and do the hardest or " +
-  "highest-stakes work when energy is freshest. Tie the advice to their ACTUAL items and deadlines. " +
-  "Never invent assignments, points, or due dates beyond what is given, and never suggest doing " +
-  "something after its due date. Plain English. No markdown, no lists, no headings.";
+  "and scheduled to be deadline-safe. Each item is tagged with a type in [brackets]. Write a warm, " +
+  "practical game plan of 2-5 short sentences using evidence-based techniques MATCHED TO THE WORK:\n" +
+  "- For [exam] and [quiz] items: recommend retrieval practice / active recall (self-testing, " +
+  "flashcards, practice problems) and spaced review starting a few days ahead — not re-reading.\n" +
+  "- For [assignment] and [other] items (labs, essays, projects, problem sets): recommend breaking the " +
+  "task into steps, starting early, and focused work blocks. Do NOT suggest active recall or flashcards " +
+  "for these — that advice only fits studying for a test.\n" +
+  "Across everything, you may suggest interleaving subjects, short breaks, and doing the hardest work " +
+  "when energy is freshest. Tie advice to their ACTUAL items and deadlines. Never invent assignments, " +
+  "points, or due dates beyond what is given, and never suggest doing something after its due date. " +
+  "Plain English. No markdown, no lists, no headings.";
 
 export interface PeriodTopItem {
   name: string;
   courseName: string;
   dueLabel: string;
   effort: string | null; // e.g. "2h", "quick"
+  type: string; // assignment | quiz | exam | other — lets the coach tailor technique advice
 }
 
 export interface PeriodBriefingInput {
@@ -152,7 +157,7 @@ export function buildPeriodPrompt(input: PeriodBriefingInput): string {
   if (input.top.length) {
     lines.push("Priorities (already ranked + scheduled deadline-safe by our system, most urgent first):");
     input.top.forEach((t, i) => {
-      lines.push(`${i + 1}. ${t.name} (${t.courseName}) — due ${t.dueLabel}${t.effort ? `, ~${t.effort}` : ""}`);
+      lines.push(`${i + 1}. ${t.name} (${t.courseName}) [${t.type}] — due ${t.dueLabel}${t.effort ? `, ~${t.effort}` : ""}`);
     });
   } else {
     lines.push("Nothing is due in this period.");

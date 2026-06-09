@@ -11,8 +11,8 @@ export default async function SettingsPage() {
       <SettingsForm
         initial={{
           defaultHoursPerDay: user!.defaultHoursPerDay,
-          planningWindowDays: user!.planningWindowDays,
-          defaultEffortHours: user!.defaultEffortHours,
+          studyDaysTest: user!.studyDaysTest,
+          studyDaysQuiz: user!.studyDaysQuiz,
         }}
       />
     </Container>

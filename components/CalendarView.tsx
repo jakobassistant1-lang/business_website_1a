@@ -118,19 +118,16 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
         : { text: "Up to date", cls: toneSoft.success };
 
   return (
-    <div className="mx-auto max-w-6xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
-          <p className="mt-1 text-sm text-muted">
-            Your coursework and commitments
-            <span className={`ml-3 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPill.cls}`}>{statusPill.text}</span>
-          </p>
+    <div>
+      {/* Header — compact single row so the calendar sits high on the page */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-xl font-semibold tracking-tight">Calendar</h1>
+          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPill.cls}`}>{statusPill.text}</span>
         </div>
         {data.connected && (
-          <button onClick={runSync} className="btn-ghost" disabled={syncing}>
-            {syncing ? "Syncing…" : "Sync from Canvas"}
+          <button onClick={runSync} className="btn-ghost text-sm" disabled={syncing}>
+            {syncing ? "Syncing…" : "Sync"}
           </button>
         )}
       </div>
@@ -147,7 +144,7 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
           </Link>
         </div>
       ) : (
-        <div className="mt-6">
+        <div>
           <AttentionBanner atRisk={data.atRisk} />
           <PeriodToolbar
             view={view}
@@ -273,10 +270,11 @@ function DayView({
     ...items.map((it) => ({ t: it.dueAt ? new Date(it.dueAt).getTime() : 0, el: <ItemPill key={`i-${it.canvasId}`} item={it} onSelect={onSelect} /> })),
     ...events.map((ev, i) => ({ t: new Date(ev.startTime).getTime(), el: <BusyRow key={`e-${i}`} ev={ev} /> })),
   ].sort((a, b) => a.t - b.t);
-  const quizzes = items.filter((it) => it.type === "quiz").length;
+  const quizzes = items.filter((it) => it.type === "quiz" || it.type === "exam").length;
+  const study = (planDay?.blocks ?? []).filter((b) => b.study);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
+    <div className="grid gap-4 lg:grid-cols-[1fr_19rem]">
       <div className="card p-4">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-ink">
@@ -297,10 +295,26 @@ function DayView({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">At a glance</h2>
           <dl className="mt-2 space-y-1 text-sm">
             <Glance k="Due this day" v={items.length} />
-            <Glance k="Quizzes / tests" v={quizzes} />
-            <Glance k="At risk (all)" v={atRiskCount} danger={atRiskCount > 0} />
+            <Glance k="Quizzes / exams" v={quizzes} />
+            <Glance k="Overdue" v={atRiskCount} danger={atRiskCount > 0} />
           </dl>
         </div>
+        {study.length > 0 && (
+          <div className="card p-4">
+            <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              <Glyph d={ICON.clock} size={14} /> Study plan
+            </h2>
+            <ul className="mt-2 space-y-1.5 text-sm">
+              {study.map((b, i) => (
+                <li key={`st-${b.canvasId}-${i}`} className="flex items-center gap-2">
+                  <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(b.courseName) }} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate text-ink">Study: {b.name}</span>
+                  <span className="shrink-0 text-xs text-muted">{b.hours}h</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <RecommendedOrder recs={recommendations} />
       </aside>
     </div>
@@ -417,7 +431,7 @@ function MonthView({
           const hasBusy = (eventsByDay.get(key) ?? []).length > 0;
           const inMonth = d.getMonth() === month;
           const isToday = sameDay(d, now);
-          const atRisk = items.filter((it) => it.status === "overdue" || it.status === "at_risk").length;
+          const atRisk = items.filter((it) => it.status === "overdue").length;
           return (
             <button
               key={key}
@@ -438,7 +452,7 @@ function MonthView({
                     <span
                       key={it.canvasId}
                       className="h-1.5 w-1.5 rounded-full"
-                      style={{ background: it.status === "overdue" || it.status === "at_risk" ? "rgb(var(--danger))" : courseColor(it.courseName) }}
+                      style={{ background: it.status === "overdue" ? "rgb(var(--danger))" : courseColor(it.courseName) }}
                       title={it.name}
                     />
                   ))}

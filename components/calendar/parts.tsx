@@ -63,8 +63,6 @@ type StatusMeta = { pill: { text: string; cls: string } | null; border: string; 
 function statusMeta(item: CalendarItem): StatusMeta {
   if (item.status === "done") return { pill: { text: "Done", cls: toneSoft.success }, border: "border-line-subtle", muted: true, danger: false };
   if (item.status === "overdue") return { pill: { text: "Past due", cls: toneSoft.danger }, border: "border-danger/40 bg-danger-soft/40", muted: false, danger: true };
-  if (item.status === "at_risk")
-    return { pill: { text: `+${item.shortfallHours}h won't fit`, cls: toneSoft.danger }, border: "border-danger/40 bg-danger-soft/40", muted: false, danger: true };
   return { pill: null, border: "border-line-subtle", muted: false, danger: false };
 }
 
@@ -128,7 +126,6 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
           </button>
         </div>
         {item.status === "overdue" && <p className="mt-2 text-xs font-medium text-danger">Past due</p>}
-        {item.status === "at_risk" && <p className="mt-2 text-xs font-medium text-danger">+{item.shortfallHours}h won&apos;t fit before it&apos;s due</p>}
         <dl className="mt-3 space-y-1.5 text-xs">
           {item.dueAt && <DetailRow k="Due" v={fmtDueLong(item.dueAt)} />}
           {eff && <DetailRow k="Effort" v={eff} />}
@@ -156,27 +153,23 @@ function DetailRow({ k, v }: { k: string; v: string }) {
   );
 }
 
-/** Persistent red banner: counts overdue + won't-fit and lists them. Never
- *  hidden when count > 0 (collapsible body only). The deadline safety net. */
+/** Slim red strip listing overdue work. Hidden when nothing is overdue. The
+ *  deadline safety net — collapsible body, but the count is always visible. */
 export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
-  const [open, setOpen] = useState(true);
-  const overdue = atRisk.filter((a) => a.kind === "overdue").length;
-  const wontFit = atRisk.filter((a) => a.kind === "insufficient_time").length;
-  if (overdue + wontFit === 0) return null;
-  const parts = [overdue ? `${overdue} overdue` : "", wontFit ? `${wontFit} won't fit` : ""].filter(Boolean);
+  const [open, setOpen] = useState(false);
+  const overdue = atRisk.filter((a) => a.kind === "overdue");
+  if (overdue.length === 0) return null;
   return (
-    <div className="mb-5 rounded-lg border border-danger/40 bg-danger-soft/60 px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-sm font-semibold text-danger">
-          <Glyph d={ICON.alert} size={16} /> Attention — {parts.join(" · ")}
-        </p>
-        <button onClick={() => setOpen((o) => !o)} className="text-xs font-medium text-danger/80 hover:text-danger">
-          {open ? "Hide" : "Show"}
-        </button>
-      </div>
+    <div className="mb-3 rounded-lg border border-danger/40 bg-danger-soft/60 px-3 py-2">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-sm font-semibold text-danger">
+          <Glyph d={ICON.alert} size={16} /> {overdue.length} overdue
+        </span>
+        <span className="text-xs font-medium text-danger/80">{open ? "Hide" : "Show"}</span>
+      </button>
       {open && (
         <ul className="mt-2 space-y-1">
-          {atRisk.map((a) => (
+          {overdue.map((a) => (
             <li key={`att-${a.canvasId}`} className="flex items-center justify-between gap-2 text-xs">
               <span className="flex min-w-0 items-center gap-1.5 text-ink">
                 <CourseDot name={a.courseName} />
@@ -188,9 +181,7 @@ export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
                   <span className="truncate">{a.name}</span>
                 )}
               </span>
-              <span className="shrink-0 rounded-full bg-danger-soft px-2 py-0.5 font-medium text-danger">
-                {a.kind === "overdue" ? "Past due" : `+${a.shortfallHours}h`}
-              </span>
+              <span className="shrink-0 rounded-full bg-danger-soft px-2 py-0.5 font-medium text-danger">Past due</span>
             </li>
           ))}
         </ul>
@@ -233,6 +224,14 @@ export function RecommendedOrder({ recs }: { recs: ScoredAssignment[] }) {
 export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "month"; start: string; days: number }) {
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    try {
+      setOpen(localStorage.getItem("sp_coach_open") === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -248,16 +247,31 @@ export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "m
   }, [view, start, days]);
 
   if (!loading && !text) return null; // fail-open
+  function toggle() {
+    setOpen((o) => {
+      const n = !o;
+      try {
+        localStorage.setItem("sp_coach_open", n ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return n;
+    });
+  }
   return (
-    <div className="card mb-5 border-accent-soft bg-accent-soft/30 p-4">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-accent">
-        <Glyph d={ICON.spark} size={15} /> Your study coach
-      </h2>
-      {text ? (
-        <p className="mt-1.5 text-sm leading-snug text-ink">{text}</p>
-      ) : (
-        <p className="mt-1.5 text-sm text-muted">Reading your {view}…</p>
-      )}
+    <div className="mb-3 rounded-lg border border-accent-soft bg-accent-soft/30 px-3 py-2">
+      <button onClick={toggle} className="flex w-full items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-sm font-semibold text-accent">
+          <Glyph d={ICON.spark} size={15} /> Study coach
+        </span>
+        <span className="text-xs font-medium text-accent/80">{open ? "Hide" : loading ? "…" : "Show plan"}</span>
+      </button>
+      {open &&
+        (text ? (
+          <p className="mt-1.5 text-sm leading-snug text-ink">{text}</p>
+        ) : (
+          <p className="mt-1.5 text-sm text-muted">Reading your {view}…</p>
+        ))}
     </div>
   );
 }

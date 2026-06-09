@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 
-// Settings: planning defaults (hours/day, window length, effort/assignment).
+// Settings: study budget (hours/day) + how far ahead to study for exams/quizzes.
 export async function PATCH(req: Request) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -16,15 +16,15 @@ export async function PATCH(req: Request) {
     if (!(Number.isFinite(h) && h > 0 && h <= 24)) errors.defaultHoursPerDay = "Enter a number between 0 and 24.";
     else data.defaultHoursPerDay = h;
   }
-  if (body.planningWindowDays !== undefined) {
-    const w = Number(body.planningWindowDays);
-    if (!(Number.isInteger(w) && w >= 1 && w <= 60)) errors.planningWindowDays = "Enter a whole number of days (1–60).";
-    else data.planningWindowDays = w;
+  if (body.studyDaysTest !== undefined) {
+    const t = Number(body.studyDaysTest);
+    if (!(Number.isInteger(t) && t >= 1 && t <= 14)) errors.studyDaysTest = "Enter a whole number of days (1–14).";
+    else data.studyDaysTest = t;
   }
-  if (body.defaultEffortHours !== undefined) {
-    const e = Number(body.defaultEffortHours);
-    if (!(Number.isFinite(e) && e > 0 && e <= 24)) errors.defaultEffortHours = "Enter a number between 0 and 24.";
-    else data.defaultEffortHours = e;
+  if (body.studyDaysQuiz !== undefined) {
+    const q = Number(body.studyDaysQuiz);
+    if (!(Number.isInteger(q) && q >= 1 && q <= 14)) errors.studyDaysQuiz = "Enter a whole number of days (1–14).";
+    else data.studyDaysQuiz = q;
   }
 
   if (Object.keys(errors).length) return NextResponse.json({ errors }, { status: 400 });

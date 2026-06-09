@@ -109,6 +109,29 @@ describe("generatePlan — calendar busy-time", () => {
   });
 });
 
+describe("generatePlan — study sessions (exam/quiz lead window)", () => {
+  it("only schedules study within `studyLeadDays` before the due day", () => {
+    // Exam due in 5 days (idx 5), 4h effort, 2-day lead → study only on idx >= 3.
+    const exam = { ...mk(1, due(5)), estimatedEffortHours: 4, studyLeadDays: 2 };
+    const plan = generatePlan([exam], 3, 7, 2, NOW);
+    plan.days.forEach((d, idx) => {
+      if (d.blocks.some((b) => b.study)) expect(idx).toBeGreaterThanOrEqual(3);
+    });
+    expect(plan.days.some((d) => d.blocks.some((b) => b.study))).toBe(true);
+  });
+
+  it("flags study blocks with study=true and leaves regular work unflagged", () => {
+    const exam = { ...mk(1, due(3)), estimatedEffortHours: 2, studyLeadDays: 5 };
+    const hw = { ...mk(2, due(3)), estimatedEffortHours: 2 };
+    const plan = generatePlan([exam, hw], 5, 7, 2, NOW);
+    const examBlocks = plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === 1);
+    const hwBlocks = plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === 2);
+    expect(examBlocks.length).toBeGreaterThan(0);
+    expect(examBlocks.every((b) => b.study === true)).toBe(true);
+    expect(hwBlocks.every((b) => !b.study)).toBe(true);
+  });
+});
+
 describe("generatePlan — per-assignment effort", () => {
   const sumFor = (plan: ReturnType<typeof generatePlan>, id: number) =>
     plan.days.flatMap((d) => d.blocks).filter((b) => b.canvasId === id).reduce((s, b) => s + b.hours, 0);

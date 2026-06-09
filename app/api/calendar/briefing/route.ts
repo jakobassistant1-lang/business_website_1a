@@ -94,7 +94,7 @@ export async function GET(req: Request) {
   });
   if (inRange.length === 0) return NextResponse.json({ ok: false, text: null, reason: "empty_period" });
 
-  const atRiskCount = inRange.filter((it) => it.status === "overdue" || it.status === "at_risk").length;
+  const atRiskCount = inRange.filter((it) => it.status === "overdue").length;
   const busyHours = data.events
     .filter((e) => !e.allDay)
     .reduce((s, e) => {
@@ -106,7 +106,7 @@ export async function GET(req: Request) {
   const top: PeriodTopItem[] = [...inRange]
     .sort((a, b) => new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime())
     .slice(0, 5)
-    .map((it) => ({ name: it.name, courseName: it.courseName, dueLabel: dueLabel(it.dueAt!, view), effort: effortLabel(it) }));
+    .map((it) => ({ name: it.name, courseName: it.courseName, dueLabel: dueLabel(it.dueAt!, view), effort: effortLabel(it), type: it.type }));
 
   const instruction = (await getSetting(PERIOD_COACH_PROMPT_KEY)) || DEFAULT_PERIOD_COACH_INSTRUCTION;
   const sig = JSON.stringify({

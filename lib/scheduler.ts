@@ -17,6 +17,9 @@ export interface SchedulerAssignment {
   htmlUrl: string | null;
   estimatedEffortHours?: number | null; // AI per-assignment effort; falls back to the flat default
   summary?: string | null; // AI one-line summary, carried through to the UI
+  // When set, this is study-for-an-assessment: sessions may only be placed within
+  // this many days before the due date (exams get a longer lead than quizzes).
+  studyLeadDays?: number | null;
 }
 
 export interface DayBlock {
@@ -27,6 +30,7 @@ export interface DayBlock {
   htmlUrl: string | null;
   dueAt: string; // ISO
   summary?: string | null;
+  study?: boolean; // true = a study session ahead of an exam/quiz (not the work itself)
 }
 
 export interface PlanDay {
@@ -175,7 +179,11 @@ export function generatePlan(
   for (const { a, dueDayIndex } of inWindow) {
     // AI per-assignment effort when present; otherwise the flat default E.
     let remaining = a.estimatedEffortHours != null && a.estimatedEffortHours >= 0 ? a.estimatedEffortHours : E;
-    for (let d = 0; d <= dueDayIndex && remaining > EPS; d++) {
+    const isStudy = a.studyLeadDays != null;
+    // Study sessions can't start earlier than `studyLeadDays` before the due day;
+    // regular work can be placed any time from today.
+    const startDayIdx = isStudy ? Math.max(0, dueDayIndex - (a.studyLeadDays ?? 0)) : 0;
+    for (let d = startDayIdx; d <= dueDayIndex && remaining > EPS; d++) {
       const avail = planDays[d].capacity - planDays[d].allocated;
       if (avail <= EPS) continue;
       const take = Math.min(avail, remaining);
@@ -187,6 +195,7 @@ export function generatePlan(
         htmlUrl: a.htmlUrl,
         dueAt: a.dueAt!.toISOString(),
         summary: a.summary ?? null,
+        study: isStudy,
       });
       planDays[d].allocated += take;
       remaining -= take;
@@ -216,6 +225,7 @@ export function generatePlan(
         htmlUrl: a.htmlUrl,
         dueAt: a.dueAt!.toISOString(),
         summary: a.summary ?? null,
+        study: isStudy,
       });
       representedInWindow.add(a.canvasId);
     }

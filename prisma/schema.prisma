@@ -23,8 +23,10 @@ model User {
   isAdmin            Boolean  @default(false)
   tosAcceptedAt      DateTime
   defaultHoursPerDay Float    @default(3)
-  planningWindowDays Int      @default(7)
-  defaultEffortHours Float    @default(2)
+  planningWindowDays Int      @default(7) // fixed at 7 in code; column kept for back-compat
+  defaultEffortHours Float    @default(2) // internal fallback when Gemini hasn't estimated effort
+  studyDaysTest      Int      @default(7) // days ahead to start studying for exams/tests
+  studyDaysQuiz      Int      @default(3) // days ahead to start studying for quizzes
   createdAt          DateTime @default(now())
 
   sessions      Session[]

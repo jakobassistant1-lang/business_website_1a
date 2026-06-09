@@ -4,15 +4,15 @@ import { useState } from "react";
 
 interface Initial {
   defaultHoursPerDay: number;
-  planningWindowDays: number;
-  defaultEffortHours: number;
+  studyDaysTest: number;
+  studyDaysQuiz: number;
 }
 
 export function SettingsForm({ initial }: { initial: Initial }) {
   const [form, setForm] = useState({
     defaultHoursPerDay: String(initial.defaultHoursPerDay),
-    planningWindowDays: String(initial.planningWindowDays),
-    defaultEffortHours: String(initial.defaultEffortHours),
+    studyDaysTest: String(initial.studyDaysTest),
+    studyDaysQuiz: String(initial.studyDaysQuiz),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
@@ -33,8 +33,8 @@ export function SettingsForm({ initial }: { initial: Initial }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         defaultHoursPerDay: Number(form.defaultHoursPerDay),
-        planningWindowDays: Number(form.planningWindowDays),
-        defaultEffortHours: Number(form.defaultEffortHours),
+        studyDaysTest: Number(form.studyDaysTest),
+        studyDaysQuiz: Number(form.studyDaysQuiz),
       }),
     });
     setBusy(false);
@@ -48,18 +48,18 @@ export function SettingsForm({ initial }: { initial: Initial }) {
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-muted">Defaults the planner uses when it builds your plan.</p>
+      <p className="mt-1 text-sm text-muted">How the planner builds your week. (Effort per assignment is now estimated automatically by AI.)</p>
 
       <form onSubmit={onSubmit} className="card mt-6 max-w-xl space-y-5 p-6">
-        <Field label="Default hours per day" hint="Used as the starting daily budget on the Plan view."
+        <Field label="Hours you can study per day" hint="Your daily study budget — the planner schedules work and study within it."
           value={form.defaultHoursPerDay} onChange={(v) => set("defaultHoursPerDay", v)}
           type="number" min="0.5" max="24" step="0.5" error={errors.defaultHoursPerDay} />
-        <Field label="Planning window (days)" hint="How many days ahead the plan covers (including today)."
-          value={form.planningWindowDays} onChange={(v) => set("planningWindowDays", v)}
-          type="number" min="1" max="60" step="1" error={errors.planningWindowDays} />
-        <Field label="Effort per assignment (hours)" hint="Flat estimate used for every assignment."
-          value={form.defaultEffortHours} onChange={(v) => set("defaultEffortHours", v)}
-          type="number" min="0.5" max="24" step="0.5" error={errors.defaultEffortHours} />
+        <Field label="Start studying for exams/tests (days ahead)" hint="How many days before an exam the planner begins scheduling study sessions."
+          value={form.studyDaysTest} onChange={(v) => set("studyDaysTest", v)}
+          type="number" min="1" max="14" step="1" error={errors.studyDaysTest} />
+        <Field label="Start studying for quizzes (days ahead)" hint="How many days before a quiz the planner begins scheduling study sessions."
+          value={form.studyDaysQuiz} onChange={(v) => set("studyDaysQuiz", v)}
+          type="number" min="1" max="14" step="1" error={errors.studyDaysQuiz} />
 
         <div className="flex items-center gap-3">
           <button type="submit" className="btn-primary" disabled={busy}>

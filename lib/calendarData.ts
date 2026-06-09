@@ -13,7 +13,10 @@ import { loadBusyHoursByDate, loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
 import { itemType, type ItemType } from "./itemType";
 
-export type ItemStatus = "done" | "overdue" | "at_risk" | "normal";
+// The planning window is fixed at 7 days (a week), not user-configurable.
+export const PLAN_WINDOW_DAYS = 7;
+
+export type ItemStatus = "done" | "overdue" | "normal";
 
 export interface CalendarItem {
   canvasId: number;
@@ -27,7 +30,6 @@ export interface CalendarItem {
   effortBucket: string | null; // "quick" | "medium" | "long"
   summary: string | null;
   htmlUrl: string | null;
-  shortfallHours: number | null; // set when status === "at_risk"
 }
 
 export interface CalendarData {
@@ -67,6 +69,12 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
   const submittedRows = rows.filter(isDone);
   const activeRows = rows.filter((a) => !isDone(a));
 
+  // Exams/quizzes get study sessions scheduled ahead of their due date.
+  const leadDaysFor = (a: AssignmentRow): number | null => {
+    const t = itemType(a.submissionType, a.name);
+    return t === "exam" ? user.studyDaysTest : t === "quiz" ? user.studyDaysQuiz : null;
+  };
+
   const assignments: SchedulerAssignment[] = activeRows.map((a) => ({
     canvasId: a.canvasId,
     name: a.name,
@@ -76,28 +84,19 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     htmlUrl: a.htmlUrl,
     estimatedEffortHours: a.estimatedEffortHours ?? null,
     summary: a.aiSummary ?? null,
+    studyLeadDays: leadDaysFor(a),
   }));
 
-  const plan = generatePlan(
-    assignments,
-    hours,
-    user.planningWindowDays,
-    user.defaultEffortHours,
-    new Date(),
-    busyHoursByDate,
-  );
+  const plan = generatePlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, new Date(), busyHoursByDate);
 
   const submittedIds = new Set(submittedRows.map((a) => a.canvasId));
   const pointsById = new Map<number, number | null>(activeRows.map((a) => [a.canvasId, a.pointsPossible]));
   const recommendations = rankRecommendations(priorityInputsFromPlan(plan, submittedIds, pointsById), {
-    windowDays: user.planningWindowDays,
+    windowDays: PLAN_WINDOW_DAYS,
     effortHours: user.defaultEffortHours,
   }).top;
 
   const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
-  const shortfallById = new Map(
-    plan.atRisk.filter((r) => r.kind === "insufficient_time").map((r) => [r.canvasId, r.shortfallHours]),
-  );
 
   const toItem = (a: AssignmentRow, done: boolean): CalendarItem => ({
     canvasId: a.canvasId,
@@ -105,19 +104,12 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     courseName: a.course.name,
     dueAt: a.dueAt ? a.dueAt.toISOString() : null,
     type: itemType(a.submissionType, a.name),
-    status: done
-      ? "done"
-      : overdue.has(a.canvasId)
-        ? "overdue"
-        : shortfallById.has(a.canvasId)
-          ? "at_risk"
-          : "normal",
+    status: done ? "done" : overdue.has(a.canvasId) ? "overdue" : "normal",
     pointsPossible: a.pointsPossible,
     estimatedEffortHours: a.estimatedEffortHours ?? null,
     effortBucket: a.effortBucket ?? null,
     summary: a.aiSummary ?? null,
     htmlUrl: a.htmlUrl,
-    shortfallHours: shortfallById.get(a.canvasId) ?? null,
   });
 
   const status = cred?.lastValidationStatus ?? null;
@@ -127,12 +119,13 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     validationStatus: status,
     stale: !!cred && status !== null && status !== "valid",
     hoursPerDay: hours,
-    windowDays: user.planningWindowDays,
+    windowDays: PLAN_WINDOW_DAYS,
+    // Only overdue surfaces as an alert now — "won't fit" was removed as noise.
+    atRisk: plan.atRisk.filter((r) => r.kind === "overdue"),
     items: activeRows.map((a) => toItem(a, false)),
     completed: submittedRows.map((a) => toItem(a, true)),
     events,
     plan,
-    atRisk: plan.atRisk,
     recommendations,
   };
 }

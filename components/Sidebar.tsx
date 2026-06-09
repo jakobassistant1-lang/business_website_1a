@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
@@ -12,21 +13,44 @@ const NAV = [
   { href: "/account", label: "Account", icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" },
 ];
 
-// Kanban / board glyph for the admin section.
 const BOARD_ICON = "M4 5h16v14H4zM9 5v14M15 5v14";
 const AI_ICON = "M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4L12 3Z";
+const CHEV_L = "M15 6l-6 6 6 6";
+const CHEV_R = "M9 6l6 6-6 6";
+const LOGOUT_ICON = "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9";
 
-export function Sidebar({
-  userName,
-  userEmail,
-  isAdmin = false,
-}: {
-  userName: string;
-  userEmail: string;
-  isAdmin?: boolean;
-}) {
+function Icon({ d, size = 18 }: { d: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d={d} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: string; userEmail: string; isAdmin?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem("sp_sidebar_collapsed") === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleCollapse() {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem("sp_sidebar_collapsed", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -35,71 +59,84 @@ export function Sidebar({
   }
 
   function linkClass(active: boolean) {
-    return `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-      active
-        ? "bg-accent text-accent-on"
-        : "text-gray-300 hover:bg-gray-800 hover:text-white"
-    }`;
+    return `flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors ${
+      collapsed ? "justify-center px-2" : "px-3"
+    } ${active ? "bg-accent text-accent-on" : "text-gray-300 hover:bg-gray-800 hover:text-white"}`;
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col bg-sidebar px-4 py-6">
-      <Link href="/calendar" className="mb-2 flex items-center gap-3 px-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M5 4h9l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-            <path d="M9 12.5l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-        <span className="text-lg font-bold tracking-tight text-white">StudyPlan</span>
-      </Link>
+    <aside className={`flex shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 ${collapsed ? "w-16 px-2" : "w-64 px-4"}`}>
+      <div className={`mb-2 flex items-center px-1 ${collapsed ? "justify-center" : "justify-between"}`}>
+        <Link href="/calendar" className="flex items-center gap-3" title="StudyPlan">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M5 4h9l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+              <path d="M9 12.5l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          {!collapsed && <span className="text-lg font-bold tracking-tight text-white">StudyPlan</span>}
+        </Link>
+        {!collapsed && (
+          <button onClick={toggleCollapse} title="Collapse menu" aria-label="Collapse menu" className="text-gray-400 transition-colors hover:text-white">
+            <Icon d={CHEV_L} size={18} />
+          </button>
+        )}
+      </div>
+      {collapsed && (
+        <button onClick={toggleCollapse} title="Expand menu" aria-label="Expand menu" className="mx-auto mb-2 text-gray-400 transition-colors hover:text-white">
+          <Icon d={CHEV_R} size={18} />
+        </button>
+      )}
 
-      <nav className="mt-6 flex flex-col gap-1">
+      <nav className="mt-4 flex flex-col gap-1">
         {NAV.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
-            <Link key={item.href} href={item.href} className={linkClass(active)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d={item.icon} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {item.label}
+            <Link key={item.href} href={item.href} className={linkClass(active)} title={item.label}>
+              <Icon d={item.icon} />
+              {!collapsed && item.label}
             </Link>
           );
         })}
 
         {isAdmin && (
           <>
-            <span className="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Admin
-            </span>
-            <Link href="/admin" className={linkClass(pathname === "/admin")}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d={BOARD_ICON} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Board
+            {collapsed ? (
+              <div className="my-1 border-t border-gray-800" />
+            ) : (
+              <span className="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wider text-gray-500">Admin</span>
+            )}
+            <Link href="/admin" className={linkClass(pathname === "/admin")} title="Board">
+              <Icon d={BOARD_ICON} />
+              {!collapsed && "Board"}
             </Link>
-            <Link href="/admin/ai" className={linkClass(pathname.startsWith("/admin/ai"))}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d={AI_ICON} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              AI settings
+            <Link href="/admin/ai" className={linkClass(pathname.startsWith("/admin/ai"))} title="AI settings">
+              <Icon d={AI_ICON} />
+              {!collapsed && "AI settings"}
             </Link>
           </>
         )}
       </nav>
 
       <div className="mt-auto border-t border-gray-800 pt-4">
-        <div className="px-2">
-          <p className="truncate text-sm font-medium text-white">{userName}</p>
-          <p className="truncate text-xs text-gray-400">{userEmail}</p>
-        </div>
-        <div className="mt-3 flex flex-col gap-1">
-          <ThemeToggle className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white" />
+        {!collapsed && (
+          <div className="px-2">
+            <p className="truncate text-sm font-medium text-white">{userName}</p>
+            <p className="truncate text-xs text-gray-400">{userEmail}</p>
+          </div>
+        )}
+        <div className={`mt-3 flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
+          {!collapsed && (
+            <ThemeToggle className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white" />
+          )}
           <button
             onClick={logout}
-            className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+            title="Log out"
+            className={`rounded-md py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white ${
+              collapsed ? "px-2" : "w-full px-3 text-left"
+            }`}
           >
-            Log out
+            {collapsed ? <Icon d={LOGOUT_ICON} /> : "Log out"}
           </button>
         </div>
       </div>
