@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { courseColor, pickTextOn } from "@/lib/courseColor";
 import { WEEKDAYS, parseYmd } from "@/lib/calendarDates";
-import { AttentionBanner, PeriodSummary, ItemDetail, CourseDot, Glyph, ICON } from "@/components/calendar/parts";
+import { AttentionBanner, PeriodSummary, ItemDetail, CourseDot, Glyph, ICON, fmtHours } from "@/components/calendar/parts";
 import { toneSoft } from "@/lib/tone";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { PlanDay } from "@/lib/scheduler";
@@ -234,7 +234,7 @@ function WeekGantt({ courses, days, rank, onPick }: { courses: string[]; days: P
                   <button
                     key={s.canvasId}
                     onClick={() => onPick(s.canvasId)}
-                    title={`${s.study ? "Study: " : ""}${s.name} · ${s.hours}h${s.dueIdx != null ? ` · due ${dueDow(s.dueIdx)}` : ""}`}
+                    title={`${s.study ? "Study: " : ""}${s.name} · ${fmtHours(s.hours)}${s.dueIdx != null ? ` · due ${dueDow(s.dueIdx)}` : ""}`}
                     className="absolute truncate rounded px-1.5 text-left text-[10px] font-medium leading-[18px]"
                     style={{
                       left: `${(s.startIdx / N) * 100}%`,
@@ -248,7 +248,7 @@ function WeekGantt({ courses, days, rank, onPick }: { courses: string[]; days: P
                   >
                     {rank.get(s.canvasId) ? <span className="font-bold">{rank.get(s.canvasId)}. </span> : null}
                     {s.study ? "Study: " : ""}
-                    {s.name} {s.hours}h
+                    {s.name} {fmtHours(s.hours)}
                   </button>
                 ))}
               </div>
@@ -286,7 +286,7 @@ function DaySequence({ today, rank, onPick }: { today?: PlanDay; rank: Map<numbe
                 </span>
                 <span className="block truncate text-xs text-muted">{b.courseName}</span>
               </span>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${toneSoft.neutral}`}>{b.hours}h</span>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${toneSoft.neutral}`}>{fmtHours(b.hours)}</span>
             </button>
           </li>
         ))}

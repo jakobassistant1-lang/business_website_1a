@@ -120,6 +120,15 @@ describe("generatePlan — study sessions (exam/quiz lead window)", () => {
     expect(plan.days.some((d) => d.blocks.some((b) => b.study))).toBe(true);
   });
 
+  it("keeps a floor of study the day before, even when the rest front-loads", () => {
+    // Exam due in 4 days (idx4), 2h effort, 6-day lead → greedy alone would dump it all on day 0.
+    const exam = { ...mk(1, due(4)), estimatedEffortHours: 2, studyLeadDays: 6 };
+    const plan = generatePlan([exam], 5, 7, 2, NOW);
+    const sumFor = (idx: number) => plan.days[idx].blocks.filter((b) => b.canvasId === 1).reduce((s, b) => s + b.hours, 0);
+    expect(sumFor(3)).toBeGreaterThan(0); // ~20 min reserved the day before (idx 3)
+    expect(sumFor(0)).toBeGreaterThan(sumFor(3)); // bulk still earlier (usual sequence)
+  });
+
   it("flags study blocks with study=true and leaves regular work unflagged", () => {
     const exam = { ...mk(1, due(3)), estimatedEffortHours: 2, studyLeadDays: 5 };
     const hw = { ...mk(2, due(3)), estimatedEffortHours: 2 };

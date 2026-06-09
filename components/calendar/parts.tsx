@@ -5,13 +5,14 @@
 // lib/courseColor). The AI study-coach summary fails open by design.
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { courseColor } from "@/lib/courseColor";
 import { toneSoft } from "@/lib/tone";
+import { isStudyType, type ItemType } from "@/lib/itemType";
 import type { CalendarItem } from "@/lib/calendarData";
 import type { CalendarEvent } from "@/lib/calendar/types";
 import type { AtRiskItem } from "@/lib/scheduler";
 import type { ScoredAssignment } from "@/lib/priority";
-import type { ItemType } from "@/lib/itemType";
 
 export const ICON = {
   alert: "M12 9v4M12 17h.01M10.3 4.3 2.7 18a1.5 1.5 0 0 0 1.3 2.2h16a1.5 1.5 0 0 0 1.3-2.2L13.7 4.3a1.5 1.5 0 0 0-2.6 0Z",
@@ -50,6 +51,13 @@ export function fmtTime(iso: string): string {
 }
 export function fmtDueLong(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+/** Hours → friendly label: sub-hour shows minutes (so the 20-min study floor
+ *  reads as "20m"), otherwise "Nh". Rounds minutes to the nearest 5. */
+export function fmtHours(h: number): string {
+  if (h <= 0) return "0m";
+  const mins = Math.round((h * 60) / 5) * 5;
+  return mins < 60 ? `${mins}m` : `${Math.round(h * 10) / 10}h`;
 }
 export function effortText(item: CalendarItem): string | null {
   if (item.estimatedEffortHours != null && item.estimatedEffortHours > 0) {
@@ -160,6 +168,7 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
         ) : descLoading ? (
           <p className="mt-3 text-xs text-muted">Generating a quick description…</p>
         ) : null}
+        {isStudyType(item.type) && item.status !== "done" && <StudyLeadEditor item={item} />}
         <div className="mt-4 flex items-center justify-end gap-3">
           {item.htmlUrl && (
             <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm">
@@ -176,6 +185,69 @@ function DetailRow({ k, v }: { k: string; v: string }) {
     <div className="flex justify-between gap-3">
       <dt className="text-muted">{k}</dt>
       <dd className="text-right text-ink">{v}</dd>
+    </div>
+  );
+}
+
+/** Per-assignment control: how many days ahead to start studying for THIS
+ *  exam/quiz. Saving re-plans (router.refresh reloads the server data). */
+function StudyLeadEditor({ item }: { item: CalendarItem }) {
+  const router = useRouter();
+  const [days, setDays] = useState(item.studyLeadDays != null ? String(item.studyLeadDays) : "");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function apply() {
+    setBusy(true);
+    setErr(null);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/assignment/study-lead", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.canvasId, days: days === "" ? null : Number(days) }),
+      });
+      if (res.ok) {
+        setSaved(true);
+        router.refresh();
+      } else {
+        const b = await res.json().catch(() => ({}));
+        setErr(typeof b.error === "string" ? b.error : "Couldn't save.");
+      }
+    } catch {
+      setErr("Couldn't save.");
+    }
+    setBusy(false);
+  }
+
+  const label = item.type === "exam" ? "exam/test" : "quiz";
+  return (
+    <div className="mt-3 rounded-md border border-line-subtle bg-surface-soft/50 p-2.5">
+      <label className="text-xs font-medium text-ink">Start studying for this {label}</label>
+      <div className="mt-1.5 flex items-center gap-2">
+        <input
+          type="number"
+          min="1"
+          max="14"
+          value={days}
+          onChange={(e) => {
+            setDays(e.target.value);
+            setSaved(false);
+          }}
+          className="field w-20 text-sm"
+          placeholder="days"
+        />
+        <span className="text-xs text-muted">days ahead</span>
+        <button onClick={apply} disabled={busy} className="btn-primary text-sm">
+          {busy ? "Saving…" : "Apply"}
+        </button>
+        {saved && <span className="text-xs text-success">Re-planned ✓</span>}
+      </div>
+      {err && <p className="mt-1 text-xs text-danger">{err}</p>}
+      <p className="mt-1 text-[11px] text-muted">
+        Study spreads across those days (with ~20 min kept the day before). Leave blank to use your Settings default.
+      </p>
     </div>
   );
 }
@@ -248,7 +320,7 @@ export function DayPeek({
                   <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
                   <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
                   <span className="shrink-0 text-xs text-muted">
-                    {s.hours}h · due {dueShort(s.dueAt)}
+                    {fmtHours(s.hours)} · due {dueShort(s.dueAt)}
                   </span>
                 </li>
               ))}

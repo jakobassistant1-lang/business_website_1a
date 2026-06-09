@@ -27,6 +27,7 @@ import {
   CourseDot,
   Glyph,
   ICON,
+  fmtHours,
 } from "@/components/calendar/parts";
 import { toneSoft } from "@/lib/tone";
 import { courseColor } from "@/lib/courseColor";
@@ -325,7 +326,7 @@ function DayView({
                   <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(b.courseName) }} aria-hidden />
                   <span className="min-w-0 flex-1 truncate text-ink">Study: {b.name}</span>
                   <span className="shrink-0 text-xs text-muted">
-                    {b.hours}h · due {new Date(b.dueAt).toLocaleDateString(undefined, { weekday: "short" })}
+                    {fmtHours(b.hours)} · due {new Date(b.dueAt).toLocaleDateString(undefined, { weekday: "short" })}
                   </span>
                 </li>
               ))}

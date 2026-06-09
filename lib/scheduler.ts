@@ -174,6 +174,9 @@ export function generatePlan(
 
   const atRisk: AtRiskItem[] = [];
   const representedInWindow = new Set<number>();
+  // Hard floor: always reserve some study the day before an exam/quiz, so prep is
+  // never all dumped at the start of the window with nothing right before the test.
+  const MIN_STUDY_DAY_BEFORE = 1 / 3; // ~20 minutes
 
   // Greedy packing: fill earliest available day up to (and including) the due day.
   for (const { a, dueDayIndex } of inWindow) {
@@ -183,24 +186,44 @@ export function generatePlan(
     // Study sessions can't start earlier than `studyLeadDays` before the due day;
     // regular work can be placed any time from today.
     const startDayIdx = isStudy ? Math.max(0, dueDayIndex - (a.studyLeadDays ?? 0)) : 0;
+    const base = {
+      canvasId: a.canvasId,
+      name: a.name,
+      courseName: a.courseName,
+      htmlUrl: a.htmlUrl,
+      dueAt: a.dueAt!.toISOString(),
+      summary: a.summary ?? null,
+      study: isStudy,
+    };
+
+    // Accumulate hours per day for this item so each day emits a single block.
+    const hoursByDay = new Map<number, number>();
+
+    // 1) The day-before floor for exams/quizzes (reserved before greedy packing so
+    //    a small assessment isn't fully front-loaded). May tip a fully-booked day
+    //    slightly over capacity — that's the point of a hard floor.
+    if (isStudy && remaining > EPS && dueDayIndex - 1 >= 0) {
+      const floor = Math.min(MIN_STUDY_DAY_BEFORE, remaining);
+      hoursByDay.set(dueDayIndex - 1, floor);
+      planDays[dueDayIndex - 1].allocated += floor;
+      remaining -= floor;
+    }
+
+    // 2) Greedy: place the rest earliest-first within the (lead) window.
     for (let d = startDayIdx; d <= dueDayIndex && remaining > EPS; d++) {
       const avail = planDays[d].capacity - planDays[d].allocated;
       if (avail <= EPS) continue;
       const take = Math.min(avail, remaining);
-      planDays[d].blocks.push({
-        canvasId: a.canvasId,
-        name: a.name,
-        courseName: a.courseName,
-        hours: take,
-        htmlUrl: a.htmlUrl,
-        dueAt: a.dueAt!.toISOString(),
-        summary: a.summary ?? null,
-        study: isStudy,
-      });
+      hoursByDay.set(d, (hoursByDay.get(d) ?? 0) + take);
       planDays[d].allocated += take;
       remaining -= take;
+    }
+
+    for (const [d, hours] of [...hoursByDay.entries()].sort((x, y) => x[0] - y[0])) {
+      planDays[d].blocks.push({ ...base, hours });
       representedInWindow.add(a.canvasId);
     }
+
     if (remaining > EPS) {
       atRisk.push({
         canvasId: a.canvasId,
@@ -217,16 +240,7 @@ export function generatePlan(
     // Zero/negative effort schedules nothing above; surface a 0h marker on the due
     // day so the assignment is never dropped (G1) and stays visible.
     if (!representedInWindow.has(a.canvasId)) {
-      planDays[dueDayIndex].blocks.push({
-        canvasId: a.canvasId,
-        name: a.name,
-        courseName: a.courseName,
-        hours: 0,
-        htmlUrl: a.htmlUrl,
-        dueAt: a.dueAt!.toISOString(),
-        summary: a.summary ?? null,
-        study: isStudy,
-      });
+      planDays[dueDayIndex].blocks.push({ ...base, hours: 0 });
       representedInWindow.add(a.canvasId);
     }
   }

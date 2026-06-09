@@ -148,6 +148,7 @@ model Assignment {
   pointsPossible  Float?
   htmlUrl         String?
   submissionType  String?   // Canvas submission_types, comma-joined (e.g. "online_quiz") — drives the Calendar TYPE glyph
+  studyLeadDays   Int?      // per-assignment override of days-ahead to study (null = use the User default by type)
   updatedAt       DateTime  @updatedAt
   // Submission data from Canvas include[]=submission (canvas-mcp integration)
   submittedAt     DateTime?

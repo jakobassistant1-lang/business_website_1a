@@ -11,7 +11,7 @@ import { generatePlan, type Plan, type SchedulerAssignment, type AtRiskItem } fr
 import { rankRecommendations, priorityInputsFromPlan, type ScoredAssignment } from "./priority";
 import { loadBusyHoursByDate, loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
-import { itemType, type ItemType } from "./itemType";
+import { itemType, isStudyType, type ItemType } from "./itemType";
 
 // The planning window is fixed at 7 days (a week), not user-configurable.
 export const PLAN_WINDOW_DAYS = 7;
@@ -25,6 +25,7 @@ export interface CalendarItem {
   dueAt: string | null; // ISO; null = undated
   type: ItemType;
   status: ItemStatus;
+  studyLeadDays: number | null; // effective days-ahead-to-study (null = not a study type)
   pointsPossible: number | null;
   estimatedEffortHours: number | null;
   effortBucket: string | null; // "quick" | "medium" | "long"
@@ -69,10 +70,13 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
   const submittedRows = rows.filter(isDone);
   const activeRows = rows.filter((a) => !isDone(a));
 
-  // Exams/quizzes get study sessions scheduled ahead of their due date.
+  // Exams/quizzes get study sessions scheduled ahead of their due date. A
+  // per-assignment override (set on the assignment card) beats the User default.
   const leadDaysFor = (a: AssignmentRow): number | null => {
     const t = itemType(a.submissionType, a.name);
-    return t === "exam" ? user.studyDaysTest : t === "quiz" ? user.studyDaysQuiz : null;
+    if (!isStudyType(t)) return null;
+    if (a.studyLeadDays != null) return a.studyLeadDays;
+    return t === "exam" ? user.studyDaysTest : user.studyDaysQuiz;
   };
 
   const assignments: SchedulerAssignment[] = activeRows.map((a) => ({
@@ -105,6 +109,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     dueAt: a.dueAt ? a.dueAt.toISOString() : null,
     type: itemType(a.submissionType, a.name),
     status: done ? "done" : overdue.has(a.canvasId) ? "overdue" : "normal",
+    studyLeadDays: leadDaysFor(a),
     pointsPossible: a.pointsPossible,
     estimatedEffortHours: a.estimatedEffortHours ?? null,
     effortBucket: a.effortBucket ?? null,
