@@ -23,6 +23,7 @@ import {
   ItemPill,
   BusyRow,
   ItemDetail,
+  DayPeek,
   CourseDot,
   Glyph,
   ICON,
@@ -56,6 +57,7 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
   const [view, setView] = useState<View>("day");
   const [anchor, setAnchor] = useState(() => parseYmd(todayYmd));
   const [selected, setSelected] = useState<CalendarItem | null>(null);
+  const [peek, setPeek] = useState<Date | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const didAutoSync = useRef(false);
@@ -178,11 +180,11 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
               eventsByDay={eventsByDay}
               planByDay={planByDay}
               onSelect={setSelected}
-              onOpenDay={openDay}
+              onPeek={setPeek}
             />
           )}
           {view === "month" && (
-            <MonthView anchor={anchor} now={now} itemsByDay={itemsByDay} eventsByDay={eventsByDay} onOpenDay={openDay} />
+            <MonthView anchor={anchor} now={now} itemsByDay={itemsByDay} eventsByDay={eventsByDay} onPeek={setPeek} />
           )}
 
           {/* Folded-in extras: undated + completed */}
@@ -222,6 +224,19 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
         </div>
       )}
 
+      {peek && (
+        <DayPeek
+          date={peek}
+          items={itemsByDay.get(ymd(peek)) ?? []}
+          events={eventsByDay.get(ymd(peek)) ?? []}
+          study={(planByDay.get(ymd(peek))?.blocks ?? [])
+            .filter((b) => b.study)
+            .map((b) => ({ canvasId: b.canvasId, name: b.name, courseName: b.courseName, hours: b.hours, dueAt: b.dueAt }))}
+          onSelect={setSelected}
+          onClose={() => setPeek(null)}
+          onOpenDay={() => openDay(peek)}
+        />
+      )}
       {selected && <ItemDetail item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
@@ -309,7 +324,9 @@ function DayView({
                 <li key={`st-${b.canvasId}-${i}`} className="flex items-center gap-2">
                   <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(b.courseName) }} aria-hidden />
                   <span className="min-w-0 flex-1 truncate text-ink">Study: {b.name}</span>
-                  <span className="shrink-0 text-xs text-muted">{b.hours}h</span>
+                  <span className="shrink-0 text-xs text-muted">
+                    {b.hours}h · due {new Date(b.dueAt).toLocaleDateString(undefined, { weekday: "short" })}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -336,7 +353,7 @@ function WeekView({
   eventsByDay,
   planByDay,
   onSelect,
-  onOpenDay,
+  onPeek,
 }: {
   anchor: Date;
   now: Date;
@@ -344,7 +361,7 @@ function WeekView({
   eventsByDay: Map<string, CalendarEvent[]>;
   planByDay: Map<string, PlanDay>;
   onSelect: (it: CalendarItem) => void;
-  onOpenDay: (d: Date) => void;
+  onPeek: (d: Date) => void;
 }) {
   const start = weekStart(anchor);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
@@ -365,12 +382,12 @@ function WeekView({
             key={key}
             className={`card flex flex-col p-2 ${isToday ? "ring-2 ring-accent-ring bg-accent-soft/30" : ""} ${isPast ? "opacity-70" : ""}`}
           >
-            <div className="flex items-baseline justify-between">
+            <button onClick={() => onPeek(d)} className="flex items-baseline justify-between rounded hover:bg-surface-soft" title="Open this day">
               <span className="text-xs font-semibold text-ink">
                 {WEEKDAYS[d.getDay()]} {d.getDate()}
               </span>
               {isToday && <span className="text-[10px] font-semibold text-accent">TODAY</span>}
-            </div>
+            </button>
             {plan && (
               <span className={`mt-0.5 text-[10px] ${plan.allocated > plan.capacity + 1e-9 ? "text-warning" : "text-muted"}`}>
                 {plan.allocated}/{plan.capacity}h
@@ -381,19 +398,23 @@ function WeekView({
                 <ItemPill key={`w-${it.canvasId}`} item={it} onSelect={onSelect} showTime={false} />
               ))}
               {more > 0 && (
-                <button onClick={() => onOpenDay(d)} className="w-full rounded-md px-1.5 py-0.5 text-left text-[11px] text-muted hover:bg-surface-soft">
+                <button onClick={() => onPeek(d)} className="w-full rounded-md px-1.5 py-0.5 text-left text-[11px] text-muted hover:bg-surface-soft">
                   +{more} more
                 </button>
               )}
               {events.length > 0 && (
                 <button
-                  onClick={() => onOpenDay(d)}
+                  onClick={() => onPeek(d)}
                   className="flex w-full items-center gap-1 rounded-md border border-dashed border-line px-1.5 py-0.5 text-left text-[10px] text-faint"
                 >
                   <Glyph d={ICON.calendar} size={10} /> {events.length} busy
                 </button>
               )}
-              {items.length === 0 && events.length === 0 && <p className="px-1 py-2 text-[11px] text-faint">—</p>}
+              {items.length === 0 && events.length === 0 && (
+                <button onClick={() => onPeek(d)} className="px-1 py-2 text-left text-[11px] text-faint hover:text-muted">
+                  —
+                </button>
+              )}
             </div>
           </div>
         );
@@ -407,13 +428,13 @@ function MonthView({
   now,
   itemsByDay,
   eventsByDay,
-  onOpenDay,
+  onPeek,
 }: {
   anchor: Date;
   now: Date;
   itemsByDay: Map<string, CalendarItem[]>;
   eventsByDay: Map<string, CalendarEvent[]>;
-  onOpenDay: (d: Date) => void;
+  onPeek: (d: Date) => void;
 }) {
   const cells = monthGrid(anchor);
   const month = anchor.getMonth();
@@ -435,7 +456,7 @@ function MonthView({
           return (
             <button
               key={key}
-              onClick={() => onOpenDay(d)}
+              onClick={() => onPeek(d)}
               className={`flex min-h-[4.5rem] flex-col rounded-md border p-1 text-left transition hover:border-accent ${
                 inMonth ? "border-line-subtle bg-surface" : "border-transparent bg-surface-soft"
               }`}

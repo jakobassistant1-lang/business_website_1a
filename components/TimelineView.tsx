@@ -166,7 +166,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
           ) : (
             <DaySequence today={data.plan.days[0]} rank={rank} onPick={pick} />
           )}
-          <p className="mt-2 text-xs text-muted">◆ marks a due date · striped/“Study” bars are exam &amp; quiz prep · numbers show the recommended order.</p>
+          <p className="mt-2 text-xs text-muted">The ◆ diamond marks where each item is due · striped “Study” bars are exam &amp; quiz prep · numbers show the recommended order.</p>
         </div>
       )}
 
@@ -179,6 +179,7 @@ const BAR_H = 22; // px per lane row
 
 function WeekGantt({ courses, days, rank, onPick }: { courses: string[]; days: PlanDay[]; rank: Map<number, number>; onPick: (id: number) => void }) {
   const N = days.length;
+  const dueDow = (idx: number | null) => (idx != null ? WEEKDAYS[parseYmd(days[idx].date).getDay()] : null);
   return (
     <div className="overflow-x-auto rounded-lg border border-line-subtle">
       <div className="min-w-[640px]">
@@ -215,18 +216,25 @@ function WeekGantt({ courses, days, rank, onPick }: { courses: string[]; days: P
                 {days.map((_, i) => (
                   <div key={i} className="absolute bottom-0 top-0 border-l border-line-subtle/60" style={{ left: `${(i / N) * 100}%` }} />
                 ))}
-                {/* due-date pins */}
+                {/* due-date markers — a course-colored diamond + line so it's clear
+                    where each assignment / exam / quiz is actually due */}
                 {spans
                   .filter((s) => s.dueIdx != null)
                   .map((s) => (
-                    <div key={`due-${s.canvasId}`} className="absolute bottom-0 top-0 w-px bg-ink/40" style={{ left: `${((s.dueIdx! + 1) / N) * 100}%` }} title="Due" />
+                    <div key={`due-${s.canvasId}`} title={`${s.name} due ${dueDow(s.dueIdx) ?? ""}`}>
+                      <div className="absolute bottom-0 top-0 w-px bg-ink/30" style={{ left: `${((s.dueIdx! + 0.5) / N) * 100}%` }} />
+                      <span
+                        className="absolute h-2.5 w-2.5 rotate-45 rounded-[1px] border border-surface shadow-sm"
+                        style={{ left: `calc(${((s.dueIdx! + 0.5) / N) * 100}% - 5px)`, bottom: -2, background: bg }}
+                      />
+                    </div>
                   ))}
                 {/* bars */}
                 {spans.map((s) => (
                   <button
                     key={s.canvasId}
                     onClick={() => onPick(s.canvasId)}
-                    title={`${s.study ? "Study: " : ""}${s.name} · ${s.hours}h`}
+                    title={`${s.study ? "Study: " : ""}${s.name} · ${s.hours}h${s.dueIdx != null ? ` · due ${dueDow(s.dueIdx)}` : ""}`}
                     className="absolute truncate rounded px-1.5 text-left text-[10px] font-medium leading-[18px]"
                     style={{
                       left: `${(s.startIdx / N) * 100}%`,
@@ -240,7 +248,7 @@ function WeekGantt({ courses, days, rank, onPick }: { courses: string[]; days: P
                   >
                     {rank.get(s.canvasId) ? <span className="font-bold">{rank.get(s.canvasId)}. </span> : null}
                     {s.study ? "Study: " : ""}
-                    {s.name} {s.hours}h{s.dueIdx === s.endIdx ? " ◆" : ""}
+                    {s.name} {s.hours}h
                   </button>
                 ))}
               </div>

@@ -172,3 +172,29 @@ export async function generatePeriodBriefing(
 ): Promise<BriefingResult> {
   return runGemini(`${instruction}\n\n${buildPeriodPrompt(input)}`, 320);
 }
+
+// --- Per-assignment description (shown when an item is opened) ----------------
+
+export interface AssignmentDescInput {
+  name: string;
+  courseName: string;
+  type: string; // assignment | quiz | exam | other
+  points: number | null;
+  dueLabel: string | null;
+}
+
+export function buildDescriptionPrompt(i: AssignmentDescInput): string {
+  const bits = [`Assignment: "${i.name}" in ${i.courseName}.`, `Type: ${i.type}.`];
+  if (i.points != null) bits.push(`Worth ${i.points} points.`);
+  if (i.dueLabel) bits.push(`Due ${i.dueLabel}.`);
+  return (
+    bits.join(" ") +
+    "\nIn ONE plain-English sentence, describe what this assignment most likely involves and how a " +
+    "student should approach it. Be concrete but do NOT invent specific page numbers, prompts, or " +
+    "requirements you cannot know from the title. No preamble, no markdown."
+  );
+}
+
+export async function generateAssignmentDescription(input: AssignmentDescInput): Promise<BriefingResult> {
+  return runGemini(buildDescriptionPrompt(input), 120);
+}

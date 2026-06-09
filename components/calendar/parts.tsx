@@ -104,13 +104,33 @@ export function BusyRow({ ev }: { ev: CalendarEvent }) {
   );
 }
 
-/** Click-to-open detail for a coursework item. Esc / backdrop closes. */
+/** Click-to-open detail for a coursework item. Esc / backdrop closes. Shows a
+ *  brief Gemini description (the stored AI summary, or one fetched on open). */
 export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () => void }) {
+  const [desc, setDesc] = useState<string | null>(item.summary ?? null);
+  const [descLoading, setDescLoading] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  useEffect(() => {
+    if (item.summary) {
+      setDesc(item.summary);
+      return;
+    }
+    let cancelled = false;
+    setDesc(null);
+    setDescLoading(true);
+    fetch(`/api/assignment/describe?id=${item.canvasId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => !cancelled && setDesc(typeof b?.text === "string" ? b.text : null))
+      .catch(() => !cancelled && setDesc(null))
+      .finally(() => !cancelled && setDescLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [item.canvasId, item.summary]);
   const eff = effortText(item);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true">
@@ -132,7 +152,14 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
           {item.pointsPossible != null && <DetailRow k="Points" v={`${item.pointsPossible}`} />}
           <DetailRow k="Type" v={item.type} />
         </dl>
-        {item.summary && <p className="mt-3 text-xs italic text-muted">{item.summary}</p>}
+        {desc ? (
+          <p className="mt-3 rounded-md bg-surface-soft px-3 py-2 text-xs text-muted">
+            <span className="font-medium text-ink">About this: </span>
+            {desc}
+          </p>
+        ) : descLoading ? (
+          <p className="mt-3 text-xs text-muted">Generating a quick description…</p>
+        ) : null}
         <div className="mt-4 flex items-center justify-end gap-3">
           {item.htmlUrl && (
             <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm">
@@ -149,6 +176,109 @@ function DetailRow({ k, v }: { k: string; v: string }) {
     <div className="flex justify-between gap-3">
       <dt className="text-muted">{k}</dt>
       <dd className="text-right text-ink">{v}</dd>
+    </div>
+  );
+}
+
+export interface StudyEntry {
+  canvasId: number;
+  name: string;
+  courseName: string;
+  hours: number;
+  dueAt: string; // ISO — when the exam/quiz this prepares for is due
+}
+
+/** A day expanded into a popup (from Week/Month). Lists due items (clickable →
+ *  ItemDetail), study sessions, and busy blocks. Sits below ItemDetail (z-40). */
+export function DayPeek({
+  date,
+  items,
+  events,
+  study,
+  onSelect,
+  onClose,
+  onOpenDay,
+}: {
+  date: Date;
+  items: CalendarItem[];
+  events: CalendarEvent[];
+  study: StudyEntry[];
+  onSelect: (it: CalendarItem) => void;
+  onClose: () => void;
+  onOpenDay?: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const empty = items.length === 0 && events.length === 0 && study.length === 0;
+  const dueShort = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="card max-h-[80vh] w-full max-w-md overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">{date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink" aria-label="Close">
+            <Glyph d={ICON.x} size={16} />
+          </button>
+        </div>
+
+        {empty && <p className="py-6 text-center text-sm text-muted">Nothing on this day.</p>}
+
+        {items.length > 0 && (
+          <section className="mt-3">
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Due ({items.length})</h3>
+            <div className="space-y-1.5">
+              {items.map((it) => (
+                <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {study.length > 0 && (
+          <section className="mt-3">
+            <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+              <Glyph d={ICON.clock} size={13} /> Study plan
+            </h3>
+            <ul className="mt-1.5 space-y-1">
+              {study.map((s, i) => (
+                <li key={`peekst-${s.canvasId}-${i}`} className="flex items-center gap-2 text-sm">
+                  <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
+                  <span className="shrink-0 text-xs text-muted">
+                    {s.hours}h · due {dueShort(s.dueAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {events.length > 0 && (
+          <section className="mt-3">
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Busy</h3>
+            <div className="space-y-1.5">
+              {events.map((e, i) => (
+                <BusyRow key={`peekev-${i}`} ev={e} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {onOpenDay && (
+          <button
+            onClick={() => {
+              onOpenDay();
+              onClose();
+            }}
+            className="btn-ghost mt-4 w-full text-sm"
+          >
+            Open full day view →
+          </button>
+        )}
+      </div>
     </div>
   );
 }
