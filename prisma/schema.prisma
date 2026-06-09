@@ -38,16 +38,22 @@ model User {
 // Internal team task board (admin-only). Not user-facing and unrelated to
 // Canvas coursework — this is how the owner + team track building the business.
 model AdminTask {
-  id        Int      @id @default(autoincrement())
-  title     String
-  status    String   @default("todo") // "todo" | "progress" | "review" | "done"
-  position  Int      @default(0)       // order within a column
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  status      String    @default("todo") // "todo" | "progress" | "review" | "done"
+  position    Int       @default(0) // order within a column
+  // New card fields — all optional, so existing cards are unaffected (additive).
+  dueDate     DateTime?
+  category    String? // free-form category tag
+  ticketSize  String? // "small" | "medium" | "large" (validated in app)
+  contributor String? // free-text contributor (name or initials); shown as initials
   // Nullable + SetNull: the board is shared by the team, so a task must outlive
   // the account that created it (deleting an admin nulls the author, not the task).
   createdById Int?
-  createdBy User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([status, position])
 }

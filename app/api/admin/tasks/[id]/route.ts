@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAdmin } from "@/lib/admin";
-import { isKanbanStatus, MAX_TASK_TITLE, KANBAN_TASK_SELECT, toKanbanTask } from "@/lib/kanban";
+import {
+  isKanbanStatus,
+  MAX_TASK_TITLE,
+  KANBAN_TASK_SELECT,
+  toKanbanTask,
+  parseTaskFields,
+} from "@/lib/kanban";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -27,6 +33,10 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
   }
   const wantStatus = isKanbanStatus(body.status) ? body.status : undefined;
   const wantPosition = Number.isInteger(body.position) ? (body.position as number) : undefined;
+  // Optional card fields (description / dueDate / category / ticketSize /
+  // contributor). Only keys present in the body are returned, so unsent fields
+  // stay unchanged on edit.
+  const fields = parseTaskFields(body);
 
   // Read the target column AND write the re-sequence inside one interactive
   // transaction. This serializes concurrent moves (the second move sees the
@@ -57,7 +67,9 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
         data: {
           position: i,
           status: newStatus, // no-op for the others (already in this column)
+          // Title + the optional fields apply only to the moved/edited card.
           ...(ids[i] === id && newTitle !== undefined ? { title: newTitle } : {}),
+          ...(ids[i] === id ? fields : {}),
         },
       });
     }

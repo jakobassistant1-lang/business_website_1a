@@ -1,14 +1,34 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { KANBAN_COLUMNS, KANBAN_STATUSES, type KanbanStatus, type KanbanTask } from "@/lib/kanban";
-import { toneBar } from "@/lib/tone";
+import {
+  KANBAN_COLUMNS,
+  KANBAN_STATUSES,
+  TICKET_SIZES,
+  TICKET_SIZE_LABEL,
+  type KanbanStatus,
+  type KanbanTask,
+  type TicketSize,
+} from "@/lib/kanban";
+import { toneBar, toneSoft, type Tone } from "@/lib/tone";
 
 type ToastKind = "success" | "info" | "warning" | "danger";
 interface Toast {
   id: number;
   kind: ToastKind;
   title: string;
+}
+
+// Draft values held by the create/edit modal. Tag/date fields are plain strings
+// here ("" = unset) and normalized to null on save.
+interface TaskDraft {
+  title: string;
+  status: KanbanStatus;
+  description: string;
+  contributor: string;
+  dueDate: string; // YYYY-MM-DD or ""
+  category: string;
+  ticketSize: TicketSize | "";
 }
 
 // Per-column accent dot.
@@ -19,10 +39,44 @@ const DOT: Record<KanbanStatus, string> = {
   done: "bg-success",
 };
 
+// Ticket-size dot color. The chip itself stays neutral (AA-safe) and the dot
+// carries the size cue, reusing the shared semantic tones.
+const TICKET_TONE: Record<TicketSize, Tone> = {
+  small: "success",
+  medium: "warning",
+  large: "danger",
+};
+
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "AD";
+  if (parts.length === 0) return "—";
   return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+// Due dates are stored as UTC-midnight ISO strings; render/compare in UTC so the
+// day shown matches the day picked, regardless of the viewer's timezone.
+function formatDue(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+function isOverdue(iso: string): boolean {
+  const today = new Date();
+  const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return new Date(iso).getTime() < todayUTC;
+}
+
+// Normalize draft tag/date fields into the shape stored on a KanbanTask (for
+// optimistic UI). "" / unset → null.
+function draftToFields(
+  d: TaskDraft,
+): Pick<KanbanTask, "description" | "dueDate" | "category" | "ticketSize" | "contributor"> {
+  const clean = (s: string) => s.trim() || null;
+  return {
+    description: clean(d.description),
+    category: clean(d.category),
+    contributor: clean(d.contributor),
+    ticketSize: d.ticketSize || null,
+    dueDate: d.dueDate ? new Date(d.dueDate).toISOString() : null,
+  };
 }
 
 /** Re-sequences the target column with `id` inserted at `index`. Mirrors the
@@ -51,12 +105,16 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftStatus, setDraftStatus] = useState<KanbanStatus>("todo");
+  const [draftDescription, setDraftDescription] = useState("");
+  const [draftContributor, setDraftContributor] = useState("");
+  const [draftDueDate, setDraftDueDate] = useState("");
+  const [draftCategory, setDraftCategory] = useState("");
+  const [draftTicketSize, setDraftTicketSize] = useState<TicketSize | "">("");
   const [titleError, setTitleError] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
   const toastSeq = useRef(0);
   const toastTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const avatar = initialsOf(adminName);
 
   const pushToast = useCallback((kind: ToastKind, title: string) => {
     const id = ++toastSeq.current;
@@ -95,12 +153,12 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
 
   // ---------- Mutations (optimistic; refetch on failure) ----------
 
-  async function createTask(title: string, status: KanbanStatus) {
+  async function createTask(draft: TaskDraft) {
     try {
       const res = await fetch("/api/admin/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, status }),
+        body: JSON.stringify(draft),
       });
       if (!res.ok) throw new Error();
       const { task } = await res.json();
@@ -112,19 +170,22 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
     }
   }
 
-  async function editTask(id: number, title: string, status: KanbanStatus) {
+  async function editTask(id: number, draft: TaskDraft) {
     const before = tasks;
+    const fields = draftToFields(draft);
     setTasks((prev) => {
       const cur = prev.find((t) => t.id === id);
-      const next = prev.map((t) => (t.id === id ? { ...t, title } : t));
+      const next = prev.map((t) => (t.id === id ? { ...t, title: draft.title, ...fields } : t));
       // If the column changed, append to the end of the new column.
-      return cur && cur.status !== status ? reorder(next, id, status, Number.MAX_SAFE_INTEGER) : next;
+      return cur && cur.status !== draft.status
+        ? reorder(next, id, draft.status, Number.MAX_SAFE_INTEGER)
+        : next;
     });
     try {
       const res = await fetch(`/api/admin/tasks/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, status }),
+        body: JSON.stringify(draft),
       });
       if (!res.ok) throw new Error();
       pushToast("info", "Task updated");
@@ -208,10 +269,19 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
 
   // ---------- Modal ----------
 
+  function resetDraftFields() {
+    setDraftDescription("");
+    setDraftContributor("");
+    setDraftDueDate("");
+    setDraftCategory("");
+    setDraftTicketSize("");
+  }
+
   const openCreate = useCallback((status: KanbanStatus) => {
     setEditingId(null);
     setDraftTitle("");
     setDraftStatus(status);
+    resetDraftFields();
     setTitleError(false);
     setModalOpen(true);
   }, []);
@@ -220,6 +290,11 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
     setEditingId(task.id);
     setDraftTitle(task.title);
     setDraftStatus(task.status);
+    setDraftDescription(task.description ?? "");
+    setDraftContributor(task.contributor ?? "");
+    setDraftDueDate(task.dueDate ? task.dueDate.slice(0, 10) : "");
+    setDraftCategory(task.category ?? "");
+    setDraftTicketSize(task.ticketSize ?? "");
     setTitleError(false);
     setModalOpen(true);
   }
@@ -236,8 +311,17 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
       titleRef.current?.focus();
       return;
     }
-    if (editingId !== null) editTask(editingId, title, draftStatus);
-    else createTask(title, draftStatus);
+    const draft: TaskDraft = {
+      title,
+      status: draftStatus,
+      description: draftDescription,
+      contributor: draftContributor,
+      dueDate: draftDueDate,
+      category: draftCategory,
+      ticketSize: draftTicketSize,
+    };
+    if (editingId !== null) editTask(editingId, draft);
+    else createTask(draft);
     closeModal();
   }
 
@@ -298,34 +382,107 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
                     over ? "bg-accent-soft/50" : ""
                   }`}
                 >
-                  {cards.map((task) => (
-                    <article
-                      key={task.id}
-                      data-card-id={task.id}
-                      draggable
-                      onDragStart={(e) => onDragStart(e, task.id)}
-                      onDragEnd={onDragEnd}
-                      className={`group cursor-grab rounded-md border border-line bg-surface p-4 shadow-card transition-shadow hover:shadow-md active:cursor-grabbing ${
-                        dragId === task.id ? "opacity-40" : ""
-                      }`}
-                    >
-                      <p className="text-sm font-medium leading-snug text-ink">{task.title}</p>
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-[11px] font-semibold text-accent">
-                          {avatar}
-                        </span>
-                        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <IconButton label="Edit task" onClick={() => openEdit(task)}>
-                            <path d="M4 20h4l10-10-4-4L4 16v4Z" />
-                            <path d="M13.5 6.5l4 4" />
-                          </IconButton>
-                          <IconButton label="Delete task" danger onClick={() => deleteTask(task.id)}>
-                            <path d="M5 7h14M10 7V5h4v2M6 7l1 12h10l1-12" />
-                          </IconButton>
+                  {cards.map((task) => {
+                    const creator = task.creatorName ?? adminName;
+                    const overdue = !!task.dueDate && isOverdue(task.dueDate) && task.status !== "done";
+                    return (
+                      <article
+                        key={task.id}
+                        data-card-id={task.id}
+                        draggable
+                        onDragStart={(e) => onDragStart(e, task.id)}
+                        onDragEnd={onDragEnd}
+                        onDoubleClick={() => openEdit(task)}
+                        className={`group cursor-grab rounded-md border border-line bg-surface p-4 shadow-card transition-shadow hover:shadow-md active:cursor-grabbing ${
+                          dragId === task.id ? "opacity-40" : ""
+                        }`}
+                      >
+                        <p className="line-clamp-2 text-sm font-medium leading-snug text-ink">{task.title}</p>
+
+                        {(task.ticketSize || task.category) && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {task.ticketSize && (
+                              <span
+                                title={`Ticket size: ${TICKET_SIZE_LABEL[task.ticketSize]}`}
+                                className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${toneSoft.neutral}`}
+                              >
+                                <span
+                                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${toneBar[TICKET_TONE[task.ticketSize]]}`}
+                                  aria-hidden="true"
+                                />
+                                {TICKET_SIZE_LABEL[task.ticketSize]}
+                              </span>
+                            )}
+                            {task.category && (
+                              <span
+                                title={task.category}
+                                className={`max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${toneSoft.neutral}`}
+                              >
+                                {task.category}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <div className="flex -space-x-1.5">
+                              <span
+                                title={`Creator: ${creator}`}
+                                aria-label={`Creator: ${creator}`}
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-[11px] font-semibold text-accent ring-2 ring-surface"
+                              >
+                                <span aria-hidden="true">{initialsOf(creator)}</span>
+                              </span>
+                              {task.contributor && (
+                                <span
+                                  title={`Contributor: ${task.contributor}`}
+                                  aria-label={`Contributor: ${task.contributor}`}
+                                  className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-soft text-[11px] font-semibold text-muted ring-2 ring-surface"
+                                >
+                                  <span aria-hidden="true">{initialsOf(task.contributor)}</span>
+                                </span>
+                              )}
+                            </div>
+                            {task.dueDate && (
+                              <span
+                                className={`inline-flex items-center gap-1 truncate text-xs font-medium ${
+                                  overdue ? "text-danger" : "text-muted"
+                                }`}
+                                title={overdue ? "Overdue" : "Due date"}
+                                aria-label={`${overdue ? "Overdue, due" : "Due"} ${formatDue(task.dueDate)}`}
+                              >
+                                <svg
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                                  <path d="M16 2v4M8 2v4M3 10h18" />
+                                </svg>
+                                {formatDue(task.dueDate)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                            <IconButton label="Edit task" onClick={() => openEdit(task)}>
+                              <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                              <path d="M13.5 6.5l4 4" />
+                            </IconButton>
+                            <IconButton label="Delete task" danger onClick={() => deleteTask(task.id)}>
+                              <path d="M5 7h14M10 7V5h4v2M6 7l1 12h10l1-12" />
+                            </IconButton>
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    );
+                  })}
                 </div>
 
                 <button
@@ -349,14 +506,24 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
             if (e.target === e.currentTarget) closeModal();
           }}
         >
-          <div className="w-full max-w-md rounded-2xl border border-line-subtle bg-surface shadow-lg" role="dialog" aria-modal="true">
-            <div className="flex items-center justify-between border-b border-line-subtle px-6 py-4">
-              <h3 className="text-lg font-semibold text-ink">{editingId !== null ? "Edit task" : "New task"}</h3>
-              <button onClick={closeModal} aria-label="Close" className="text-faint transition-colors hover:text-ink">
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-line-subtle bg-surface shadow-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-modal-title"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-line-subtle px-6 py-4">
+              <h3 id="task-modal-title" className="text-lg font-semibold text-ink">{editingId !== null ? "Edit task" : "New task"}</h3>
+              <button
+                type="button"
+                onClick={closeModal}
+                aria-label="Close"
+                className="rounded-sm text-faint outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent-ring"
+              >
                 ✕
               </button>
             </div>
-            <div className="space-y-4 px-6 py-5">
+            <div className="space-y-4 overflow-y-auto px-6 py-5">
               <div>
                 <label className="label" htmlFor="task-title">Task title</label>
                 <input
@@ -379,21 +546,86 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
                 />
                 {titleError && <p className="mt-1 text-xs text-danger">Give the task a title.</p>}
               </div>
+
               <div>
-                <label className="label" htmlFor="task-column">Column</label>
-                <select
-                  id="task-column"
+                <label className="label" htmlFor="task-desc">Description</label>
+                <textarea
+                  id="task-desc"
+                  className="field min-h-[88px] resize-y"
+                  value={draftDescription}
+                  onChange={(e) => setDraftDescription(e.target.value)}
+                  placeholder="Add more detail about this task…"
+                  maxLength={2000}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label" htmlFor="task-column">Column</label>
+                  <select
+                    id="task-column"
+                    className="field"
+                    value={draftStatus}
+                    onChange={(e) => setDraftStatus(e.target.value as KanbanStatus)}
+                  >
+                    {KANBAN_COLUMNS.map((c) => (
+                      <option key={c.id} value={c.id}>{c.title}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label" htmlFor="task-size">Ticket size</label>
+                  <select
+                    id="task-size"
+                    className="field"
+                    value={draftTicketSize}
+                    onChange={(e) => setDraftTicketSize(e.target.value as TicketSize | "")}
+                  >
+                    <option value="">— None —</option>
+                    {TICKET_SIZES.map((s) => (
+                      <option key={s} value={s}>{TICKET_SIZE_LABEL[s]}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label" htmlFor="task-due">Due date</label>
+                  <input
+                    id="task-due"
+                    type="date"
+                    className="field"
+                    value={draftDueDate}
+                    onChange={(e) => setDraftDueDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="task-category">Category</label>
+                  <input
+                    id="task-category"
+                    className="field"
+                    value={draftCategory}
+                    onChange={(e) => setDraftCategory(e.target.value)}
+                    placeholder="e.g. Design"
+                    maxLength={40}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label" htmlFor="task-contributor">Contributor</label>
+                <input
+                  id="task-contributor"
                   className="field"
-                  value={draftStatus}
-                  onChange={(e) => setDraftStatus(e.target.value as KanbanStatus)}
-                >
-                  {KANBAN_COLUMNS.map((c) => (
-                    <option key={c.id} value={c.id}>{c.title}</option>
-                  ))}
-                </select>
+                  value={draftContributor}
+                  onChange={(e) => setDraftContributor(e.target.value)}
+                  placeholder="e.g. Priya Jain"
+                  maxLength={60}
+                />
               </div>
             </div>
-            <div className="flex justify-end gap-3 border-t border-line-subtle px-6 py-4">
+            <div className="flex shrink-0 justify-end gap-3 border-t border-line-subtle px-6 py-4">
               <button onClick={closeModal} className="btn-ghost">Cancel</button>
               <button onClick={saveModal} className="btn-primary">Save task</button>
             </div>
@@ -430,7 +662,7 @@ function IconButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className={`flex h-7 w-7 items-center justify-center rounded-sm text-faint transition-colors ${
+      className={`flex h-7 w-7 items-center justify-center rounded-sm text-faint outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent-ring ${
         danger ? "hover:bg-danger-soft hover:text-danger" : "hover:bg-accent-soft hover:text-accent"
       }`}
     >
