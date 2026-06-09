@@ -37,6 +37,11 @@ From your machine, with the Neon URL:
 DATABASE_URL="postgresql://...neon...?sslmode=require" npx prisma db push
 ```
 
+> Re-run this same command whenever `prisma/schema.prisma` changes. The admin
+> board's task cards (title, description, contributor/creator initials, due date,
+> category + ticket-size tags) add **nullable** columns to `AdminTask`, so the
+> push is additive — existing tasks are preserved.
+
 ## 4. Create the first admin account
 
 Signup is locked, so seed yourself directly (uses bcrypt + honors `ADMIN_EMAILS`):
