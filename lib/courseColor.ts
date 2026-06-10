@@ -4,7 +4,8 @@
 // (danger/warning/success) do. Shared by Calendar + Timeline so a class is the
 // same color everywhere.
 
-const COURSE_COLORS = ["#7c5cf0", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
+// (amber #f59e0b retired site-wide → cyan #0891b2)
+const COURSE_COLORS = ["#7c5cf0", "#0ea5e9", "#10b981", "#0891b2", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
 
 export function courseColor(name: string): string {
   let h = 0;

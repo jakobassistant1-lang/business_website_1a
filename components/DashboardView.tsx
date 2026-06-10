@@ -1,10 +1,11 @@
 "use client";
 
-// The Dashboard — a single-focus "command screen" matching the June UX mock:
-// a violet Focus module (the #1 task big, with structured reason-chips + a short
-// rationale + Next-up), a priority-ranked Today list with check-off circles, and
-// a context rail (This week / Overdue / jump links). Distilled from
-// loadCalendarData; links into the Calendar/Timeline for detail.
+// The Dashboard — a single-focus "command screen". A solid-violet Focus module
+// (the #1 upcoming task), a priority-ranked Today list whose rows complete
+// themselves the moment Canvas reports a submission (flash accent → settle grey),
+// a daily-progress dial, and a context rail (This week / Overdue / jump links).
+// Overdue work lives only in the rail; Focus + Next-up are forward-looking, so
+// the three zones never contradict each other.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -17,7 +18,7 @@ import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { ItemType } from "@/lib/itemType";
 import type { ScoredAssignment } from "@/lib/priority";
 
-const TODAY_MAX = 6;
+const TODAY_MAX = 7;
 const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
 const shortCourse = (name: string) => name.split(" · ")[0];
 
@@ -25,7 +26,7 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
   const router = useRouter();
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
   const [selected, setSelected] = useState<CalendarItem | null>(null);
-  const [done, setDone] = useState<Set<string>>(new Set());
+  const [newlyDone, setNewlyDone] = useState<Set<number>>(new Set());
   const didAutoSync = useRef(false);
 
   useEffect(() => {
@@ -33,30 +34,8 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
     setGreeting(h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
   }, []);
 
-  // Personal "checked off today" state — local + per-day (not a Canvas submission).
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`sp_done_${todayYmd}`);
-      if (raw) setDone(new Set(JSON.parse(raw)));
-    } catch {
-      /* ignore */
-    }
-  }, [todayYmd]);
-  function toggleDone(key: string) {
-    setDone((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      try {
-        localStorage.setItem(`sp_done_${todayYmd}`, JSON.stringify([...next]));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }
-
-  // Sync Canvas once per browser session (shared key with the Calendar).
+  // Sync Canvas once per browser session (shared key with the Calendar). A fresh
+  // sync is what turns a just-submitted assignment "done" on the dashboard.
   useEffect(() => {
     if (!data.connected || didAutoSync.current) return;
     didAutoSync.current = true;
@@ -70,34 +49,91 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- Today's work, ranked by importance (not clock time) ---------------
+  const overdueIds = new Set(data.atRisk.map((a) => a.canvasId));
+  const rank = new Map(data.recommendations.map((r, i) => [r.canvasId, i]));
+  const isDueToday = (it: CalendarItem) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd;
+
+  const todayActive = data.items
+    .filter((it) => it.status !== "done" && isDueToday(it))
+    .sort((a, b) => {
+      const ra = rank.get(a.canvasId) ?? 1e9;
+      const rb = rank.get(b.canvasId) ?? 1e9;
+      if (ra !== rb) return ra - rb;
+      return (a.dueAt ? +new Date(a.dueAt) : 0) - (b.dueAt ? +new Date(b.dueAt) : 0);
+    });
+  const todayDone = data.completed.filter(isDueToday);
+  const leadId = todayActive[0]?.canvasId ?? null;
+
+  // Study blocks only make sense for assessments still AHEAD — never surface
+  // "study for X" once X is due today (or already taken). (#2.1)
+  const todayBlocks = data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? [];
+  const studyFuture = todayBlocks.filter((b) => b.study && ymd(new Date(b.dueAt)) > todayYmd);
+
+  // Newly-submitted-today rows flash the accent once, then settle grey. We
+  // remember which done-ids we've already greeted so the glow plays exactly once.
+  const doneKey = todayDone
+    .map((i) => i.canvasId)
+    .sort((a, b) => a - b)
+    .join(",");
+  useEffect(() => {
+    let seen = new Set<number>();
+    try {
+      seen = new Set(JSON.parse(localStorage.getItem("sp_seen_done") || "[]"));
+    } catch {
+      /* ignore */
+    }
+    const ids = doneKey ? doneKey.split(",").map(Number) : [];
+    const fresh = ids.filter((id) => !seen.has(id));
+    setNewlyDone(new Set(fresh));
+    try {
+      localStorage.setItem("sp_seen_done", JSON.stringify([...new Set([...seen, ...ids])]));
+    } catch {
+      /* ignore */
+    }
+  }, [doneKey]);
+
   const today = parseYmd(todayYmd);
+  const dialTotal = todayActive.length + todayDone.length;
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <div className="mb-5 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-[15px] text-muted">
-          {greeting}
-          {firstName ? `, ${firstName}` : ""}
-        </p>
-        <p className="text-[15px] text-muted">{today.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</p>
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-7 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xl font-semibold text-ink">
+            {greeting}
+            {firstName ? `, ${firstName}` : ""}
+          </p>
+          <p className="mt-0.5 text-sm text-muted">{today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
+        </div>
+        {data.connected && <ProgressDial done={todayDone.length} total={dialTotal} />}
       </div>
 
       {!data.connected ? (
         <ConnectCard />
       ) : (
-        <div className="flex flex-col gap-4 lg:flex-row">
-          <div className="min-w-0 flex-1 space-y-4">
-            <FocusModule data={data} todayYmd={todayYmd} onSelect={setSelected} />
-            <TodayCard data={data} todayYmd={todayYmd} today={today} done={done} onToggle={toggleDone} onSelect={setSelected} />
+        <div className="flex flex-col gap-6 lg:flex-row">
+          <div className="min-w-0 flex-1 space-y-6">
+            <FocusModule data={data} todayYmd={todayYmd} overdueIds={overdueIds} onSelect={setSelected} />
+            <TodayCard
+              today={today}
+              active={todayActive}
+              doneItems={todayDone}
+              study={studyFuture}
+              leadId={leadId}
+              newlyDone={newlyDone}
+              busyCount={data.events.filter((e) => ymd(new Date(e.startTime)) === todayYmd).length}
+              onSelect={setSelected}
+            />
           </div>
-          <aside className="w-full shrink-0 space-y-4 lg:w-80">
+          <aside className="w-full shrink-0 space-y-6 lg:w-96">
             <WeekCard data={data} />
             <OverdueCard atRisk={data.atRisk} />
-            <div className="space-y-1.5 px-1">
-              <Link href="/timeline" className="block text-sm font-medium text-accent hover:underline">
+            <div className="space-y-2 px-1">
+              <Link href="/timeline" className="block text-[15px] font-medium text-accent hover:underline">
                 Jump to timeline →
               </Link>
-              <Link href="/calendar" className="block text-sm font-medium text-accent hover:underline">
+              <Link href="/calendar" className="block text-[15px] font-medium text-accent hover:underline">
                 Open calendar →
               </Link>
             </div>
@@ -110,93 +146,157 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
   );
 }
 
-function Chip({ text, tone }: { text: string; tone: "danger" | "warning" | "neutral" }) {
-  const cls = tone === "danger" ? toneSoft.danger : tone === "warning" ? toneSoft.warning : "bg-surface-soft text-muted";
-  return <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${cls}`}>{text}</span>;
+// ── Daily-progress dial: 4 discrete violet shades (light→dark, NOT a gradient).
+// Each quarter lights to its shade as the day's submissions roll in. ───────────
+function ProgressDial({ done, total }: { done: number; total: number }) {
+  const ratio = total > 0 ? done / total : 0;
+  const shades = ["rgb(var(--accent) / 0.34)", "rgb(var(--accent) / 0.55)", "rgb(var(--accent) / 0.76)", "rgb(var(--accent) / 1)"];
+  const faint = "rgb(var(--accent) / 0.13)";
+  const r = 33;
+  const C = 2 * Math.PI * r;
+  const seg = C / 4;
+  const gap = 7;
+  const segLen = seg - gap;
+  const complete = total > 0 && done >= total;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="hidden text-right sm:block">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Today&apos;s progress</p>
+        <p className="text-sm text-ink">{total > 0 ? `${done} of ${total} done` : "Nothing due"}</p>
+      </div>
+      <div className="relative h-[78px] w-[78px] shrink-0">
+        <svg viewBox="0 0 78 78" className="h-full w-full">
+          {[0, 1, 2, 3].map((i) => (
+            <circle
+              key={i}
+              cx={39}
+              cy={39}
+              r={r}
+              fill="none"
+              stroke={ratio > i / 4 + 1e-9 ? shades[i] : faint}
+              strokeWidth={8}
+              strokeLinecap="round"
+              strokeDasharray={`${segLen} ${C - segLen}`}
+              transform={`rotate(${-90 + i * 90} 39 39)`}
+            />
+          ))}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          {complete ? (
+            <span className="text-accent">
+              <Glyph d={ICON.check} size={26} />
+            </span>
+          ) : (
+            <span className="text-[19px] font-bold leading-none text-ink">{total > 0 ? `${done}/${total}` : "—"}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function focusChips(item: CalendarItem, todayYmd: string): { text: string; tone: "danger" | "warning" | "neutral" }[] {
-  const out: { text: string; tone: "danger" | "warning" | "neutral" }[] = [];
-  const dueToday = item.dueAt && ymd(new Date(item.dueAt)) === todayYmd;
-  if (item.status === "overdue") out.push({ text: "Overdue", tone: "danger" });
-  if (dueToday && item.dueAt) out.push({ text: `Due ${fmtTime(item.dueAt)}`, tone: "warning" });
-  else if (item.dueAt && item.status !== "overdue") out.push({ text: `Due ${new Date(item.dueAt).toLocaleDateString(undefined, { weekday: "short" })}`, tone: "neutral" });
-  if (item.pointsPossible != null) out.push({ text: `${item.pointsPossible} pts`, tone: "neutral" });
+function Chip({ text, tone }: { text: string; tone: "danger" | "neutral" | "onAccent" }) {
+  const cls =
+    tone === "danger"
+      ? toneSoft.danger
+      : tone === "onAccent"
+        ? "bg-white/15 text-white ring-1 ring-inset ring-white/25"
+        : "bg-surface-soft text-muted";
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${cls}`}>{text}</span>;
+}
+
+function focusChips(item: CalendarItem, todayYmd: string): string[] {
+  const out: string[] = [];
+  if (item.dueAt) {
+    const isToday = ymd(new Date(item.dueAt)) === todayYmd;
+    out.push(isToday ? `Due ${fmtTime(item.dueAt)}` : `Due ${new Date(item.dueAt).toLocaleDateString(undefined, { weekday: "short" })}`);
+  }
+  if (item.pointsPossible != null) out.push(`${item.pointsPossible} pts`);
   return out;
 }
 
 function focusRationale(item: CalendarItem, todayYmd: string): string {
-  const dueToday = item.dueAt && ymd(new Date(item.dueAt)) === todayYmd;
+  const isToday = item.dueAt && ymd(new Date(item.dueAt)) === todayYmd;
   const parts: string[] = [];
   if (item.pointsPossible != null) parts.push(`Worth ${item.pointsPossible} pts`);
-  if (item.status === "overdue") parts.push("past due");
-  else if (dueToday) parts.push("due today");
+  if (isToday) parts.push("due today");
   const lead = parts.length ? parts.join(" and ") : item.name;
-  const tail = item.status === "overdue" ? " — clear this first." : dueToday ? " — knock it out today." : " — a strong place to start.";
-  return lead + tail;
+  return lead + (isToday ? " — knock it out today." : " — a strong place to start.");
 }
 
-function FocusModule({ data, todayYmd, onSelect }: { data: CalendarData; todayYmd: string; onSelect: (it: CalendarItem) => void }) {
-  const top = data.recommendations[0] as ScoredAssignment | undefined;
+function FocusModule({
+  data,
+  todayYmd,
+  overdueIds,
+  onSelect,
+}: {
+  data: CalendarData;
+  todayYmd: string;
+  overdueIds: Set<number>;
+  onSelect: (it: CalendarItem) => void;
+}) {
+  // Forward-looking: the top NON-overdue priority. Overdue work is the rail's job.
+  const upcoming = (data.recommendations as ScoredAssignment[]).filter((r) => !overdueIds.has(r.canvasId));
+  const top = upcoming[0];
   const topItem = top ? data.items.find((it) => it.canvasId === top.canvasId) : undefined;
-  const nextRecs = data.recommendations.slice(1, 3) as ScoredAssignment[];
+  const nextRecs = upcoming.slice(1, 3);
 
   if (!top) {
-    const allClear = data.atRisk.length === 0;
+    const caughtUp = overdueIds.size === 0;
     return (
-      <div className="card p-7 text-center">
+      <div className="card p-8 text-center">
         <div className="flex justify-center text-success">
-          <Glyph d={ICON.check} size={30} />
+          <Glyph d={ICON.check} size={34} />
         </div>
-        <p className="mt-2.5 text-lg font-semibold text-ink">{allClear ? "You're all caught up." : "Nothing to start right now."}</p>
-        <p className="mt-1 text-sm text-muted">
-          {allClear
+        <p className="mt-3 text-xl font-semibold text-ink">{caughtUp ? "You're all caught up." : "Nothing new queued up."}</p>
+        <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
+          {caughtUp
             ? "Nothing's due and nothing's overdue. Enjoy the breathing room — we'll nudge you when something lands."
-            : "You have overdue work in the rail, but nothing else is queued. Catch up when you're ready."}
+            : "Your upcoming work is clear; the overdue items in the rail are the thing to chip away at when you're ready."}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="card border-accent-soft bg-accent-soft/30 p-5">
-      <div className="flex gap-5">
+    <div className="rounded-xl bg-accent p-7 text-white shadow-card">
+      <div className="flex gap-6">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Focus now</p>
-          <button onClick={() => topItem && onSelect(topItem)} className="mt-1 block max-w-full text-left" disabled={!topItem}>
-            <span className="block text-[1.7rem] font-bold leading-tight tracking-tight text-ink">{top.name}</span>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">Focus now</p>
+          <button onClick={() => topItem && onSelect(topItem)} className="mt-1.5 block max-w-full text-left" disabled={!topItem}>
+            <span className="block text-[2rem] font-bold leading-[1.1] tracking-tight">{top.name}</span>
           </button>
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap gap-2">
             {(topItem ? focusChips(topItem, todayYmd) : []).map((c, i) => (
-              <Chip key={i} text={c.text} tone={c.tone} />
+              <Chip key={i} text={c} tone="onAccent" />
             ))}
           </div>
-          <p className="mt-2.5 text-sm text-muted">{topItem ? focusRationale(topItem, todayYmd) : top.reason}</p>
-          <div className="mt-3.5 flex flex-col gap-2 sm:flex-row">
+          <p className="mt-3 text-[15px] text-white/90">{topItem ? focusRationale(topItem, todayYmd) : top.reason}</p>
+          <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
             {topItem ? (
-              <button onClick={() => onSelect(topItem)} className="btn-primary text-sm">
+              <button onClick={() => onSelect(topItem)} className="rounded-[14px] bg-white px-5 py-2.5 text-sm font-semibold text-accent transition hover:bg-white/90">
                 Open
               </button>
             ) : top.htmlUrl ? (
-              <a href={top.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm">
+              <a href={top.htmlUrl} target="_blank" rel="noreferrer" className="rounded-[14px] bg-white px-5 py-2.5 text-sm font-semibold text-accent transition hover:bg-white/90">
                 Open ↗
               </a>
             ) : null}
-            <Link href="/timeline" className="rounded-[14px] border border-line bg-surface px-4 py-2 text-center text-sm font-medium text-ink transition hover:bg-surface-soft">
+            <Link href="/timeline" className="rounded-[14px] border border-white/40 px-5 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10">
               See my plan ›
             </Link>
           </div>
         </div>
         {nextRecs.length > 0 && (
-          <div className="hidden w-44 shrink-0 border-l border-line-subtle/80 pl-4 sm:block">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Next up</p>
-            <div className="mt-2 space-y-3">
+          <div className="hidden w-48 shrink-0 border-l border-white/20 pl-5 sm:block">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">Next up</p>
+            <div className="mt-3 space-y-3.5">
               {nextRecs.map((r) => {
                 const it = data.items.find((x) => x.canvasId === r.canvasId);
                 return (
                   <div key={r.canvasId} className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">{r.name}</p>
-                    <p className="truncate text-[13px] text-muted">
+                    <p className="truncate text-sm font-semibold text-white">{r.name}</p>
+                    <p className="truncate text-[13px] text-white/70">
                       {it ? `${TYPE_LABEL[it.type]} · ` : ""}
                       {shortCourse(r.courseName)}
                     </p>
@@ -211,115 +311,101 @@ function FocusModule({ data, todayYmd, onSelect }: { data: CalendarData; todayYm
   );
 }
 
-function Circle({ checked, tone, onClick }: { checked: boolean; tone: "neutral" | "danger" | "success"; onClick: () => void }) {
-  const ring = tone === "danger" ? "border-danger/60" : tone === "success" ? "border-success/70" : "border-line";
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      aria-pressed={checked}
-      aria-label={checked ? "Mark not done" : "Mark done"}
-      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${checked ? "border-success bg-success text-white" : `${ring} hover:border-success`}`}
-    >
-      {checked && <Glyph d={ICON.check} size={11} />}
-    </button>
-  );
+// One status disc per row. It mirrors Canvas — empty until submitted, then a
+// filled green check. It is NOT a manual toggle (completion comes from Canvas).
+function StatusDisc({ kind }: { kind: "done" | "study" | "active" }) {
+  if (kind === "done")
+    return (
+      <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-success text-white">
+        <Glyph d={ICON.check} size={13} />
+      </span>
+    );
+  const ring = kind === "study" ? "border-success/70" : "border-line";
+  return <span className={`h-[22px] w-[22px] shrink-0 rounded-full border-2 ${ring}`} aria-hidden />;
 }
 
-type Row =
-  | { kind: "item"; key: string; item: CalendarItem }
-  | { kind: "study"; key: string; name: string; course: string; hours: number };
-
-function RowView({
-  row,
-  lead,
-  done,
-  onToggle,
-  onSelect,
-}: {
-  row: Row;
-  lead: boolean;
-  done: boolean;
-  onToggle: (key: string) => void;
-  onSelect: (it: CalendarItem) => void;
-}) {
-  const isItem = row.kind === "item";
-  const tone: "neutral" | "danger" | "success" = !isItem ? "success" : row.item.status === "overdue" ? "danger" : "neutral";
-  const name = isItem ? row.item.name : `Study: ${row.name}`;
-  const sub = isItem ? `${TYPE_LABEL[row.item.type]} · ${shortCourse(row.item.courseName)}` : "Study block · self-scheduled";
-  const timeText = isItem ? (row.item.dueAt ? fmtTime(row.item.dueAt) : "") : fmtHours(row.hours);
-  const timeColor = !isItem ? "text-success" : row.item.status === "overdue" ? "text-danger" : lead ? "text-warning" : "text-ink";
+function ItemRow({ item, lead, done, glow, onSelect }: { item: CalendarItem; lead: boolean; done: boolean; glow: boolean; onSelect: (it: CalendarItem) => void }) {
+  const timeColor = lead ? "text-accent" : "text-ink";
   return (
-    <div className={`flex items-center gap-3 ${lead ? "rounded-lg border-l-2 border-accent bg-accent-soft/40 py-3 pl-2.5 pr-3" : "py-3 pl-1 pr-2"}`}>
-      <Circle checked={done} tone={tone} onClick={() => onToggle(row.key)} />
-      <button
-        onClick={() => isItem && onSelect(row.item)}
-        disabled={!isItem}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-      >
+    <div className={`flex items-center gap-3.5 rounded-xl px-3 py-3.5 ${lead ? "border-l-[3px] border-accent bg-accent-soft/50" : ""} ${glow ? "animate-done-glow" : ""}`}>
+      <StatusDisc kind={done ? "done" : "active"} />
+      <button onClick={() => onSelect(item)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <span className="min-w-0 flex-1">
-          <span className={`block truncate text-[15px] ${done ? "text-muted line-through" : "text-ink"} ${lead && !done ? "font-semibold" : "font-medium"}`}>{name}</span>
-          <span className="block truncate text-[13px] text-muted">{sub}</span>
+          <span className={`block truncate text-[15px] ${done ? "text-muted line-through" : "font-medium text-ink"} ${lead && !done ? "font-semibold" : ""}`}>{item.name}</span>
+          <span className="block truncate text-[13px] text-muted">
+            {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
+          </span>
         </span>
-        <span className={`shrink-0 text-[13px] font-medium ${done ? "text-muted" : timeColor}`}>{timeText}</span>
+        {done ? (
+          <span className="shrink-0 text-[12px] font-medium text-success">Done</span>
+        ) : (
+          <span className={`shrink-0 text-[13px] font-medium ${timeColor}`}>{item.dueAt ? fmtTime(item.dueAt) : ""}</span>
+        )}
       </button>
     </div>
   );
 }
 
 function TodayCard({
-  data,
-  todayYmd,
   today,
-  done,
-  onToggle,
+  active,
+  doneItems,
+  study,
+  leadId,
+  newlyDone,
+  busyCount,
   onSelect,
 }: {
-  data: CalendarData;
-  todayYmd: string;
   today: Date;
-  done: Set<string>;
-  onToggle: (key: string) => void;
+  active: CalendarItem[];
+  doneItems: CalendarItem[];
+  study: { canvasId: number; name: string; hours: number }[];
+  leadId: number | null;
+  newlyDone: Set<number>;
+  busyCount: number;
   onSelect: (it: CalendarItem) => void;
 }) {
-  const items = data.items
-    .filter((it) => it.dueAt && ymd(new Date(it.dueAt)) === todayYmd)
-    .sort((a, b) => new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime());
-  const study = (data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? []).filter((b) => b.study);
-  const busyCount = data.events.filter((e) => ymd(new Date(e.startTime)) === todayYmd).length;
-
-  const rows: Row[] = [
-    ...items.map((it): Row => ({ kind: "item", key: `i${it.canvasId}`, item: it })),
-    ...study.map((b, i): Row => ({ kind: "study", key: `s${b.canvasId}-${i}`, name: b.name, course: b.courseName, hours: b.hours })),
-  ];
-  const shown = rows.slice(0, TODAY_MAX);
-  const hidden = rows.length - shown.length;
+  const totalRows = active.length + study.length + doneItems.length;
+  const empty = totalRows === 0;
+  // Active (priority order) → future study → completed (struck), capped.
+  const activeShown = active.slice(0, TODAY_MAX);
+  let budget = TODAY_MAX - activeShown.length;
+  const studyShown = study.slice(0, Math.max(0, budget));
+  budget -= studyShown.length;
+  const doneShown = doneItems.slice(0, Math.max(0, budget));
+  const hidden = totalRows - activeShown.length - studyShown.length - doneShown.length;
   const overflow = [hidden > 0 ? `${hidden} more` : "", busyCount > 0 ? `${busyCount} busy` : ""].filter(Boolean);
 
   return (
-    <div className="card p-5">
+    <div className="card p-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-base font-semibold text-ink">Today</h2>
-        <span className="text-[13px] text-muted">{today.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
+        <h2 className="text-lg font-semibold text-ink">Today</h2>
+        <span className="text-sm text-muted">{today.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
       </div>
-      {shown.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted">You&apos;re all caught up for today.</p>
+      {empty ? (
+        <p className="py-10 text-center text-sm text-muted">You&apos;re all caught up for today.</p>
       ) : (
-        <div className="mt-1.5">
-          <RowView row={shown[0]} lead done={done.has(shown[0].key)} onToggle={onToggle} onSelect={onSelect} />
-          {shown.length > 1 && (
-            <div className="divide-y divide-line-subtle/70">
-              {shown.slice(1).map((r) => (
-                <RowView key={r.key} row={r} lead={false} done={done.has(r.key)} onToggle={onToggle} onSelect={onSelect} />
-              ))}
+        <div className="mt-2 space-y-0.5">
+          {activeShown.map((it) => (
+            <ItemRow key={it.canvasId} item={it} lead={it.canvasId === leadId} done={false} glow={false} onSelect={onSelect} />
+          ))}
+          {studyShown.map((b, i) => (
+            <div key={`s${b.canvasId}-${i}`} className="flex items-center gap-3.5 rounded-xl px-3 py-3.5">
+              <StatusDisc kind="study" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-medium text-ink">Study: {b.name}</span>
+                <span className="block truncate text-[13px] text-muted">Study block · self-scheduled</span>
+              </span>
+              <span className="shrink-0 text-[13px] font-medium text-success">{fmtHours(b.hours)}</span>
             </div>
-          )}
+          ))}
+          {doneShown.map((it) => (
+            <ItemRow key={it.canvasId} item={it} lead={false} done glow={newlyDone.has(it.canvasId)} onSelect={onSelect} />
+          ))}
         </div>
       )}
       {overflow.length > 0 && (
-        <Link href="/calendar" className="mt-2.5 block text-[13px] font-medium text-accent hover:underline">
+        <Link href="/calendar" className="mt-3 block text-sm font-medium text-accent hover:underline">
           {overflow.join(" · ")} → Open day in Calendar ›
         </Link>
       )}
@@ -338,16 +424,16 @@ function WeekCard({ data }: { data: CalendarData }) {
   const free = round1(Math.max(0, budget - planned));
 
   return (
-    <div className="card p-5">
-      <h2 className="text-base font-semibold text-ink">This week</h2>
-      <p className="mt-2 text-[28px] font-bold leading-none tracking-tight text-ink">
+    <div className="card p-6">
+      <h2 className="text-lg font-semibold text-ink">This week</h2>
+      <p className="mt-3 text-[32px] font-bold leading-none tracking-tight text-accent">
         {fmtHours(work)} <span className="text-sm font-normal text-muted">of work</span>
       </p>
-      <div className="mt-2.5 flex items-center gap-2.5 text-[13px]">
-        {over && <span className={`rounded-full px-2.5 py-0.5 font-medium ${toneSoft.warning}`}>{Math.round(data.overloadHours)}h over</span>}
+      <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm">
+        {over && <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>{Math.round(data.overloadHours)}h over</span>}
         <span className="text-muted">{fmtHours(free)} free</span>
       </div>
-      <p className="mt-2.5 border-t border-line-subtle/70 pt-2.5 text-[13px] text-muted">
+      <p className="mt-3 border-t border-line-subtle pt-3 text-sm text-muted">
         {dueThisWeek.length} due · {examQuiz} exams / quizzes
       </p>
     </div>
@@ -357,21 +443,21 @@ function WeekCard({ data }: { data: CalendarData }) {
 function OverdueCard({ atRisk }: { atRisk: CalendarData["atRisk"] }) {
   if (atRisk.length === 0) return null;
   return (
-    <div className="card border-danger/30 p-5">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-danger">
-        <span className="h-2 w-2 rounded-full bg-danger" aria-hidden /> Overdue ({atRisk.length})
+    <div className="card border-danger/30 p-6">
+      <h2 className="flex items-center gap-2 text-base font-semibold text-danger">
+        <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden /> Overdue ({atRisk.length})
       </h2>
-      <ul className="mt-3 space-y-2.5">
+      <ul className="mt-3.5 space-y-3">
         {atRisk.map((a) => (
           <li key={a.canvasId} className="flex items-center justify-between gap-2">
             {a.htmlUrl ? (
-              <a href={a.htmlUrl} target="_blank" rel="noreferrer" className="min-w-0 truncate text-sm text-ink hover:text-accent">
+              <a href={a.htmlUrl} target="_blank" rel="noreferrer" className="min-w-0 truncate text-[15px] text-ink hover:text-accent">
                 {a.name}
               </a>
             ) : (
-              <span className="min-w-0 truncate text-sm text-ink">{a.name}</span>
+              <span className="min-w-0 truncate text-[15px] text-ink">{a.name}</span>
             )}
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${toneSoft.danger}`}>Past due</span>
+            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft.danger}`}>Past due</span>
           </li>
         ))}
       </ul>
@@ -381,13 +467,13 @@ function OverdueCard({ atRisk }: { atRisk: CalendarData["atRisk"] }) {
 
 function ConnectCard() {
   return (
-    <div className="card mx-auto max-w-xl p-8 text-center">
+    <div className="card mx-auto max-w-xl p-10 text-center">
       <div className="flex justify-center text-accent">
-        <Glyph d={ICON.calendar} size={32} />
+        <Glyph d={ICON.calendar} size={36} />
       </div>
-      <p className="mt-3 text-sm font-medium text-ink">Welcome to StudyPlan.</p>
-      <p className="mt-1 text-sm text-muted">Connect your Canvas account and we&apos;ll turn your coursework into a calm, day-by-day plan.</p>
-      <Link href="/connections" className="btn-primary mt-4">
+      <p className="mt-4 text-base font-medium text-ink">Welcome to StudyPlan.</p>
+      <p className="mt-1.5 text-sm text-muted">Connect your Canvas account and we&apos;ll turn your coursework into a calm, day-by-day plan.</p>
+      <Link href="/connections" className="btn-primary mt-5">
         Connect Canvas
       </Link>
     </div>

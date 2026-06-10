@@ -28,7 +28,8 @@
 
   /* feedback */
   --success: 47 158 107;      --success-soft: 216 240 227;
-  --warning: 217 148 35;      --warning-soft: 248 234 203;
+  /* "warning" retired from amber → calm violet-grey (on-theme, AA on its soft bg) */
+  --warning: 95 87 117;       --warning-soft: 239 236 245;
   --danger: 214 69 61;        --danger-soft: 246 220 218;
 
   /* charcoal sidebar — two-tone anchor, dark in BOTH themes */
@@ -59,7 +60,7 @@
   --on-accent: 22 22 25;
 
   --success: 70 183 131;      --success-soft: 28 58 45;
-  --warning: 230 169 69;      --warning-soft: 58 47 23;
+  --warning: 176 168 200;     --warning-soft: 49 45 61;
   --danger: 232 100 93;       --danger-soft: 58 34 32;
 
   --sidebar: 35 35 40;        /* #232328 */
@@ -104,4 +105,16 @@ body {
   .card {
     @apply rounded-xl border border-line-subtle bg-surface shadow-card;
   }
+}
+
+/* When Canvas reports an assignment submitted, its row flashes the accent and
+   then settles into the grey "done" state (paired with .animate-done-glow). */
+@keyframes doneGlow {
+  0%   { background-color: rgb(var(--accent) / 0.22); box-shadow: inset 3px 0 0 rgb(var(--accent)); }
+  55%  { background-color: rgb(var(--accent) / 0.13); box-shadow: inset 3px 0 0 rgb(var(--accent) / 0.5); }
+  100% { background-color: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
+.animate-done-glow { animation: doneGlow 1.9s ease-out 1 both; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-done-glow { animation: none; }
 }

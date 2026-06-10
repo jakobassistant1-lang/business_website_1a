@@ -563,8 +563,8 @@ export function PeriodToolbar({
   );
 }
 
-/** Slim amber chip (warning tone, NOT red) — flags that the week's work needs more
- *  hours than the student's budget. Expands to a nudge; dismissible per session per
+/** Slim violet-grey chip (warning tone, NOT red) — flags that the week's work needs
+ *  more hours than the student's budget. Expands to a nudge; dismissible per session per
  *  week. Hidden below ~1h. Lives in the toolbar/header row → costs no vertical space. */
 export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; weekKey: string }) {
   const [open, setOpen] = useState(false);

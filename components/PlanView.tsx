@@ -11,7 +11,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 // V3 — soft, distinct per-course dot colors (deterministic by name; data-viz
 // category colors, not theme tokens).
-const COURSE_COLORS = ["#7c5cf0", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
+const COURSE_COLORS = ["#7c5cf0", "#0ea5e9", "#10b981", "#0891b2", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
 function courseColor(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
