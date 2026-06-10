@@ -106,7 +106,7 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
           </p>
           <p className="mt-0.5 text-sm text-muted">{today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
         </div>
-        {data.connected && <ProgressDial done={todayDone.length} total={dialTotal} />}
+        {data.connected && <ProgressRing done={todayDone.length} total={dialTotal} />}
       </div>
 
       {!data.connected ? (
@@ -146,50 +146,42 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
   );
 }
 
-// ── Daily-progress dial: 4 discrete violet shades (light→dark, NOT a gradient).
-// Each quarter lights to its shade as the day's submissions roll in. ───────────
-function ProgressDial({ done, total }: { done: number; total: number }) {
-  const ratio = total > 0 ? done / total : 0;
-  const shades = ["rgb(var(--accent) / 0.34)", "rgb(var(--accent) / 0.55)", "rgb(var(--accent) / 0.76)", "rgb(var(--accent) / 1)"];
-  const faint = "rgb(var(--accent) / 0.13)";
-  const r = 33;
-  const C = 2 * Math.PI * r;
-  const seg = C / 4;
-  const gap = 7;
-  const segLen = seg - gap;
-  const complete = total > 0 && done >= total;
+// ── Daily-progress ring: ONE smooth continuous ring whose filled arc deepens
+// through 4 discrete violet shades as the day's submissions roll in — the shades
+// read in COLOR only, not as separated segments. Big % in the middle. ──────────
+function ringPoint(cx: number, cy: number, r: number, f: number): [number, number] {
+  const a = (-90 + f * 360) * (Math.PI / 180);
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+function ringArc(cx: number, cy: number, r: number, f0: number, f1: number): string {
+  const [x0, y0] = ringPoint(cx, cy, r, f0);
+  const [x1, y1] = ringPoint(cx, cy, r, f1);
+  const large = f1 - f0 > 0.5 ? 1 : 0;
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+function ProgressRing({ done, total }: { done: number; total: number }) {
+  const ratio = total > 0 ? Math.min(1, done / total) : 0;
+  const pct = Math.round(ratio * 100);
+  const shades = ["rgb(var(--accent) / 0.40)", "rgb(var(--accent) / 0.62)", "rgb(var(--accent) / 0.82)", "rgb(var(--accent) / 1)"];
+  const cx = 60;
+  const cy = 60;
+  const r = 52;
+  const sw = 13;
   return (
-    <div className="flex items-center gap-3">
-      <div className="hidden text-right sm:block">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Today&apos;s progress</p>
-        <p className="text-sm text-ink">{total > 0 ? `${done} of ${total} done` : "Nothing due"}</p>
-      </div>
-      <div className="relative h-[78px] w-[78px] shrink-0">
-        <svg viewBox="0 0 78 78" className="h-full w-full">
-          {[0, 1, 2, 3].map((i) => (
-            <circle
-              key={i}
-              cx={39}
-              cy={39}
-              r={r}
-              fill="none"
-              stroke={ratio > i / 4 + 1e-9 ? shades[i] : faint}
-              strokeWidth={8}
-              strokeLinecap="round"
-              strokeDasharray={`${segLen} ${C - segLen}`}
-              transform={`rotate(${-90 + i * 90} 39 39)`}
-            />
-          ))}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          {complete ? (
-            <span className="text-accent">
-              <Glyph d={ICON.check} size={26} />
-            </span>
-          ) : (
-            <span className="text-[19px] font-bold leading-none text-ink">{total > 0 ? `${done}/${total}` : "—"}</span>
-          )}
-        </div>
+    <div className="relative h-32 w-32 shrink-0 sm:h-36 sm:w-36">
+      <svg viewBox="0 0 120 120" className="h-full w-full">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgb(var(--accent) / 0.12)" strokeWidth={sw} />
+        {[0, 1, 2, 3].map((i) => {
+          const start = i / 4;
+          if (ratio <= start) return null;
+          const end = Math.min((i + 1) / 4, ratio);
+          // darker bands draw last and overlap a hair backward so joins are seamless
+          return <path key={i} d={ringArc(cx, cy, r, i === 0 ? 0 : start - 0.006, end)} fill="none" stroke={shades[i]} strokeWidth={sw} strokeLinecap="butt" />;
+        })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[2.5rem] font-bold leading-none tracking-tight text-ink sm:text-[2.85rem]">{total > 0 ? `${pct}%` : "—"}</span>
+        <span className="mt-1.5 text-xs font-medium text-muted">{total > 0 ? `${done} of ${total} done` : "Nothing due"}</span>
       </div>
     </div>
   );
