@@ -3,7 +3,7 @@
 // stored calendar events — and shapes them into one payload both views consume.
 //
 // Canvas coursework and calendar data load in parallel; the calendar reads are
-// fail-open (loadBusyHoursByDate / loadCalendarEvents never throw), so a
+// fail-open (loadCalendarEvents never throws), so a
 // calendar problem can never break the page.
 
 import { prisma } from "./prisma";

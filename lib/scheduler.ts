@@ -5,6 +5,8 @@
 // both. This is enforced both by construction (every in-window assignment is
 // pushed into `days` and/or `atRisk`) AND by a runtime assertion at the end.
 
+import { round1 } from "./round";
+
 const MS_PER_DAY = 86_400_000;
 const EPS = 1e-9;
 
@@ -266,6 +268,7 @@ export function generatePlan(
   const byId = new Map(inWindow.map((it) => [it.a.canvasId, it]));
   const representedInWindow = new Set<number>();
   for (const [k, hours] of hoursByItemDay) {
+    if (round1(hours) <= 0) continue; // drop sub-0.05h fragments so they never render as "0m"
     const sep = k.indexOf(":");
     const it = byId.get(Number(k.slice(0, sep)))!;
     planDays[Number(k.slice(sep + 1))].blocks.push({
@@ -340,8 +343,4 @@ export function generatePlan(
     totalPlannedHours,
     overloadHours,
   };
-}
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
 }

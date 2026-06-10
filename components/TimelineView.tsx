@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { courseColor, pickTextOn } from "@/lib/courseColor";
 import { WEEKDAYS, parseYmd } from "@/lib/calendarDates";
+import { round1 } from "@/lib/round";
 import { AttentionBanner, PeriodSummary, ItemDetail, CourseDot, Glyph, ICON, fmtHours, LoadHint } from "@/components/calendar/parts";
 import { toneSoft } from "@/lib/tone";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { PlanDay } from "@/lib/scheduler";
 
 type View = "day" | "week";
-const round1 = (n: number) => Math.round(n * 10) / 10;
 
 interface Span {
   canvasId: number;

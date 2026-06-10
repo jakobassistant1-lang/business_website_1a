@@ -89,12 +89,13 @@ but 403 on a data call) · `error` (any other non-2xx).
 ## Testing
 
 ```bash
-node --experimental-strip-types scripts/test-scheduler.ts
+npm test   # Vitest — tests/*.test.ts
 ```
 
-Covers normal fit, over-capacity overflow, zero hours, overdue, undated,
-beyond-window, EDF tie-breaking, and a 200-case randomized fuzz — all asserting
-the G1 invariant.
+Covers the scheduler (weighted allocation, deadline-safety regressions, study
+floors, overload), priority ranking, calendar data helpers, AI briefing/analysis
+parsing, the Google Calendar adapter, and the admin Kanban — all asserting the
+G1 invariant where relevant.
 
 `scripts/seed-demo.mjs` seeds a demo Canvas connection + assignments for a
 signed-up user (`node scripts/seed-demo.mjs`) to preview a populated plan

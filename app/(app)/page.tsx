@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 
-// The Plan page was retired in favor of the Calendar + Timeline views; its
-// safety features (at-risk alerts, recommended order) are folded into both.
-// Home now lands on the Calendar.
+// Home now lands on the calm Dashboard; Calendar + Timeline are the detailed
+// drill-down tools it links into.
 export default function HomePage() {
-  redirect("/calendar");
+  redirect("/dashboard");
 }

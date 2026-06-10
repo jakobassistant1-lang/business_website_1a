@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 
 const NAV = [
+  { href: "/dashboard", label: "Dashboard", icon: "M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z" },
   { href: "/calendar", label: "Calendar", icon: "M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" },
   { href: "/timeline", label: "Timeline", icon: "M3 4v16M4 7h9M4 12h13M4 17h6" },
   { href: "/connections", label: "Connections", icon: "M8 7a4 4 0 1 1 8 0M5 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2" },
@@ -67,7 +68,7 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
   return (
     <aside className={`flex shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 ${collapsed ? "w-16 px-2" : "w-64 px-4"}`}>
       <div className={`mb-2 flex items-center px-1 ${collapsed ? "justify-center" : "justify-between"}`}>
-        <Link href="/calendar" className="flex items-center gap-3" title="StudyPlan">
+        <Link href="/dashboard" className="flex items-center gap-3" title="StudyPlan">
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path d="M5 4h9l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />

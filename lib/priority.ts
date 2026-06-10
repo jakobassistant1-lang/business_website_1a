@@ -7,6 +7,7 @@
 // or its G1 guarantee.
 
 import type { Plan, AtRiskKind } from "./scheduler";
+import { round1 } from "./round";
 
 // Weights sum to 100 so `score` reads like a 0–100 percentage. Tune here.
 export const W_URGENCY = 40;
@@ -19,7 +20,6 @@ export const TOP_N = 3;
 
 const DAY = 86_400_000;
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
-const round1 = (n: number) => Math.round(n * 10) / 10;
 function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);

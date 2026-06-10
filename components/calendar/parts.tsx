@@ -59,6 +59,32 @@ export function fmtHours(h: number): string {
   const mins = Math.round((h * 60) / 5) * 5;
   return mins < 60 ? `${mins}m` : `${Math.round(h * 10) / 10}h`;
 }
+
+/** The AI study-coach as a single always-on line (Dashboard greeting). Fails
+ *  open — renders nothing when the AI is unavailable, so the greeting still reads. */
+export function CoachLine({ start, days = 1 }: { start: string; days?: number }) {
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const q = new URLSearchParams({ view: "day", start, days: String(days) });
+    fetch(`/api/calendar/briefing?${q.toString()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => !cancelled && setText(typeof b?.text === "string" ? b.text : null))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [start, days]);
+  if (!text) return null;
+  return (
+    <p className="mt-2 flex items-start gap-1.5 text-sm text-muted">
+      <span className="mt-0.5 shrink-0 text-accent">
+        <Glyph d={ICON.spark} size={14} />
+      </span>
+      <span>{text}</span>
+    </p>
+  );
+}
 export function effortText(item: CalendarItem): string | null {
   if (item.estimatedEffortHours != null && item.estimatedEffortHours > 0) {
     const h = Math.round(item.estimatedEffortHours * 10) / 10;

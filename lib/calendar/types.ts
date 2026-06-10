@@ -7,13 +7,6 @@
 /** Known calendar sources. Widen the union when a 2nd provider is added. */
 export type CalendarSource = "google";
 
-/** A neutral "busy" event — the only thing the planner needs from a calendar. */
-export interface BusyEvent {
-  startTime: Date | string;
-  endTime: Date | string;
-  allDay: boolean;
-}
-
 /** A displayable calendar event (for the Calendar's "busy" blocks). */
 export interface CalendarEvent {
   title: string;
@@ -31,8 +24,6 @@ export interface CalendarProvider {
   id: CalendarSource;
   /** Server has the env/config needed for this provider to work. */
   isConfigured(): boolean;
-  /** Busy hours per local calendar day (YYYY-MM-DD) for this user. */
-  busyHoursByDate(userId: number): Promise<Map<string, number>>;
   /** Displayable events for this user (for the Calendar's busy blocks). */
   events(userId: number): Promise<CalendarEvent[]>;
 }
