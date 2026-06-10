@@ -14,8 +14,8 @@ const STATUS_PILL: Record<string, { text: string; tone: Tone }> = {
   valid: { text: "Connected", tone: "success" },
   invalid_token: { text: "Token rejected", tone: "danger" },
   bad_domain: { text: "Bad domain", tone: "danger" },
-  unreachable: { text: "Unreachable", tone: "warning" },
-  insufficient_scope: { text: "Insufficient scope", tone: "warning" },
+  unreachable: { text: "Unreachable", tone: "danger" },
+  insufficient_scope: { text: "Insufficient scope", tone: "danger" },
   error: { text: "Error", tone: "danger" },
 };
 

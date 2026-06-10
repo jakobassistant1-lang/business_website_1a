@@ -6,17 +6,12 @@ import type { PlanPayload, SubmittedItem } from "@/lib/plan";
 import type { PlanDay } from "@/lib/scheduler";
 import type { ScoredAssignment } from "@/lib/priority";
 import { toneSoft } from "@/lib/tone";
+import { courseColor } from "@/lib/courseColor";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-// V3 — soft, distinct per-course dot colors (deterministic by name; data-viz
-// category colors, not theme tokens).
-const COURSE_COLORS = ["#7c5cf0", "#0ea5e9", "#10b981", "#0891b2", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
-function courseColor(name: string) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return COURSE_COLORS[h % COURSE_COLORS.length];
-}
+// Per-course dot colors come from the single shared palette (lib/courseColor) so
+// every view stays in lockstep — no local copy to drift.
 function CourseDot({ name }: { name: string }) {
   return <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: courseColor(name) }} />;
 }
@@ -162,7 +157,7 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
     : payload.syncedAt === null
     ? { text: "Not synced yet", cls: toneSoft.neutral }
     : payload.stale
-    ? { text: "Stale data", cls: toneSoft.warning }
+    ? { text: "Stale data", cls: toneSoft.neutral }
     : { text: "Up to date", cls: toneSoft.success };
 
   const atRiskCount = plan.atRisk.filter((a) => a.kind === "insufficient_time").length;

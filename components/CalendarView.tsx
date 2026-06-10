@@ -118,7 +118,7 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
     : data.syncedAt === null
       ? { text: "Not synced yet", cls: toneSoft.neutral }
       : data.stale
-        ? { text: "Stale data", cls: toneSoft.warning }
+        ? { text: "Stale data", cls: toneSoft.neutral }
         : { text: "Up to date", cls: toneSoft.success };
 
   return (
@@ -255,10 +255,10 @@ function LoadMeter({ planDay }: { planDay?: PlanDay }) {
         <span>
           {planDay.allocated}/{planDay.capacity}h planned
         </span>
-        {over && <span className="text-warning">over capacity</span>}
+        {over && <span className="text-danger">over capacity</span>}
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-soft">
-        <div className={`h-full rounded-full ${over ? "bg-warning" : "bg-accent"}`} style={{ width: `${pct}%` }} />
+        <div className={`h-full rounded-full ${over ? "bg-danger" : "bg-accent"}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -392,7 +392,7 @@ function WeekView({
               {isToday && <span className="text-[10px] font-semibold text-accent">TODAY</span>}
             </button>
             {plan && (
-              <span className={`mt-0.5 text-[10px] ${plan.allocated > plan.capacity + 1e-9 ? "text-warning" : "text-muted"}`}>
+              <span className={`mt-0.5 text-[10px] ${plan.allocated > plan.capacity + 1e-9 ? "text-danger" : "text-muted"}`}>
                 {plan.allocated}/{plan.capacity}h
               </span>
             )}

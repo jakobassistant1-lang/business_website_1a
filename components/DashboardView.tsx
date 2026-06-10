@@ -3,28 +3,31 @@
 // The Dashboard — a single-focus "command screen". A solid-violet Focus module
 // (the #1 upcoming task), a priority-ranked Today list whose rows complete
 // themselves the moment Canvas reports a submission (flash accent → settle grey),
-// a daily-progress dial, and a context rail (This week / Overdue / jump links).
+// a daily-progress ring, and a context rail (This week / Overdue / jump links).
 // Overdue work lives only in the rail; Focus + Next-up are forward-looking, so
 // the three zones never contradict each other.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ymd, parseYmd } from "@/lib/calendarDates";
+import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_SHORT, MONTHS_LONG } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
 import { ItemDetail, Glyph, ICON, fmtHours, fmtTime } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { ItemType } from "@/lib/itemType";
-import type { ScoredAssignment } from "@/lib/priority";
 
 const TODAY_MAX = 7;
 const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
 const shortCourse = (name: string) => name.split(" · ")[0];
+// Locale-independent date strings (avoid a server/client locale hydration mismatch).
+const fmtLongDate = (d: Date) => `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
+const fmtShortDate = (d: Date) => `${WEEKDAYS[d.getDay()]}, ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
 
-export function DashboardView({ data, todayYmd, firstName }: { data: CalendarData; todayYmd: string; firstName: string }) {
+export function DashboardView({ data, todayYmd: serverToday, firstName }: { data: CalendarData; todayYmd: string; firstName: string }) {
   const router = useRouter();
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
+  const [todayYmd, setTodayYmd] = useState(serverToday);
   const [selected, setSelected] = useState<CalendarItem | null>(null);
   const [newlyDone, setNewlyDone] = useState<Set<number>>(new Set());
   const didAutoSync = useRef(false);
@@ -32,7 +35,11 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
   useEffect(() => {
     const h = new Date().getHours();
     setGreeting(h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
-  }, []);
+    // "Today" is the USER's local day, not the server's (which is UTC on Vercel),
+    // so day-membership matches how the items below are bucketed. (#3)
+    const t = ymd(new Date());
+    if (t !== serverToday) setTodayYmd(t);
+  }, [serverToday]);
 
   // Sync Canvas once per browser session (shared key with the Calendar). A fresh
   // sync is what turns a just-submitted assignment "done" on the dashboard.
@@ -50,8 +57,9 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
   }, []);
 
   // --- Today's work, ranked by importance (not clock time) ---------------
-  const overdueIds = new Set(data.atRisk.map((a) => a.canvasId));
-  const rank = new Map(data.recommendations.map((r, i) => [r.canvasId, i]));
+  // `ranked` is the FULL importance order, so every Today row sorts correctly
+  // (recommendations alone is just the top few). (#1)
+  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i]));
   const isDueToday = (it: CalendarItem) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd;
 
   const todayActive = data.items
@@ -66,32 +74,36 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
   const leadId = todayActive[0]?.canvasId ?? null;
 
   // Study blocks only make sense for assessments still AHEAD — never surface
-  // "study for X" once X is due today (or already taken). (#2.1)
+  // "study for X" once X is due today (or already taken), and never a 0h block.
   const todayBlocks = data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? [];
-  const studyFuture = todayBlocks.filter((b) => b.study && ymd(new Date(b.dueAt)) > todayYmd);
+  const studyFuture = todayBlocks.filter((b) => b.study && b.hours > 0 && ymd(new Date(b.dueAt)) > todayYmd);
 
-  // Newly-submitted-today rows flash the accent once, then settle grey. We
-  // remember which done-ids we've already greeted so the glow plays exactly once.
+  // Newly-submitted-today rows flash the accent once, then settle grey. State is
+  // day-scoped + bounded; the first load of a day seeds silently so already-done
+  // work doesn't all flash at once. (#4)
   const doneKey = todayDone
     .map((i) => i.canvasId)
     .sort((a, b) => a - b)
     .join(",");
   useEffect(() => {
-    let seen = new Set<number>();
-    try {
-      seen = new Set(JSON.parse(localStorage.getItem("sp_seen_done") || "[]"));
-    } catch {
-      /* ignore */
-    }
     const ids = doneKey ? doneKey.split(",").map(Number) : [];
-    const fresh = ids.filter((id) => !seen.has(id));
-    setNewlyDone(new Set(fresh));
+    let stored: { day?: string; ids?: number[] } = {};
     try {
-      localStorage.setItem("sp_seen_done", JSON.stringify([...new Set([...seen, ...ids])]));
+      const parsed = JSON.parse(localStorage.getItem("sp_seen_done") || "{}");
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) stored = parsed;
     } catch {
       /* ignore */
     }
-  }, [doneKey]);
+    const sameDay = stored.day === todayYmd && Array.isArray(stored.ids);
+    const seen = new Set<number>(sameDay ? (stored.ids as number[]) : []);
+    const fresh = sameDay ? ids.filter((id) => !seen.has(id)) : [];
+    if (fresh.length) setNewlyDone((prev) => new Set([...prev, ...fresh]));
+    try {
+      localStorage.setItem("sp_seen_done", JSON.stringify({ day: todayYmd, ids }));
+    } catch {
+      /* ignore */
+    }
+  }, [doneKey, todayYmd]);
 
   const today = parseYmd(todayYmd);
   const dialTotal = todayActive.length + todayDone.length;
@@ -104,7 +116,7 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
             {greeting}
             {firstName ? `, ${firstName}` : ""}
           </p>
-          <p className="mt-0.5 text-sm text-muted">{today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
+          <p className="mt-0.5 text-sm text-muted">{fmtLongDate(today)}</p>
         </div>
         {data.connected && <ProgressRing done={todayDone.length} total={dialTotal} />}
       </div>
@@ -114,7 +126,7 @@ export function DashboardView({ data, todayYmd, firstName }: { data: CalendarDat
       ) : (
         <div className="flex flex-col gap-6 lg:flex-row">
           <div className="min-w-0 flex-1 space-y-6">
-            <FocusModule data={data} todayYmd={todayYmd} overdueIds={overdueIds} onSelect={setSelected} />
+            <FocusModule data={data} todayYmd={todayYmd} onSelect={setSelected} />
             <TodayCard
               today={today}
               active={todayActive}
@@ -169,7 +181,7 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
   const sw = 13;
   return (
     <div className="relative h-32 w-32 shrink-0 sm:h-36 sm:w-36">
-      <svg viewBox="0 0 120 120" className="h-full w-full">
+      <svg viewBox="0 0 120 120" className="h-full w-full" role="img" aria-label={total > 0 ? `${pct}% of today's work done` : "Nothing due today"}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgb(var(--accent) / 0.12)" strokeWidth={sw} />
         {[0, 1, 2, 3].map((i) => {
           const start = i / 4;
@@ -187,54 +199,36 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
   );
 }
 
-function Chip({ text, tone }: { text: string; tone: "danger" | "neutral" | "onAccent" }) {
-  const cls =
-    tone === "danger"
-      ? toneSoft.danger
-      : tone === "onAccent"
-        ? "bg-white/15 text-white ring-1 ring-inset ring-white/25"
-        : "bg-surface-soft text-muted";
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${cls}`}>{text}</span>;
+// A reason-chip on the violet Focus card (white-on-accent is the only variant).
+function Chip({ text }: { text: string }) {
+  return <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white ring-1 ring-inset ring-white/25">{text}</span>;
 }
 
-function focusChips(item: CalendarItem, todayYmd: string): string[] {
+function focusChips(item: CalendarItem, isToday: boolean): string[] {
   const out: string[] = [];
-  if (item.dueAt) {
-    const isToday = ymd(new Date(item.dueAt)) === todayYmd;
-    out.push(isToday ? `Due ${fmtTime(item.dueAt)}` : `Due ${new Date(item.dueAt).toLocaleDateString(undefined, { weekday: "short" })}`);
-  }
-  if (item.pointsPossible != null) out.push(`${item.pointsPossible} pts`);
+  if (item.dueAt) out.push(isToday ? `Due ${fmtTime(item.dueAt)}` : `Due ${WEEKDAYS[new Date(item.dueAt).getDay()]}`);
+  if (item.pointsPossible != null && item.pointsPossible > 0) out.push(`${item.pointsPossible} pts`);
   return out;
 }
 
-function focusRationale(item: CalendarItem, todayYmd: string): string {
-  const isToday = item.dueAt && ymd(new Date(item.dueAt)) === todayYmd;
+function focusRationale(item: CalendarItem, isToday: boolean): string {
   const parts: string[] = [];
-  if (item.pointsPossible != null) parts.push(`Worth ${item.pointsPossible} pts`);
+  if (item.pointsPossible != null && item.pointsPossible > 0) parts.push(`Worth ${item.pointsPossible} pts`);
   if (isToday) parts.push("due today");
   const lead = parts.length ? parts.join(" and ") : item.name;
   return lead + (isToday ? " — knock it out today." : " — a strong place to start.");
 }
 
-function FocusModule({
-  data,
-  todayYmd,
-  overdueIds,
-  onSelect,
-}: {
-  data: CalendarData;
-  todayYmd: string;
-  overdueIds: Set<number>;
-  onSelect: (it: CalendarItem) => void;
-}) {
-  // Forward-looking: the top NON-overdue priority. Overdue work is the rail's job.
-  const upcoming = (data.recommendations as ScoredAssignment[]).filter((r) => !overdueIds.has(r.canvasId));
-  const top = upcoming[0];
+function FocusModule({ data, todayYmd, onSelect }: { data: CalendarData; todayYmd: string; onSelect: (it: CalendarItem) => void }) {
+  // `recommendations` is already forward-looking (overdue excluded upstream), so
+  // the top entry is the thing to do next — never an overdue item. (#1, #10)
+  const top = data.recommendations[0];
   const topItem = top ? data.items.find((it) => it.canvasId === top.canvasId) : undefined;
-  const nextRecs = upcoming.slice(1, 3);
+  const nextRecs = data.recommendations.slice(1, 3);
+  const isToday = !!topItem?.dueAt && ymd(new Date(topItem.dueAt)) === todayYmd;
 
   if (!top) {
-    const caughtUp = overdueIds.size === 0;
+    const caughtUp = data.atRisk.length === 0;
     return (
       <div className="card p-8 text-center">
         <div className="flex justify-center text-success">
@@ -259,11 +253,11 @@ function FocusModule({
             <span className="block text-[2rem] font-bold leading-[1.1] tracking-tight">{top.name}</span>
           </button>
           <div className="mt-3 flex flex-wrap gap-2">
-            {(topItem ? focusChips(topItem, todayYmd) : []).map((c, i) => (
-              <Chip key={i} text={c} tone="onAccent" />
+            {(topItem ? focusChips(topItem, isToday) : []).map((c, i) => (
+              <Chip key={i} text={c} />
             ))}
           </div>
-          <p className="mt-3 text-[15px] text-white/90">{topItem ? focusRationale(topItem, todayYmd) : top.reason}</p>
+          <p className="mt-3 text-[15px] text-white/90">{topItem ? focusRationale(topItem, isToday) : top.reason}</p>
           <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
             {topItem ? (
               <button onClick={() => onSelect(topItem)} className="rounded-[14px] bg-white px-5 py-2.5 text-sm font-semibold text-accent transition hover:bg-white/90">
@@ -308,7 +302,7 @@ function FocusModule({
 function StatusDisc({ kind }: { kind: "done" | "study" | "active" }) {
   if (kind === "done")
     return (
-      <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-success text-white">
+      <span role="img" aria-label="Completed" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-success text-white">
         <Glyph d={ICON.check} size={13} />
       </span>
     );
@@ -366,13 +360,15 @@ function TodayCard({
   budget -= studyShown.length;
   const doneShown = doneItems.slice(0, Math.max(0, budget));
   const hidden = totalRows - activeShown.length - studyShown.length - doneShown.length;
-  const overflow = [hidden > 0 ? `${hidden} more` : "", busyCount > 0 ? `${busyCount} busy` : ""].filter(Boolean);
+  // Only an overflow of coursework means "Today" is truncated; busy events are
+  // extra context shown alongside, never the sole reason for the link. (#7)
+  const overflowText = hidden > 0 ? `${hidden} more${busyCount > 0 ? ` · ${busyCount} busy` : ""}` : "";
 
   return (
     <div className="card p-6">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold text-ink">Today</h2>
-        <span className="text-sm text-muted">{today.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
+        <span className="text-sm text-muted">{fmtShortDate(today)}</span>
       </div>
       {empty ? (
         <p className="py-10 text-center text-sm text-muted">You&apos;re all caught up for today.</p>
@@ -396,9 +392,9 @@ function TodayCard({
           ))}
         </div>
       )}
-      {overflow.length > 0 && (
+      {overflowText && (
         <Link href="/calendar" className="mt-3 block text-sm font-medium text-accent hover:underline">
-          {overflow.join(" · ")} → Open day in Calendar ›
+          {overflowText} → Open day in Calendar ›
         </Link>
       )}
     </div>
@@ -413,7 +409,9 @@ function WeekCard({ data }: { data: CalendarData }) {
   const budget = data.hoursPerDay * data.plan.days.length;
   const work = round1(planned + data.overloadHours);
   const over = data.overloadHours >= 1;
-  const free = round1(Math.max(0, budget - planned));
+  // "free" must net out the overload too, or an over-subscribed week could claim
+  // free hours and contradict the "Nh over" pill. (#2)
+  const free = round1(Math.max(0, budget - work));
 
   return (
     <div className="card p-6">
@@ -422,8 +420,11 @@ function WeekCard({ data }: { data: CalendarData }) {
         {fmtHours(work)} <span className="text-sm font-normal text-muted">of work</span>
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm">
-        {over && <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>{Math.round(data.overloadHours)}h over</span>}
-        <span className="text-muted">{fmtHours(free)} free</span>
+        {over ? (
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>{Math.round(data.overloadHours)}h over</span>
+        ) : (
+          <span className="text-muted">{fmtHours(free)} free</span>
+        )}
       </div>
       <p className="mt-3 border-t border-line-subtle pt-3 text-sm text-muted">
         {dueThisWeek.length} due · {examQuiz} exams / quizzes

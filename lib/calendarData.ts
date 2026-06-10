@@ -8,7 +8,7 @@
 
 import { prisma } from "./prisma";
 import { generatePlan, type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
-import { rankRecommendations, priorityInputsFromPlan, type ScoredAssignment } from "./priority";
+import { rankRecommendations, priorityInputsFromPlan, TOP_N, type ScoredAssignment } from "./priority";
 import { loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
 import { itemType, isStudyType, type ItemType } from "./itemType";
@@ -46,7 +46,8 @@ export interface CalendarData {
   events: CalendarEvent[]; // calendar "busy" blocks
   plan: Plan; // scheduler output (powers the Timeline)
   atRisk: AtRiskItem[];
-  recommendations: ScoredAssignment[];
+  recommendations: ScoredAssignment[]; // forward-looking "do next" slice (overdue excluded)
+  ranked: ScoredAssignment[]; // full importance ranking (drives the Dashboard's Today sort)
 }
 
 type AssignmentRow = Awaited<ReturnType<typeof loadAssignmentRows>>[number];
@@ -96,12 +97,17 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
 
   const submittedIds = new Set(submittedRows.map((a) => a.canvasId));
   const pointsById = new Map<number, number | null>(activeRows.map((a) => [a.canvasId, a.pointsPossible]));
-  const recommendations = rankRecommendations(priorityInputsFromPlan(plan, submittedIds, pointsById), {
+  const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
+
+  // Full importance ranking. `recommendations` is the forward-looking "do next"
+  // slice — overdue work lives in atRisk (the catch-up rail), not the queue — so
+  // the Dashboard, Calendar, and Timeline all agree on what's #1. The Dashboard's
+  // Today sort needs every item's rank, so we expose the full `ranked` list too.
+  const ranked = rankRecommendations(priorityInputsFromPlan(plan, submittedIds, pointsById), {
     windowDays: PLAN_WINDOW_DAYS,
     effortHours: user.defaultEffortHours,
-  }).top;
-
-  const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
+  }).ranked;
+  const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
 
   const toItem = (a: AssignmentRow, done: boolean): CalendarItem => ({
     canvasId: a.canvasId,
@@ -134,5 +140,6 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     events,
     plan,
     recommendations,
+    ranked,
   };
 }
