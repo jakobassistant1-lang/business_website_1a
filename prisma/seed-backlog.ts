@@ -34,6 +34,15 @@ function syntheticCompletions(): Map<number, Date> {
 }
 
 async function main() {
+  // Idempotent: this runs in the Vercel build, so guard it to seed EXACTLY once.
+  // Once any numbered ticket exists the board is the source of truth — never wipe
+  // the team's work on a later deploy.
+  const alreadySeeded = await prisma.adminTask.count({ where: { ticketNumber: { not: null } } });
+  if (alreadySeeded > 0) {
+    console.log(`Backlog already seeded (${alreadySeeded} numbered tickets) — skipping.`);
+    return;
+  }
+
   const completedAt = syntheticCompletions();
   const removed = await prisma.adminTask.deleteMany({});
   await prisma.adminTask.createMany({
