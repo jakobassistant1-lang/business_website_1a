@@ -6,11 +6,34 @@ import { signupInviteCode } from "@/lib/signup";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Best-effort per-IP throttle. Student signup is open, so this is a speed-bump
+// against scripted mass-creation. In-memory → per serverless instance only (not
+// a shared-store limiter); generous enough that real testers never hit it.
+const RL_WINDOW_MS = 15 * 60_000;
+const RL_MAX = 10;
+const signupHits = new Map<string, { count: number; resetAt: number }>();
+function rateLimited(ip: string): boolean {
+  const now = Date.now();
+  if (signupHits.size > 5000) for (const [k, v] of signupHits) if (now > v.resetAt) signupHits.delete(k);
+  const e = signupHits.get(ip);
+  if (!e || now > e.resetAt) {
+    signupHits.set(ip, { count: 1, resetAt: now + RL_WINDOW_MS });
+    return false;
+  }
+  e.count += 1;
+  return e.count > RL_MAX;
+}
+
 // FR-1: sign up. Two doors:
 //   • Student — open, NO invite code → a regular account (isAdmin = false).
 //   • Admin   — requires the SIGNUP_INVITE_CODE (first time only) → the account
 //               is remembered as admin (isAdmin = true); later they just log in.
 export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (rateLimited(ip)) {
+    return NextResponse.json({ error: "Too many sign-ups from here — try again in a few minutes." }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => ({}));
   const role = body.role === "admin" ? "admin" : "student";
   const email = String(body.email ?? "").trim().toLowerCase();

@@ -6,11 +6,13 @@ import {
   KANBAN_STATUSES,
   TICKET_SIZES,
   TICKET_SIZE_LABEL,
+  TICKET_POINTS,
   type KanbanStatus,
   type KanbanTask,
   type TicketSize,
 } from "@/lib/kanban";
 import { toneBar, toneSoft, type Tone } from "@/lib/tone";
+import { fmtDateUTC } from "@/lib/calendarDates";
 
 type ToastKind = "success" | "info" | "warning" | "danger";
 interface Toast {
@@ -48,22 +50,17 @@ const TICKET_TONE: Record<TicketSize, Tone> = {
   medium: "warning",
   large: "danger",
 };
-const SIZE_POINTS: Record<TicketSize, number> = { small: 1, medium: 2, large: 3 };
-
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "—";
   return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
-// Due dates are stored as UTC-midnight ISO strings; render/compare in UTC so the
-// day shown matches the day picked, regardless of the viewer's timezone.
-function formatDue(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-}
-function isOverdue(iso: string): boolean {
-  const today = new Date();
-  const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+// Due dates are UTC-midnight ISO; compare in UTC against a server-provided "now"
+// (passed as a prop) so the overdue flag matches between SSR and hydration.
+function isOverdue(iso: string, nowMs: number): boolean {
+  const now = new Date(nowMs);
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return new Date(iso).getTime() < todayUTC;
 }
 
@@ -99,7 +96,7 @@ function reorder(tasks: KanbanTask[], id: number, status: KanbanStatus, index: n
   return [...rest, ...resequenced];
 }
 
-export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adminName: string }) {
+export function KanbanBoard({ initial, adminName, nowMs }: { initial: KanbanTask[]; adminName: string; nowMs: number }) {
   const [tasks, setTasks] = useState<KanbanTask[]>(initial);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [dragId, setDragId] = useState<number | null>(null);
@@ -405,7 +402,7 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
                 >
                   {cards.map((task) => {
                     const creator = task.creatorName ?? adminName;
-                    const overdue = !!task.dueDate && isOverdue(task.dueDate) && task.status !== "done";
+                    const overdue = !!task.dueDate && isOverdue(task.dueDate, nowMs) && task.status !== "done";
                     const done = task.status === "done";
                     return (
                       <article
@@ -427,7 +424,7 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
                           )}
                           {task.ticketSize && (
                             <span
-                              title={`Size: ${TICKET_SIZE_LABEL[task.ticketSize]} (${SIZE_POINTS[task.ticketSize]} pt)`}
+                              title={`Size: ${TICKET_SIZE_LABEL[task.ticketSize]} (${TICKET_POINTS[task.ticketSize]} pt)`}
                               className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${toneSoft.neutral}`}
                             >
                               <span className={`h-1.5 w-1.5 rounded-full ${toneBar[TICKET_TONE[task.ticketSize]]}`} aria-hidden="true" />
@@ -455,7 +452,7 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
                                 className={`inline-flex items-center gap-1 truncate text-xs font-medium ${overdue ? "text-danger" : "text-muted"}`}
                                 title={overdue ? "Overdue" : "Due date"}
                               >
-                                {formatDue(task.dueDate)}
+                                {fmtDateUTC(task.dueDate)}
                               </span>
                             )}
                           </div>
@@ -511,12 +508,12 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
               {detailTask.ticketSize && (
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.neutral}`}>
                   <span className={`h-2 w-2 rounded-full ${toneBar[TICKET_TONE[detailTask.ticketSize]]}`} aria-hidden="true" />
-                  {TICKET_SIZE_LABEL[detailTask.ticketSize]} · {SIZE_POINTS[detailTask.ticketSize]} pt
+                  {TICKET_SIZE_LABEL[detailTask.ticketSize]} · {TICKET_POINTS[detailTask.ticketSize]} pt
                 </span>
               )}
               {detailTask.status === "done" && detailTask.completedAt && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
-                  ✓ Completed {formatDue(detailTask.completedAt)}
+                  ✓ Completed {fmtDateUTC(detailTask.completedAt)}
                 </span>
               )}
             </div>
@@ -526,7 +523,7 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
             {(detailTask.contributor || detailTask.dueDate) && (
               <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
                 {detailTask.contributor && <span>Contributor: <span className="text-ink">{detailTask.contributor}</span></span>}
-                {detailTask.dueDate && <span>Due: <span className="text-ink">{formatDue(detailTask.dueDate)}</span></span>}
+                {detailTask.dueDate && <span>Due: <span className="text-ink">{fmtDateUTC(detailTask.dueDate)}</span></span>}
               </div>
             )}
           </div>
@@ -595,7 +592,7 @@ export function KanbanBoard({ initial, adminName }: { initial: KanbanTask[]; adm
                 <select id="task-size" className="field" value={draftTicketSize} onChange={(e) => setDraftTicketSize(e.target.value as TicketSize | "")}>
                   <option value="">— None —</option>
                   {TICKET_SIZES.map((s) => (
-                    <option key={s} value={s}>{TICKET_SIZE_LABEL[s]} ({SIZE_POINTS[s]} pt)</option>
+                    <option key={s} value={s}>{TICKET_SIZE_LABEL[s]} ({TICKET_POINTS[s]} pt)</option>
                   ))}
                 </select>
               </div>

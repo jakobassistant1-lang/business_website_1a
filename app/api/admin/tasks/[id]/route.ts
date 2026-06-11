@@ -7,6 +7,7 @@ import {
   KANBAN_TASK_SELECT,
   toKanbanTask,
   parseTaskFields,
+  completedAtPatch,
 } from "@/lib/kanban";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -46,15 +47,21 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
     if (!task) return null;
 
     const newStatus = wantStatus ?? task.status;
-    // Stamp completedAt the first time a card reaches Done; clear it if pulled
-    // back out — so the burndown reflects the board exactly. (Reordering within
-    // Done leaves the original completion time intact.)
-    const completedAtPatch =
-      newStatus === "done" && task.status !== "done"
-        ? { completedAt: new Date() }
-        : newStatus !== "done" && task.status === "done"
-        ? { completedAt: null }
-        : {};
+    // Stamp completedAt the first time a card reaches Done; clear on the way out.
+    const completed = completedAtPatch(newStatus, task.status);
+
+    // Pure field/title edit (same column, no explicit slot): update ONLY this
+    // card. Re-sequencing here would mis-place it — positions aren't guaranteed
+    // 0-based contiguous (the seed numbers them globally) — and it'd be N
+    // redundant writes. Moves/reorders fall through to the re-sequence below.
+    if (newStatus === task.status && wantPosition === undefined) {
+      await tx.adminTask.update({
+        where: { id },
+        data: { ...(newTitle !== undefined ? { title: newTitle } : {}), ...fields },
+      });
+      return tx.adminTask.findUnique({ where: { id }, select: KANBAN_TASK_SELECT });
+    }
+
     const others = await tx.adminTask.findMany({
       where: { status: newStatus, id: { not: id } },
       orderBy: { position: "asc" },
@@ -62,12 +69,8 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
     });
     const ids = others.map((t) => t.id);
     const clamp = (n: number) => Math.max(0, Math.min(n, ids.length));
-    const insertAt =
-      wantPosition !== undefined
-        ? clamp(wantPosition)
-        : newStatus !== task.status
-        ? ids.length // moving columns with no explicit slot → append
-        : clamp(task.position); // staying put
+    // Either an explicit drag slot, or a column move with no slot → append.
+    const insertAt = wantPosition !== undefined ? clamp(wantPosition) : ids.length;
     ids.splice(insertAt, 0, id);
 
     for (let i = 0; i < ids.length; i++) {
@@ -78,7 +81,7 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
           status: newStatus, // no-op for the others (already in this column)
           // Title + the optional fields apply only to the moved/edited card.
           ...(ids[i] === id && newTitle !== undefined ? { title: newTitle } : {}),
-          ...(ids[i] === id ? { ...fields, ...completedAtPatch } : {}),
+          ...(ids[i] === id ? { ...fields, ...completed } : {}),
         },
       });
     }

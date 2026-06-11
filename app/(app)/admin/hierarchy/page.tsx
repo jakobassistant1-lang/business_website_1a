@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
-import { prisma } from "@/lib/prisma";
 import { HierarchyMap } from "@/components/HierarchyMap";
-import { KANBAN_TASK_SELECT, toKanbanTask } from "@/lib/kanban";
+import { loadKanbanTasks } from "@/lib/adminTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +11,6 @@ export default async function HierarchyPage() {
   const admin = await getAdminUser();
   if (!admin) notFound();
 
-  const rows = await prisma.adminTask.findMany({
-    orderBy: [{ ticketNumber: "asc" }, { position: "asc" }],
-    select: KANBAN_TASK_SELECT,
-  });
-
-  return <HierarchyMap tasks={rows.map(toKanbanTask)} />;
+  const tasks = await loadKanbanTasks([{ ticketNumber: "asc" }, { position: "asc" }]);
+  return <HierarchyMap tasks={tasks} />;
 }

@@ -1,15 +1,20 @@
+"use client";
+
 // Burndown over the fixed project window (June 1 → June 30, 2026). Points come
 // from ticket size (S/M/L → 1/2/3). The TOTAL is the whole live board, so adding
-// tickets later just raises the ceiling — no "65/50". Server-rendered (static SVG
-// from props); `nowMs` is passed in so the "today" marker is stable, not a
-// server/client mismatch.
+// tickets later just raises the ceiling — no "65/50". `nowMs` arrives from the
+// server so SSR + first hydration agree; after mount we switch the "today"
+// reckoning to the viewer's LOCAL day so the KPIs match their wall clock.
 
+import { useEffect, useState } from "react";
 import { pointsForSize } from "@/lib/kanban";
+import { fmtDateUTC } from "@/lib/calendarDates";
 import type { KanbanTask } from "@/lib/kanban";
 
 const DAY = 86_400_000;
 const START = Date.UTC(2026, 5, 1); // June 1
 const END = Date.UTC(2026, 5, 30); // June 30
+const WINDOW_DAYS = Math.round((END - START) / DAY);
 
 // Chart geometry (viewBox units).
 const W = 720;
@@ -18,10 +23,20 @@ const PAD = { l: 46, r: 20, t: 20, b: 40 };
 const PLOT_W = W - PAD.l - PAD.r;
 const PLOT_H = H - PAD.t - PAD.b;
 
-const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
 export function BurndownChart({ tasks, nowMs }: { tasks: KanbanTask[]; nowMs: number }) {
+  // Before mount, reckon "today" in UTC (deterministic → matches the server's
+  // SSR). After mount, use the viewer's local day.
+  const [clientNow, setClientNow] = useState<number | null>(null);
+  useEffect(() => setClientNow(Date.now()), []);
+  const now = clientNow ?? nowMs;
+  const useLocal = clientNow !== null;
+  const dayKey = (ms: number) => {
+    const d = new Date(ms);
+    return useLocal
+      ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+      : `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+  };
+
   const pts = (t: KanbanTask) => pointsForSize(t.ticketSize);
   const total = tasks.reduce((s, t) => s + pts(t), 0);
   const doneTasks = tasks.filter((t) => t.status === "done");
@@ -29,9 +44,10 @@ export function BurndownChart({ tasks, nowMs }: { tasks: KanbanTask[]; nowMs: nu
   const remaining = total - completed;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-  const elapsedDays = Math.max(1, Math.round((nowMs - START) / DAY));
+  const windowEnded = now > END;
+  const elapsedDays = Math.max(1, Math.min(Math.round((now - START) / DAY), WINDOW_DAYS));
   const avgPerDay = completed / elapsedDays;
-  const todayKey = dayKey(nowMs);
+  const todayKey = dayKey(now);
   const completedToday = doneTasks.filter((t) => t.completedAt && dayKey(Date.parse(t.completedAt)) === todayKey).reduce((s, t) => s + pts(t), 0);
 
   // Scales.
@@ -39,10 +55,11 @@ export function BurndownChart({ tasks, nowMs }: { tasks: KanbanTask[]; nowMs: nu
   const x = (t: number) => PAD.l + ((clampT(t) - START) / (END - START)) * PLOT_W;
   const y = (p: number) => PAD.t + (total > 0 ? 1 - p / total : 1) * PLOT_H;
 
-  // Actual line: total → step down at each completion → flat to "now".
+  // Actual line: total → step down at each completion → flat to "now". EVERY done
+  // card contributes a step; a card missing completedAt is treated as finished at
+  // the window start (so the line never disagrees with `remaining`).
   const events = doneTasks
-    .filter((t) => t.completedAt)
-    .map((t) => ({ t: Date.parse(t.completedAt as string), p: pts(t) }))
+    .map((t) => ({ t: t.completedAt ? Date.parse(t.completedAt) : START, p: pts(t) }))
     .sort((a, b) => a.t - b.t);
   const line: Array<[number, number]> = [[START, total]];
   let cum = 0;
@@ -50,7 +67,7 @@ export function BurndownChart({ tasks, nowMs }: { tasks: KanbanTask[]; nowMs: nu
     cum += e.p;
     line.push([e.t, total - cum]);
   }
-  line.push([nowMs, remaining]);
+  line.push([now, total - cum]);
   const actual = line.map(([t, p]) => `${x(t).toFixed(1)},${y(p).toFixed(1)}`).join(" ");
   const ideal = `${x(START).toFixed(1)},${y(total).toFixed(1)} ${x(END).toFixed(1)},${y(0).toFixed(1)}`;
 
@@ -58,18 +75,21 @@ export function BurndownChart({ tasks, nowMs }: { tasks: KanbanTask[]; nowMs: nu
   const bands = [0, 1, 2, 3].map((i) => {
     const s = START + i * 7 * DAY;
     const e = i < 3 ? START + (i + 1) * 7 * DAY : END;
-    return { i, s, e, label: `Week ${i + 1}`, dateLabel: fmtDate(s) };
+    return { i, s, e, label: `Week ${i + 1}`, dateLabel: fmtDateUTC(s) };
   });
 
-  // Y gridlines at quarters of the total.
-  const yTicks = total > 0 ? [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * total)) : [0];
+  // Y gridlines at quarters of the total — deduped so tiny totals don't repeat.
+  const yTicks = total > 0 ? [...new Set([0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * total)))] : [0];
 
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Burndown</h1>
         <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">Admin</span>
-        <p className="ml-auto text-sm text-muted">Jun 1 – Jun 30 · {total} pts total</p>
+        <p className="ml-auto text-sm text-muted">
+          Jun 1 – Jun 30 · {total} pts total
+          {windowEnded && <span className="ml-2 rounded-full bg-surface-soft px-2 py-0.5 text-xs font-medium text-muted">window ended</span>}
+        </p>
       </header>
 
       {/* KPIs */}
@@ -113,13 +133,7 @@ export function BurndownChart({ tasks, nowMs }: { tasks: KanbanTask[]; nowMs: nu
               {/* Week bands (alternating tint so each week reads distinctly) */}
               {bands.map((b) => (
                 <g key={b.i}>
-                  <rect
-                    x={x(b.s)}
-                    y={PAD.t}
-                    width={x(b.e) - x(b.s)}
-                    height={PLOT_H}
-                    fill={`rgb(var(--accent) / ${b.i % 2 === 0 ? 0.05 : 0.1})`}
-                  />
+                  <rect x={x(b.s)} y={PAD.t} width={x(b.e) - x(b.s)} height={PLOT_H} fill={`rgb(var(--accent) / ${b.i % 2 === 0 ? 0.05 : 0.1})`} />
                   <text x={x(b.s) + 6} y={PAD.t + 14} className="fill-muted" fontSize="10" fontWeight="600">
                     {b.label}
                   </text>
@@ -139,20 +153,20 @@ export function BurndownChart({ tasks, nowMs }: { tasks: KanbanTask[]; nowMs: nu
               ))}
               {/* Ideal line */}
               <polyline points={ideal} fill="none" stroke="rgb(var(--muted))" strokeWidth="1.5" strokeDasharray="5 4" opacity="0.5" />
-              {/* Today marker */}
-              {nowMs >= START && nowMs <= END && (
-                <line x1={x(nowMs)} y1={PAD.t} x2={x(nowMs)} y2={PAD.t + PLOT_H} stroke="rgb(var(--accent) / 0.45)" strokeWidth="1" strokeDasharray="3 3" />
+              {/* Today marker (only while inside the window) */}
+              {now >= START && now <= END && (
+                <line x1={x(now)} y1={PAD.t} x2={x(now)} y2={PAD.t + PLOT_H} stroke="rgb(var(--accent) / 0.45)" strokeWidth="1" strokeDasharray="3 3" />
               )}
               {/* Actual burndown */}
               <polyline points={actual} fill="none" stroke="rgb(var(--accent))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-              <circle cx={x(line[line.length - 1][0])} cy={y(remaining)} r="3.5" fill="rgb(var(--accent))" />
+              <circle cx={x(line[line.length - 1][0])} cy={y(total - cum)} r="3.5" fill="rgb(var(--accent))" />
             </svg>
             <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted">
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-0.5 w-5 rounded bg-accent" /> Actual
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-0.5 w-5 rounded bg-muted/50" style={{ borderTop: "1.5px dashed" }} /> Ideal
+                <span className="h-px w-5 border-t border-dashed border-muted/60" /> Ideal
               </span>
               <span className="ml-auto">Points remaining vs. date</span>
             </div>

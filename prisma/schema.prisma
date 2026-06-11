@@ -53,7 +53,7 @@ model AdminTask {
   ticketSize  String? // "small" | "medium" | "large" (validated in app) → points 1/2/3
   contributor String? // free-text contributor (name or initials); shown as initials
   // Backlog/hierarchy fields (StudyPlan MVP backlog). All optional/additive.
-  ticketNumber Int? // global build number (1..N); null for ad-hoc cards
+  ticketNumber Int?     @unique // global build number (1..N); null = ad-hoc (multiple NULLs allowed)
   goal        String? // top of the hierarchy, e.g. "AHA #1 — Clarity"
   subgoal     String? // mid level, e.g. "1A — Foundation"
   acceptance  String? // acceptance criteria text

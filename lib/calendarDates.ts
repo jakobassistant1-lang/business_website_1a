@@ -6,6 +6,13 @@ export const WEEKDAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thurs
 export const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+/** Short "Mon D" in UTC — for admin-board dates (due dates are UTC-midnight ISO;
+ *  burndown x-axis is a fixed UTC window). One formatter so the board and the
+ *  burndown can't drift apart on the same date. */
+export function fmtDateUTC(d: Date | string | number): string {
+  return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 export function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);

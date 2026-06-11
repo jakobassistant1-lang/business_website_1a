@@ -44,21 +44,28 @@ async function main() {
   }
 
   const completedAt = syntheticCompletions();
+  // Position is PER-COLUMN and 0-based (BACKLOG is in build-number order, so each
+  // column keeps that order). The board/API treat position as a 0-based slot.
+  const posInColumn = new Map<string, number>();
   const removed = await prisma.adminTask.deleteMany({});
   await prisma.adminTask.createMany({
-    data: BACKLOG.map((t) => ({
-      title: t.title,
-      description: t.scope,
-      status: t.status,
-      position: t.number, // ordered by build number within each column
-      ticketSize: t.size,
-      ticketNumber: t.number,
-      goal: t.goal,
-      subgoal: t.subgoal,
-      acceptance: t.acceptance,
-      dependencies: t.dependencies,
-      completedAt: t.status === "done" ? completedAt.get(t.number) ?? null : null,
-    })),
+    data: BACKLOG.map((t) => {
+      const position = posInColumn.get(t.status) ?? 0;
+      posInColumn.set(t.status, position + 1);
+      return {
+        title: t.title,
+        description: t.scope,
+        status: t.status,
+        position,
+        ticketSize: t.size,
+        ticketNumber: t.number,
+        goal: t.goal,
+        subgoal: t.subgoal,
+        acceptance: t.acceptance,
+        dependencies: t.dependencies,
+        completedAt: t.status === "done" ? completedAt.get(t.number) ?? null : null,
+      };
+    }),
   });
   const n = await prisma.adminTask.count();
   console.log(`Cleared ${removed.count} old card(s); seeded ${n} backlog tickets.`);

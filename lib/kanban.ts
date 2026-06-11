@@ -31,6 +31,17 @@ export function isTicketSize(s: unknown): s is TicketSize {
   return typeof s === "string" && (TICKET_SIZES as readonly string[]).includes(s);
 }
 
+/** The completedAt change when a card crosses the Done boundary — one source of
+ *  truth shared by the create (POST) and move/edit (PATCH) routes. Stamp on
+ *  entering Done; clear on leaving; no-op otherwise (so reorders keep the time). */
+export function completedAtPatch(newStatus: string, prevStatus?: string): { completedAt?: Date | null } {
+  const isDone = newStatus === "done";
+  const wasDone = prevStatus === "done";
+  if (isDone && !wasDone) return { completedAt: new Date() };
+  if (!isDone && wasDone) return { completedAt: null };
+  return {};
+}
+
 export interface KanbanTask {
   id: number;
   title: string;
@@ -56,10 +67,9 @@ export const MAX_CATEGORY = 40;
 export const MAX_CONTRIBUTOR = 60;
 export const MAX_ACCEPTANCE = 2000;
 export const MAX_DEPENDENCIES = 200;
-export const MAX_GOAL = 80;
-export const MAX_SUBGOAL = 80;
 
-// Normalized, ready-to-persist values for the optional card fields.
+// Normalized, ready-to-persist values for the optional card fields. (goal/subgoal
+// are hierarchy anchors set only by the seed, never edited via the API.)
 export type TaskFieldUpdates = {
   description?: string | null;
   dueDate?: Date | null;
@@ -68,8 +78,6 @@ export type TaskFieldUpdates = {
   contributor?: string | null;
   acceptance?: string | null;
   dependencies?: string | null;
-  goal?: string | null;
-  subgoal?: string | null;
 };
 
 /**
@@ -93,8 +101,6 @@ export function parseTaskFields(body: unknown): TaskFieldUpdates {
   if ("ticketSize" in b) out.ticketSize = isTicketSize(b.ticketSize) ? b.ticketSize : null;
   if ("acceptance" in b) out.acceptance = trimTo(b.acceptance, MAX_ACCEPTANCE);
   if ("dependencies" in b) out.dependencies = trimTo(b.dependencies, MAX_DEPENDENCIES);
-  if ("goal" in b) out.goal = trimTo(b.goal, MAX_GOAL);
-  if ("subgoal" in b) out.subgoal = trimTo(b.subgoal, MAX_SUBGOAL);
   if ("dueDate" in b) {
     const v = b.dueDate;
     if (v === null || v === "" || v === undefined) {

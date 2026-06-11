@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
-import { prisma } from "@/lib/prisma";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { KANBAN_TASK_SELECT, toKanbanTask } from "@/lib/kanban";
+import { loadKanbanTasks } from "@/lib/adminTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +12,6 @@ export default async function AdminPage() {
   const admin = await getAdminUser();
   if (!admin) notFound();
 
-  const rows = await prisma.adminTask.findMany({
-    orderBy: [{ status: "asc" }, { position: "asc" }],
-    select: KANBAN_TASK_SELECT,
-  });
-
-  return <KanbanBoard initial={rows.map(toKanbanTask)} adminName={admin.fullName} />;
+  const tasks = await loadKanbanTasks([{ status: "asc" }, { position: "asc" }]);
+  return <KanbanBoard initial={tasks} adminName={admin.fullName} nowMs={Date.now()} />;
 }

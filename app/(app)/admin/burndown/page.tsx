@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
-import { prisma } from "@/lib/prisma";
 import { BurndownChart } from "@/components/BurndownChart";
-import { KANBAN_TASK_SELECT, toKanbanTask } from "@/lib/kanban";
+import { loadKanbanTasks } from "@/lib/adminTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +11,6 @@ export default async function BurndownPage() {
   const admin = await getAdminUser();
   if (!admin) notFound();
 
-  const rows = await prisma.adminTask.findMany({
-    orderBy: [{ ticketNumber: "asc" }, { position: "asc" }],
-    select: KANBAN_TASK_SELECT,
-  });
-
-  return <BurndownChart tasks={rows.map(toKanbanTask)} nowMs={Date.now()} />;
+  const tasks = await loadKanbanTasks([{ ticketNumber: "asc" }, { position: "asc" }]);
+  return <BurndownChart tasks={tasks} nowMs={Date.now()} />;
 }

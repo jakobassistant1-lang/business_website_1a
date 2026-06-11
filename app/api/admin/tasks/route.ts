@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { withAdmin } from "@/lib/admin";
 import {
@@ -7,6 +8,7 @@ import {
   KANBAN_TASK_SELECT,
   toKanbanTask,
   parseTaskFields,
+  completedAtPatch,
 } from "@/lib/kanban";
 
 // GET /api/admin/tasks — list every task on the team board, column-ordered.
@@ -35,21 +37,24 @@ export const POST = withAdmin(async (admin, req) => {
     select: { position: true },
   });
   const position = last ? last.position + 1 : 0;
-  // Continue the global build numbering so new cards stay numbered, and the
-  // burndown total grows with them (no "65/50" — total is always the live board).
-  const maxNum = await prisma.adminTask.aggregate({ _max: { ticketNumber: true } });
-  const ticketNumber = (maxNum._max.ticketNumber ?? 0) + 1;
-  const task = await prisma.adminTask.create({
-    data: {
-      title,
-      status,
-      position,
-      createdById: admin.id,
-      ticketNumber,
-      ...(status === "done" ? { completedAt: new Date() } : {}),
-      ...fields,
-    },
-    select: KANBAN_TASK_SELECT,
-  });
-  return NextResponse.json({ task: toKanbanTask(task) }, { status: 201 });
+  const completed = completedAtPatch(status);
+
+  // Continue the global build numbering so new cards stay numbered (the burndown
+  // total grows with them). ticketNumber is @unique, so two concurrent creates
+  // that both read the same max+1 will collide — retry on the unique violation.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const maxNum = await prisma.adminTask.aggregate({ _max: { ticketNumber: true } });
+    const ticketNumber = (maxNum._max.ticketNumber ?? 0) + 1;
+    try {
+      const task = await prisma.adminTask.create({
+        data: { title, status, position, createdById: admin.id, ticketNumber, ...completed, ...fields },
+        select: KANBAN_TASK_SELECT,
+      });
+      return NextResponse.json({ task: toKanbanTask(task) }, { status: 201 });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") continue; // number race → retry
+      throw e;
+    }
+  }
+  return NextResponse.json({ error: "Couldn't assign a ticket number — try again." }, { status: 409 });
 });
