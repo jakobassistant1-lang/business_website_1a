@@ -2,21 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
-import { isSignupOpen, signupInviteCode } from "@/lib/signup";
+import { signupInviteCode } from "@/lib/signup";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// FR-1: sign up / onboarding. Invite-only on the public deployment.
+// FR-1: sign up. Two doors:
+//   • Student — open, NO invite code → a regular account (isAdmin = false).
+//   • Admin   — requires the SIGNUP_INVITE_CODE (first time only) → the account
+//               is remembered as admin (isAdmin = true); later they just log in.
 export async function POST(req: Request) {
-  // Closed unless an invite code is configured (admin-created accounts only).
-  if (!isSignupOpen()) {
-    return NextResponse.json(
-      { error: "Signups are invite-only. Ask an admin for access." },
-      { status: 403 },
-    );
-  }
-
   const body = await req.json().catch(() => ({}));
+  const role = body.role === "admin" ? "admin" : "student";
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   const fullName = String(body.fullName ?? "").trim();
@@ -25,7 +21,11 @@ export async function POST(req: Request) {
   const inviteCode = String(body.inviteCode ?? "");
 
   const errors: Record<string, string> = {};
-  if (inviteCode !== signupInviteCode()) errors.inviteCode = "Invalid invite code.";
+  if (role === "admin") {
+    const code = signupInviteCode();
+    if (!code) return NextResponse.json({ error: "Admin sign-up isn't enabled." }, { status: 403 });
+    if (inviteCode !== code) errors.inviteCode = "Invalid invite code.";
+  }
   if (!EMAIL_RE.test(email)) errors.email = "Enter a valid email address.";
   if (password.length < 8) errors.password = "Password must be at least 8 characters.";
   if (!fullName) errors.fullName = "Name is required.";
@@ -38,8 +38,8 @@ export async function POST(req: Request) {
   }
 
   const user = await prisma.user.create({
-    data: { email, password: await hashPassword(password), fullName, phone, tosAcceptedAt: new Date() },
+    data: { email, password: await hashPassword(password), fullName, phone, tosAcceptedAt: new Date(), isAdmin: role === "admin" },
   });
   await createSession(user.id);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, isAdmin: role === "admin" });
 }

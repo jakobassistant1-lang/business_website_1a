@@ -30,7 +30,7 @@
 - **Who pays / customer:** Students and their parents pay directly (B2C). Users are students juggling multiple Canvas courses (PRD persona "Maya"); parents are a likely funding source.
 - **Value proposition:** One trustworthy view of "what to do today" out of scattered Canvas coursework — no missed deadlines.
 - **Monetization / pricing:** Direct-pay by students/parents (B2C). Pricing structure + amount TBD.
-- **Status / stage:** Early. Moving from a single-user localhost MVP to a publicly deployed multi-user app (Next.js on Vercel + Postgres) at **pinnavel.com**; signup is currently invite-only; a small founding team is building it.
+- **Status / stage:** Early. Moving from a single-user localhost MVP to a publicly deployed multi-user app (Next.js on Vercel + Postgres) at **pinnavel.com**; student signup is open and admin signup is invite-code-gated; a small founding team is building it.
 - **Brand / domain:** App is named "StudyPlan"; live domain is **pinnavel.com** — public brand name not yet confirmed.
 
 _Known facts filled in; TBDs + the brand question need Massah Calvin's input._
@@ -62,7 +62,7 @@ _Known facts filled in; TBDs + the brand question need Massah Calvin's input._
 ## Auth & admin
 - Cookie sessions (`lib/auth.ts`; `getCurrentUser` is request-cached). Passwords are bcrypt-hashed.
 - Admin = `User.isAdmin` **or** email in `ADMIN_EMAILS`. `/admin` and `/api/admin/*` are gated server-side (route-group layout + `withAdmin()`); non-admins get 404.
-- Signup is **invite-only** via `SIGNUP_INVITE_CODE` (fully closed when unset). Seed accounts with `npm run create-user`.
+- **Two-door auth (`components/AuthFlow.tsx`):** step 1 pick Student or Admin, step 2 log in or sign up. **Student signup is open, NO invite code** → `isAdmin=false`. **Admin signup requires `SIGNUP_INVITE_CODE`** (first time only) → sets `isAdmin=true`, so the account is "remembered" as admin and later just logs in normally. Login is role-agnostic (the account's `isAdmin`/allowlist decides access; the login route returns `isAdmin` only to land admins on `/admin`). So an admin can sign up a separate student account to test the student experience without admin controls. Seed accounts with `npm run create-user`.
 
 ## Theming (important)
 - One token system: CSS vars in `app/globals.css` → Tailwind colors as `rgb(var(--x) / <alpha-value>)`. **Never hardcode colors — use tokens** (`bg-surface`, `text-ink`, `bg-accent`, `text-danger`, `border-line`, …). Light/dark via `[data-theme]`; the Tailwind `dark:` variant is wired to it. Shared status-color classes live in `lib/tone.ts`.

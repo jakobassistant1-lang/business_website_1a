@@ -1,8 +1,10 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { LoginForm } from "@/components/LoginForm";
+import { isSignupOpen } from "@/lib/signup";
+import { AuthFlow } from "@/components/AuthFlow";
 import { BrandMark } from "@/components/BrandMark";
+
+export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
@@ -11,20 +13,10 @@ export default async function LoginPage() {
   return (
     <main className="auth-bg flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center text-center">
+        <div className="mb-8 flex justify-center">
           <BrandMark />
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight">Welcome back</h1>
-          <p className="mt-1 text-sm text-muted">Log in to see today&apos;s plan.</p>
         </div>
-        <div className="card p-6">
-          <LoginForm />
-        </div>
-        <p className="mt-6 text-center text-sm text-muted">
-          New here?{" "}
-          <Link href="/signup" className="font-medium text-accent hover:text-accent-hover">
-            Create an account
-          </Link>
-        </p>
+        <AuthFlow initialMode="login" inviteConfigured={isSignupOpen()} />
       </div>
     </main>
   );
