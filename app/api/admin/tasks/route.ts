@@ -35,8 +35,20 @@ export const POST = withAdmin(async (admin, req) => {
     select: { position: true },
   });
   const position = last ? last.position + 1 : 0;
+  // Continue the global build numbering so new cards stay numbered, and the
+  // burndown total grows with them (no "65/50" — total is always the live board).
+  const maxNum = await prisma.adminTask.aggregate({ _max: { ticketNumber: true } });
+  const ticketNumber = (maxNum._max.ticketNumber ?? 0) + 1;
   const task = await prisma.adminTask.create({
-    data: { title, status, position, createdById: admin.id, ...fields },
+    data: {
+      title,
+      status,
+      position,
+      createdById: admin.id,
+      ticketNumber,
+      ...(status === "done" ? { completedAt: new Date() } : {}),
+      ...fields,
+    },
     select: KANBAN_TASK_SELECT,
   });
   return NextResponse.json({ task: toKanbanTask(task) }, { status: 201 });

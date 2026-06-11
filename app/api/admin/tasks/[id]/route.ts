@@ -46,6 +46,15 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
     if (!task) return null;
 
     const newStatus = wantStatus ?? task.status;
+    // Stamp completedAt the first time a card reaches Done; clear it if pulled
+    // back out — so the burndown reflects the board exactly. (Reordering within
+    // Done leaves the original completion time intact.)
+    const completedAtPatch =
+      newStatus === "done" && task.status !== "done"
+        ? { completedAt: new Date() }
+        : newStatus !== "done" && task.status === "done"
+        ? { completedAt: null }
+        : {};
     const others = await tx.adminTask.findMany({
       where: { status: newStatus, id: { not: id } },
       orderBy: { position: "asc" },
@@ -69,7 +78,7 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
           status: newStatus, // no-op for the others (already in this column)
           // Title + the optional fields apply only to the moved/edited card.
           ...(ids[i] === id && newTitle !== undefined ? { title: newTitle } : {}),
-          ...(ids[i] === id ? fields : {}),
+          ...(ids[i] === id ? { ...fields, ...completedAtPatch } : {}),
         },
       });
     }

@@ -45,13 +45,20 @@ model AdminTask {
   id          Int       @id @default(autoincrement())
   title       String
   description String?
-  status      String    @default("todo") // "todo" | "progress" | "review" | "done"
+  status      String    @default("todo") // "backlog" | "todo" | "doing" | "done"
   position    Int       @default(0) // order within a column
   // New card fields — all optional, so existing cards are unaffected (additive).
   dueDate     DateTime?
   category    String? // free-form category tag
-  ticketSize  String? // "small" | "medium" | "large" (validated in app)
+  ticketSize  String? // "small" | "medium" | "large" (validated in app) → points 1/2/3
   contributor String? // free-text contributor (name or initials); shown as initials
+  // Backlog/hierarchy fields (StudyPlan MVP backlog). All optional/additive.
+  ticketNumber Int? // global build number (1..N); null for ad-hoc cards
+  goal        String? // top of the hierarchy, e.g. "AHA #1 — Clarity"
+  subgoal     String? // mid level, e.g. "1A — Foundation"
+  acceptance  String? // acceptance criteria text
+  dependencies String? // free-text deps, e.g. "1, 2"
+  completedAt DateTime? // set when the card first reaches "done" — powers the burndown
   // Nullable + SetNull: the board is shared by the team, so a task must outlive
   // the account that created it (deleting an admin nulls the author, not the task).
   createdById Int?

@@ -2,9 +2,9 @@
 // API route handlers (validation) and the client board (rendering).
 
 export const KANBAN_COLUMNS = [
+  { id: "backlog", title: "Backlog" },
   { id: "todo", title: "To Do" },
-  { id: "progress", title: "In Progress" },
-  { id: "review", title: "Review" },
+  { id: "doing", title: "Doing" },
   { id: "done", title: "Done" },
 ] as const;
 
@@ -24,6 +24,9 @@ export const TICKET_SIZE_LABEL: Record<TicketSize, string> = {
   medium: "Medium",
   large: "Large",
 };
+// Story points per size — the unit the burndown chart tracks.
+export const TICKET_POINTS: Record<TicketSize, number> = { small: 1, medium: 2, large: 3 };
+export const pointsForSize = (s: TicketSize | null): number => (s ? TICKET_POINTS[s] : 0);
 export function isTicketSize(s: unknown): s is TicketSize {
   return typeof s === "string" && (TICKET_SIZES as readonly string[]).includes(s);
 }
@@ -31,7 +34,7 @@ export function isTicketSize(s: unknown): s is TicketSize {
 export interface KanbanTask {
   id: number;
   title: string;
-  description: string | null;
+  description: string | null; // ticket "scope"
   status: KanbanStatus;
   position: number;
   dueDate: string | null; // ISO 8601 (client renders the date part)
@@ -39,12 +42,22 @@ export interface KanbanTask {
   ticketSize: TicketSize | null;
   contributor: string | null; // free-text (name or initials)
   creatorName: string | null; // from createdBy.fullName; rendered as initials
+  ticketNumber: number | null; // global build number
+  goal: string | null; // hierarchy top, e.g. "AHA #1 — Clarity"
+  subgoal: string | null; // hierarchy mid, e.g. "1A — Foundation"
+  acceptance: string | null; // acceptance criteria
+  dependencies: string | null; // free-text deps
+  completedAt: string | null; // ISO; set when first moved to "done"
 }
 
 export const MAX_TASK_TITLE = 200;
 export const MAX_TASK_DESCRIPTION = 2000;
 export const MAX_CATEGORY = 40;
 export const MAX_CONTRIBUTOR = 60;
+export const MAX_ACCEPTANCE = 2000;
+export const MAX_DEPENDENCIES = 200;
+export const MAX_GOAL = 80;
+export const MAX_SUBGOAL = 80;
 
 // Normalized, ready-to-persist values for the optional card fields.
 export type TaskFieldUpdates = {
@@ -53,6 +66,10 @@ export type TaskFieldUpdates = {
   category?: string | null;
   ticketSize?: TicketSize | null;
   contributor?: string | null;
+  acceptance?: string | null;
+  dependencies?: string | null;
+  goal?: string | null;
+  subgoal?: string | null;
 };
 
 /**
@@ -74,6 +91,10 @@ export function parseTaskFields(body: unknown): TaskFieldUpdates {
   if ("category" in b) out.category = trimTo(b.category, MAX_CATEGORY);
   if ("contributor" in b) out.contributor = trimTo(b.contributor, MAX_CONTRIBUTOR);
   if ("ticketSize" in b) out.ticketSize = isTicketSize(b.ticketSize) ? b.ticketSize : null;
+  if ("acceptance" in b) out.acceptance = trimTo(b.acceptance, MAX_ACCEPTANCE);
+  if ("dependencies" in b) out.dependencies = trimTo(b.dependencies, MAX_DEPENDENCIES);
+  if ("goal" in b) out.goal = trimTo(b.goal, MAX_GOAL);
+  if ("subgoal" in b) out.subgoal = trimTo(b.subgoal, MAX_SUBGOAL);
   if ("dueDate" in b) {
     const v = b.dueDate;
     if (v === null || v === "" || v === undefined) {
@@ -97,6 +118,12 @@ export const KANBAN_TASK_SELECT = {
   category: true,
   ticketSize: true,
   contributor: true,
+  ticketNumber: true,
+  goal: true,
+  subgoal: true,
+  acceptance: true,
+  dependencies: true,
+  completedAt: true,
   createdBy: { select: { fullName: true } },
 } as const;
 
@@ -117,23 +144,35 @@ export function toKanbanTask(row: {
   category?: string | null;
   ticketSize?: string | null;
   contributor?: string | null;
+  ticketNumber?: number | null;
+  goal?: string | null;
+  subgoal?: string | null;
+  acceptance?: string | null;
+  dependencies?: string | null;
+  completedAt?: Date | string | null;
   createdBy?: { fullName: string } | null;
 }): KanbanTask {
-  const due = row.dueDate
-    ? row.dueDate instanceof Date
-      ? row.dueDate
-      : new Date(row.dueDate)
-    : null;
+  const toIso = (v: Date | string | null | undefined): string | null => {
+    if (!v) return null;
+    const d = v instanceof Date ? v : new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  };
   return {
     id: row.id,
     title: row.title,
     description: row.description ?? null,
     status: isKanbanStatus(row.status) ? row.status : "todo",
     position: row.position,
-    dueDate: due && !Number.isNaN(due.getTime()) ? due.toISOString() : null,
+    dueDate: toIso(row.dueDate),
     category: row.category ?? null,
     ticketSize: isTicketSize(row.ticketSize) ? row.ticketSize : null,
     contributor: row.contributor ?? null,
     creatorName: row.createdBy?.fullName ?? null,
+    ticketNumber: row.ticketNumber ?? null,
+    goal: row.goal ?? null,
+    subgoal: row.subgoal ?? null,
+    acceptance: row.acceptance ?? null,
+    dependencies: row.dependencies ?? null,
+    completedAt: toIso(row.completedAt),
   };
 }

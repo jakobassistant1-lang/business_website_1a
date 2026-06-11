@@ -16,6 +16,8 @@ const NAV = [
 
 const BOARD_ICON = "M4 5h16v14H4zM9 5v14M15 5v14";
 const AI_ICON = "M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4L12 3Z";
+const HIERARCHY_ICON = "M10 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4zM12 7v4M5 17v-2h14v2";
+const BURNDOWN_ICON = "M4 4v16h16M7 8l10 9";
 const CHEV_L = "M15 6l-6 6 6 6";
 const CHEV_R = "M9 6l6 6-6 6";
 const LOGOUT_ICON = "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9";
@@ -110,6 +112,14 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
             <Link href="/admin" className={linkClass(pathname === "/admin")} title="Board">
               <Icon d={BOARD_ICON} />
               {!collapsed && "Board"}
+            </Link>
+            <Link href="/admin/hierarchy" className={linkClass(pathname.startsWith("/admin/hierarchy"))} title="Hierarchy map">
+              <Icon d={HIERARCHY_ICON} />
+              {!collapsed && "Hierarchy"}
+            </Link>
+            <Link href="/admin/burndown" className={linkClass(pathname.startsWith("/admin/burndown"))} title="Burndown">
+              <Icon d={BURNDOWN_ICON} />
+              {!collapsed && "Burndown"}
             </Link>
             <Link href="/admin/ai" className={linkClass(pathname.startsWith("/admin/ai"))} title="AI settings">
               <Icon d={AI_ICON} />

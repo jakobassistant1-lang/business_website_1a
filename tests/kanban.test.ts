@@ -3,7 +3,7 @@ import { isKanbanStatus, isTicketSize, toKanbanTask, parseTaskFields } from "@/l
 
 describe("isKanbanStatus", () => {
   it("accepts the four valid columns", () => {
-    for (const s of ["todo", "progress", "review", "done"]) expect(isKanbanStatus(s)).toBe(true);
+    for (const s of ["backlog", "todo", "doing", "done"]) expect(isKanbanStatus(s)).toBe(true);
   });
   it("rejects anything else", () => {
     for (const s of ["", "Todo", "archive", null, undefined, 3]) {
@@ -25,7 +25,7 @@ describe("isTicketSize", () => {
 
 describe("toKanbanTask", () => {
   it("keeps a valid status", () => {
-    expect(toKanbanTask({ id: 1, title: "x", status: "review", position: 2 }).status).toBe("review");
+    expect(toKanbanTask({ id: 1, title: "x", status: "doing", position: 2 }).status).toBe("doing");
   });
   it("coerces an unknown status to 'todo' so the card stays visible", () => {
     expect(toKanbanTask({ id: 1, title: "x", status: "weird", position: 0 }).status).toBe("todo");
@@ -47,7 +47,7 @@ describe("toKanbanTask", () => {
     const t = toKanbanTask({
       id: 2,
       title: "y",
-      status: "progress",
+      status: "doing",
       position: 1,
       description: "details",
       dueDate: new Date("2026-06-09T00:00:00.000Z"),
