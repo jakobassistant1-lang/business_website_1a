@@ -23,3 +23,20 @@ export function itemType(submissionTypes: string | null | undefined, name: strin
   if (st.includes("discussion_topic") || st.includes("external_tool") || /\bdiscussion\b/.test(n)) return "other";
   return "assignment";
 }
+
+// Fixed categorical colors for the four types — used by the Timeline to color bars
+// by WHAT the work is (not which class). No pink; exam = red to read as high-stakes,
+// assignment = the brand violet (the most common bar). Stable across light/dark.
+export const TYPE_COLOR: Record<ItemType, string> = {
+  assignment: "#7c5cf0", // violet (brand accent)
+  quiz: "#0ea5e9", // sky
+  exam: "#ef4444", // red (highest stakes)
+  other: "#64748b", // slate (discussions / misc)
+};
+
+export const TYPE_LABEL: Record<ItemType, string> = {
+  assignment: "Assignment",
+  quiz: "Quiz",
+  exam: "Exam / Test",
+  other: "Other",
+};
