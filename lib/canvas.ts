@@ -140,3 +140,57 @@ export function fetchAnnouncements(host: string, token: string, courseId: number
     `/courses/${courseId}/discussion_topics?only_announcements=true`
   );
 }
+
+// --- Study-page material sources (modules / pages / syllabus) -----------------
+
+export interface CanvasModuleItem {
+  id: number;
+  title: string;
+  type: string; // "Assignment" | "Quiz" | "Page" | "File" | "ExternalUrl" | "SubHeader" | …
+  content_id?: number; // Assignment/Quiz/File id (absent for Page/ExternalUrl)
+  page_url?: string; // present for Page items
+  external_url?: string;
+}
+export interface CanvasModule {
+  id: number;
+  name: string;
+  position: number;
+  items?: CanvasModuleItem[];
+}
+
+/** Modules with their items — Canvas's own unit structure; the strongest signal
+ *  for "which material belongs to this test". */
+export function fetchModules(host: string, token: string, courseId: number): Promise<CanvasModule[]> {
+  return fetchAll<CanvasModule>(host, token, `/courses/${courseId}/modules?include[]=items`);
+}
+
+export interface CanvasPage {
+  url: string;
+  title: string;
+  body: string | null; // HTML
+}
+
+/** One wiki page's body. Fails OPEN (null) — a deleted/unpublished page must
+ *  never break study-guide generation. */
+export async function fetchPageBody(host: string, token: string, courseId: number, pageUrl: string): Promise<CanvasPage | null> {
+  try {
+    const res = await canvasFetch(host, token, `/courses/${courseId}/pages/${encodeURIComponent(pageUrl)}`);
+    if (!res.ok) return null;
+    const json = (await res.json()) as CanvasPage;
+    return typeof json?.title === "string" ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The course syllabus body (HTML) — often lists exam coverage. Fails open. */
+export async function fetchSyllabus(host: string, token: string, courseId: number): Promise<string | null> {
+  try {
+    const res = await canvasFetch(host, token, `/courses/${courseId}?include[]=syllabus_body`);
+    if (!res.ok) return null;
+    const json = (await res.json()) as { syllabus_body?: string | null };
+    return typeof json?.syllabus_body === "string" && json.syllabus_body.trim() ? json.syllabus_body : null;
+  } catch {
+    return null;
+  }
+}

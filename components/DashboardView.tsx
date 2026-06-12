@@ -328,6 +328,11 @@ function ItemRow({ item, lead, done, glow, onSelect }: { item: CalendarItem; lea
           <span className={`shrink-0 text-[13px] font-medium ${timeColor}`}>{item.dueAt ? fmtTime(item.dueAt) : ""}</span>
         )}
       </button>
+      {!done && (item.type === "quiz" || item.type === "exam") && (
+        <Link href={`/study?item=${item.canvasId}`} className="shrink-0 text-[12px] font-medium text-accent hover:underline">
+          Study
+        </Link>
+      )}
     </div>
   );
 }

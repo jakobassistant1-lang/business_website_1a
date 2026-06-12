@@ -5,6 +5,7 @@
 // lib/courseColor). The AI study-coach summary fails open by design.
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { courseColor } from "@/lib/courseColor";
 import { toneSoft } from "@/lib/tone";
@@ -171,6 +172,11 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
         ) : null}
         {isStudyType(item.type) && item.status !== "done" && <StudyLeadEditor item={item} />}
         <div className="mt-4 flex items-center justify-end gap-3">
+          {isStudyType(item.type) && item.status !== "done" && (
+            <Link href={`/study?item=${item.canvasId}`} className="btn-ghost text-sm">
+              Study for this
+            </Link>
+          )}
           {item.htmlUrl && (
             <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm">
               Open in Canvas ↗

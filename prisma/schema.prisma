@@ -37,6 +37,27 @@ model User {
   adminTasks    AdminTask[]
   googleCalendar GoogleCalendarConnection?
   googleEvents   GoogleCalendarEvent[]
+  studyGenerations StudyGeneration[]
+}
+
+// Cached AI study artifacts (study-plan layer / study guide / practice questions),
+// one row per user × assessment × kind (× question type), so repeat visits cost
+// ZERO model calls. inputHash fingerprints the generation inputs (linked Canvas
+// material, schedule blocks, prompt version); a mismatch on revalidation means
+// the source changed → regenerate. content is a JSON payload (shape per kind).
+model StudyGeneration {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId     Int // the assessment's Assignment.canvasId
+  kind         String // "plan" | "guide" | "questions"
+  questionType String   @default("") // kind=questions: "multiple_choice" | "true_false" | "short_answer"; "" otherwise
+  content      String // JSON
+  inputHash    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, canvasId, kind, questionType])
 }
 
 // Internal team task board (admin-only). Not user-facing and unrelated to

@@ -117,7 +117,7 @@ export function buildAnalysisPrompt(items: AnalysisItemInput[]): string {
   ].join("\n");
 }
 
-function extractGeminiText(json: unknown): string | null {
+export function extractGeminiText(json: unknown): string | null {
   if (!json || typeof json !== "object") return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parts = (json as any).candidates?.[0]?.content?.parts;
@@ -175,7 +175,7 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
   return out;
 }
 
-function geminiKey(): string | undefined {
+export function geminiKey(): string | undefined {
   if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
   const hit = Object.entries(process.env).find(([k]) => k.toLowerCase() === "gemini_api_key");
   return hit?.[1] || undefined;
