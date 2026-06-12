@@ -211,16 +211,29 @@ function RegenButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function SourceNote({ sparse, sources }: { sparse: boolean; sources: string[] }) {
-  if (sparse) {
-    return (
-      <p className={`mt-4 inline-block rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>
-        Limited Canvas material — generated from the test&apos;s own info. Check with your teacher on exact coverage.
-      </p>
-    );
-  }
-  if (sources.length === 0) return null;
-  return <p className="mt-4 text-xs text-muted">Based on: {sources.slice(0, 5).join(" · ")}{sources.length > 5 ? " · …" : ""}</p>;
+function SourceNote({ sparse, sources, excluded = [] }: { sparse: boolean; sources: string[]; excluded?: string[] }) {
+  const basedOn = !sparse && sources.length > 0;
+  if (!sparse && !basedOn && excluded.length === 0) return null;
+  return (
+    <div className="mt-4 space-y-1.5">
+      {sparse ? (
+        <p className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>
+          Limited Canvas material — generated from the test&apos;s own info. Check with your teacher on exact coverage.
+        </p>
+      ) : basedOn ? (
+        <p className="text-xs text-muted">
+          Based on: {sources.slice(0, 5).join(" · ")}
+          {sources.length > 5 ? " · …" : ""}
+        </p>
+      ) : null}
+      {excluded.length > 0 && (
+        <p className="text-xs text-faint">
+          Not included (judged off-topic): {excluded.slice(0, 4).join(" · ")}
+          {excluded.length > 4 ? " · …" : ""}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function PlanSection({
@@ -316,7 +329,7 @@ function GuideSection({ guide, onRetry, onRegen }: { guide: Gen<StudyGuideConten
               </div>
             ))}
           </div>
-          <SourceNote sparse={guide.content.sparse} sources={guide.content.sources} />
+          <SourceNote sparse={guide.content.sparse} sources={guide.content.sources} excluded={guide.content.excluded} />
         </>
       )}
     </SectionShell>
@@ -374,7 +387,7 @@ function QuestionsSection({
                 {correct} / {questions.content!.questions.length} correct{correct === questions.content!.questions.length ? " — you're ready for this one." : " — review the explanations above, then try a new set."}
               </p>
             )}
-            <SourceNote sparse={questions.content!.sparse} sources={[]} />
+            <SourceNote sparse={questions.content!.sparse} sources={[]} excluded={questions.content!.excluded} />
           </div>
         )}
       </div>

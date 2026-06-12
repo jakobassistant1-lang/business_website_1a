@@ -4,6 +4,7 @@ import {
   parsePlanContent,
   parseGuideContent,
   parseQuestionsContent,
+  parseKeepIndices,
   studyHash,
   stripHtml,
   buildGuidePrompt,
@@ -104,7 +105,7 @@ describe("buildGuidePrompt (admin-editable instruction)", () => {
     description: null,
     aiSummary: null,
   };
-  const material: StudyMaterial = { sources: [], moduleName: null, sparse: true, hash: "x" };
+  const material: StudyMaterial = { sources: [], moduleName: null, sparse: true, excluded: [], aiFiltered: false, hash: "x" };
   it("uses the custom instruction when provided, the default otherwise", () => {
     expect(buildGuidePrompt(meta, material)).toContain(DEFAULT_STUDY_GUIDE_INSTRUCTION);
     const custom = buildGuidePrompt(meta, material, "CUSTOM VOICE");
@@ -113,6 +114,22 @@ describe("buildGuidePrompt (admin-editable instruction)", () => {
   });
   it("keeps the JSON output contract regardless of instruction (the parser depends on it)", () => {
     expect(buildGuidePrompt(meta, material, "CUSTOM VOICE")).toContain("Return ONLY JSON");
+  });
+});
+
+describe("parseKeepIndices (relevance-check verdict)", () => {
+  it("accepts {keep:[…]} and a bare array, in-range + deduped", () => {
+    expect(parseKeepIndices({ keep: [0, 2, 2] }, 3)).toEqual([0, 2]);
+    expect(parseKeepIndices([1, 0], 2)).toEqual([1, 0]);
+  });
+  it("drops out-of-range and non-integer entries", () => {
+    expect(parseKeepIndices({ keep: [0, 5, -1, 1.5] }, 3)).toEqual([0]);
+  });
+  it("treats garbage and an EMPTY keep-list as a misfire (null → caller keeps all)", () => {
+    expect(parseKeepIndices("nonsense", 3)).toBeNull();
+    expect(parseKeepIndices({ wrong: true }, 3)).toBeNull();
+    expect(parseKeepIndices({ keep: [] }, 3)).toBeNull();
+    expect(parseKeepIndices({ keep: [9] }, 3)).toBeNull(); // all out-of-range ⇒ effectively empty
   });
 });
 
