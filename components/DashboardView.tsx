@@ -329,7 +329,7 @@ function ItemRow({ item, lead, done, glow, onSelect }: { item: CalendarItem; lea
         )}
       </button>
       {!done && (item.type === "quiz" || item.type === "exam") && (
-        <Link href={`/study?item=${item.canvasId}`} className="shrink-0 text-[12px] font-medium text-accent hover:underline">
+        <Link href={`/study/${item.canvasId}`} className="shrink-0 text-[12px] font-medium text-accent hover:underline">
           Study
         </Link>
       )}

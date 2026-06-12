@@ -173,7 +173,7 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
         {isStudyType(item.type) && item.status !== "done" && <StudyLeadEditor item={item} />}
         <div className="mt-4 flex items-center justify-end gap-3">
           {isStudyType(item.type) && item.status !== "done" && (
-            <Link href={`/study?item=${item.canvasId}`} className="btn-ghost text-sm">
+            <Link href={`/study/${item.canvasId}`} className="btn-ghost text-sm">
               Study for this
             </Link>
           )}

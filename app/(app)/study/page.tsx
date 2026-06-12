@@ -1,18 +1,20 @@
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import { loadCalendarData } from "@/lib/calendarData";
 import { studySessionsFor } from "@/lib/study";
-import { ymd } from "@/lib/calendarDates";
 import { StudyView } from "@/components/StudyView";
 
 export const dynamic = "force-dynamic";
 
-// The Study page: pick an upcoming test/quiz (featured = the next one per the
-// EXISTING recommended order — the same `ranked` list the dashboard uses) and
-// prepare for it: how-to-study plan, AI study guide, practice questions.
+// The Study hub: upcoming tests/quizzes only — featured card (next per the
+// EXISTING recommended order, same `ranked` list the dashboard uses) + rows.
+// All study tools live on /study/[canvasId].
 export default async function StudyPage({ searchParams }: { searchParams: Promise<{ item?: string }> }) {
   const { item } = await searchParams;
-  // (app)/layout guarantees auth; loadCalendarData resolves the user's plan.
-  const { getCurrentUser } = await import("@/lib/auth");
-  const user = await getCurrentUser();
+  // Old deep links used /study?item=N — forward them to the per-test page.
+  if (item && /^[0-9]+$/.test(item)) redirect(`/study/${item}`);
+
+  const user = await getCurrentUser(); // (app)/layout guarantees auth
   const data = await loadCalendarData(user!.id);
 
   const now = Date.now();
@@ -32,20 +34,8 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
       return new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime();
     });
 
-  // Deterministic session blocks per assessment (the plan layer's fixed "when").
   const sessions: Record<number, { date: string; hours: number }[]> = {};
   for (const it of upcoming) sessions[it.canvasId] = studySessionsFor(data.plan, it.canvasId);
 
-  const requested = Number(item);
-  const focusId = upcoming.some((it) => it.canvasId === requested) ? requested : upcoming[0]?.canvasId ?? null;
-
-  return (
-    <StudyView
-      connected={data.connected}
-      assessments={upcoming}
-      sessions={sessions}
-      initialFocusId={focusId}
-      todayYmd={ymd(new Date())}
-    />
-  );
+  return <StudyView connected={data.connected} assessments={upcoming} sessions={sessions} />;
 }
