@@ -17,7 +17,6 @@ import {
 } from "@/lib/calendarDates";
 import {
   AttentionBanner,
-  RecommendedOrder,
   PeriodSummary,
   PeriodToolbar,
   ItemPill,
@@ -28,7 +27,6 @@ import {
   Glyph,
   ICON,
   fmtHours,
-  LoadHint,
 } from "@/components/calendar/parts";
 import { toneSoft } from "@/lib/tone";
 import { courseColor } from "@/lib/courseColor";
@@ -159,7 +157,6 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
             onNext={() => navigate(1)}
             onToday={() => setAnchor(now)}
             atToday={atToday}
-            trailing={view === "week" && atToday ? <LoadHint overloadHours={data.overloadHours} weekKey={todayYmd} /> : undefined}
           />
           <PeriodSummary view={view} start={ymd(start)} days={days} />
 
@@ -170,7 +167,6 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
               items={itemsByDay.get(ymd(anchor)) ?? []}
               events={eventsByDay.get(ymd(anchor)) ?? []}
               planDay={planByDay.get(ymd(anchor))}
-              recommendations={data.recommendations}
               atRiskCount={data.atRisk.length}
               onSelect={setSelected}
             />
@@ -181,7 +177,6 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
               now={now}
               itemsByDay={itemsByDay}
               eventsByDay={eventsByDay}
-              planByDay={planByDay}
               onSelect={setSelected}
               onPeek={setPeek}
             />
@@ -245,32 +240,12 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
   );
 }
 
-function LoadMeter({ planDay }: { planDay?: PlanDay }) {
-  if (!planDay) return null;
-  const pct = planDay.capacity > 0 ? Math.min(100, (planDay.allocated / planDay.capacity) * 100) : 0;
-  const over = planDay.allocated > planDay.capacity + 1e-9;
-  return (
-    <div className="mt-2">
-      <div className="flex items-center justify-between text-xs text-muted">
-        <span>
-          {planDay.allocated}/{planDay.capacity}h planned
-        </span>
-        {over && <span className="text-danger">over capacity</span>}
-      </div>
-      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-soft">
-        <div className={`h-full rounded-full ${over ? "bg-danger" : "bg-accent"}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
 function DayView({
   date,
   now,
   items,
   events,
   planDay,
-  recommendations,
   atRiskCount,
   onSelect,
 }: {
@@ -279,7 +254,6 @@ function DayView({
   items: CalendarItem[];
   events: CalendarEvent[];
   planDay?: PlanDay;
-  recommendations: CalendarData["recommendations"];
   atRiskCount: number;
   onSelect: (it: CalendarItem) => void;
 }) {
@@ -296,10 +270,10 @@ function DayView({
       <div className="card p-4">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-ink">
-            {sameDay(date, now) ? "Today" : ""} {date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+            {sameDay(date, now) && <span className="text-accent">Today · </span>}
+            {date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </p>
         </div>
-        <LoadMeter planDay={planDay} />
         <div className="mt-4 space-y-1.5">
           {rows.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted">Nothing due — nice.</p>
@@ -335,7 +309,6 @@ function DayView({
             </ul>
           </div>
         )}
-        <RecommendedOrder recs={recommendations} />
       </aside>
     </div>
   );
@@ -354,7 +327,6 @@ function WeekView({
   now,
   itemsByDay,
   eventsByDay,
-  planByDay,
   onSelect,
   onPeek,
 }: {
@@ -362,20 +334,18 @@ function WeekView({
   now: Date;
   itemsByDay: Map<string, CalendarItem[]>;
   eventsByDay: Map<string, CalendarEvent[]>;
-  planByDay: Map<string, PlanDay>;
   onSelect: (it: CalendarItem) => void;
   onPeek: (d: Date) => void;
 }) {
   const start = weekStart(anchor);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const MAX = 4;
+  const MAX = 6;
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-7">
       {days.map((d) => {
         const key = ymd(d);
         const items = itemsByDay.get(key) ?? [];
         const events = eventsByDay.get(key) ?? [];
-        const plan = planByDay.get(key);
         const isToday = sameDay(d, now);
         const isPast = d < now;
         const shown = items.slice(0, MAX);
@@ -383,38 +353,33 @@ function WeekView({
         return (
           <div
             key={key}
-            className={`card flex flex-col p-2 ${isToday ? "ring-2 ring-accent-ring bg-accent-soft/30" : ""} ${isPast ? "opacity-70" : ""}`}
+            className={`card flex min-h-[7rem] flex-col p-3 ${isToday ? "ring-2 ring-accent bg-accent-soft/40" : ""} ${isPast ? "opacity-70" : ""}`}
           >
             <button onClick={() => onPeek(d)} className="flex items-baseline justify-between rounded hover:bg-surface-soft" title="Open this day">
-              <span className="text-xs font-semibold text-ink">
+              <span className={`text-sm font-semibold ${isToday ? "text-accent" : "text-ink"}`}>
                 {WEEKDAYS[d.getDay()]} {d.getDate()}
               </span>
-              {isToday && <span className="text-[10px] font-semibold text-accent">TODAY</span>}
+              {isToday && <span className="text-xs font-semibold text-accent">TODAY</span>}
             </button>
-            {plan && (
-              <span className={`mt-0.5 text-[10px] ${plan.allocated > plan.capacity + 1e-9 ? "text-danger" : "text-muted"}`}>
-                {plan.allocated}/{plan.capacity}h
-              </span>
-            )}
-            <div className="mt-1.5 space-y-1">
+            <div className="mt-2 space-y-1.5">
               {shown.map((it) => (
                 <ItemPill key={`w-${it.canvasId}`} item={it} onSelect={onSelect} showTime={false} />
               ))}
               {more > 0 && (
-                <button onClick={() => onPeek(d)} className="w-full rounded-md px-1.5 py-0.5 text-left text-[11px] text-muted hover:bg-surface-soft">
+                <button onClick={() => onPeek(d)} className="w-full rounded-md px-2 py-1 text-left text-xs font-medium text-accent hover:bg-accent-soft">
                   +{more} more
                 </button>
               )}
               {events.length > 0 && (
                 <button
                   onClick={() => onPeek(d)}
-                  className="flex w-full items-center gap-1 rounded-md border border-dashed border-line px-1.5 py-0.5 text-left text-[10px] text-faint"
+                  className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-line px-2 py-1 text-left text-xs text-faint"
                 >
-                  <Glyph d={ICON.calendar} size={10} /> {events.length} busy
+                  <Glyph d={ICON.calendar} size={12} /> {events.length} busy
                 </button>
               )}
               {items.length === 0 && events.length === 0 && (
-                <button onClick={() => onPeek(d)} className="px-1 py-2 text-left text-[11px] text-faint hover:text-muted">
+                <button onClick={() => onPeek(d)} className="px-1 py-3 text-left text-xs text-faint hover:text-muted">
                   —
                 </button>
               )}
@@ -443,7 +408,7 @@ function MonthView({
   const month = anchor.getMonth();
   return (
     <div>
-      <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-muted">
+      <div className="mb-1.5 grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => (
           <div key={w}>{w}</div>
         ))}
@@ -460,7 +425,7 @@ function MonthView({
             <button
               key={key}
               onClick={() => onPeek(d)}
-              className={`flex min-h-[4.5rem] flex-col rounded-md border p-1 text-left transition hover:border-accent ${
+              className={`flex min-h-[5.5rem] flex-col rounded-md border p-1.5 text-left transition hover:border-accent ${
                 inMonth ? "border-line-subtle bg-surface" : "border-transparent bg-surface-soft"
               }`}
             >
@@ -475,7 +440,7 @@ function MonthView({
                   {items.map((it) => (
                     <span
                       key={it.canvasId}
-                      className="h-1.5 w-1.5 rounded-full"
+                      className="h-2 w-2 rounded-full"
                       style={{ background: it.status === "overdue" ? "rgb(var(--danger))" : courseColor(it.courseName) }}
                       title={it.name}
                     />
@@ -483,8 +448,8 @@ function MonthView({
                 </span>
               ) : (
                 <span className="mt-1 space-y-0.5">
-                  <span className="block truncate text-[10px] text-ink">{items[0].name}</span>
-                  <span className="flex items-center gap-1 text-[10px] text-muted">
+                  <span className="block truncate text-xs text-ink">{items[0].name}</span>
+                  <span className="flex items-center gap-1 text-xs text-muted">
                     +{items.length - 1} {atRisk > 0 && <span className="font-semibold text-danger">⚠{atRisk}</span>}
                   </span>
                 </span>
@@ -493,6 +458,27 @@ function MonthView({
           );
         })}
       </div>
+      <MonthLegend />
+    </div>
+  );
+}
+
+function MonthLegend() {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-line-subtle bg-surface-soft px-3 py-2 text-xs text-muted">
+      <span className="text-xs font-semibold uppercase tracking-wide text-ink">Key</span>
+      <span className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-accent" aria-hidden /> a class (each has its own color)
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full" style={{ background: "rgb(var(--danger))" }} aria-hidden /> past due
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="font-semibold text-danger">⚠</span> overdue count
+      </span>
+      <span className="flex items-center gap-1.5">
+        <Glyph d={ICON.calendar} size={12} /> busy day
+      </span>
     </div>
   );
 }

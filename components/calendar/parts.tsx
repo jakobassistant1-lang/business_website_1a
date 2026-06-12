@@ -71,7 +71,7 @@ export function effortText(item: CalendarItem): string | null {
 type StatusMeta = { pill: { text: string; cls: string } | null; border: string; muted: boolean; danger: boolean };
 function statusMeta(item: CalendarItem): StatusMeta {
   if (item.status === "done") return { pill: { text: "Done", cls: toneSoft.success }, border: "border-line-subtle", muted: true, danger: false };
-  if (item.status === "overdue") return { pill: { text: "Past due", cls: toneSoft.danger }, border: "border-danger/40 bg-danger-soft/40", muted: false, danger: true };
+  if (item.status === "overdue") return { pill: { text: "Past due", cls: "border border-danger text-danger" }, border: "border-danger", muted: false, danger: true };
   return { pill: null, border: "border-line-subtle", muted: false, danger: false };
 }
 
@@ -85,17 +85,17 @@ export function ItemPill({ item, onSelect, showTime = true }: { item: CalendarIt
       onClick={() => onSelect(item)}
       title={`${item.courseName} · ${item.name}`}
       aria-label={`${item.name}, ${item.courseName}${s.pill ? `, ${s.pill.text}` : ""}`}
-      className={`flex w-full items-stretch gap-1.5 rounded-md border bg-surface px-1.5 py-1 text-left transition hover:shadow-sm ${s.border} ${s.muted ? "opacity-60" : ""}`}
+      className={`flex w-full items-center gap-2 rounded-lg border bg-surface px-2.5 py-2 text-left transition hover:shadow-sm ${s.border} ${s.muted ? "opacity-60" : ""}`}
     >
-      <span className="w-1 shrink-0 rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
-      <span className={`mt-px shrink-0 ${s.danger ? "text-danger" : "text-muted"}`}>
-        <Glyph d={glyph} size={12} />
+      <span className="w-1.5 shrink-0 self-stretch rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
+      <span className={`shrink-0 ${s.danger ? "text-danger" : "text-muted"}`}>
+        <Glyph d={glyph} size={15} />
       </span>
-      <span className={`min-w-0 flex-1 truncate text-xs ${s.muted ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
+      <span className={`min-w-0 flex-1 truncate text-sm ${s.muted ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
       {s.pill ? (
-        <span className={`shrink-0 self-center rounded-full px-1.5 text-[10px] font-medium ${s.pill.cls}`}>{s.pill.text}</span>
+        <span className={`shrink-0 self-center rounded-full px-2 py-0.5 text-xs font-medium ${s.pill.cls}`}>{s.pill.text}</span>
       ) : item.dueAt && showTime ? (
-        <span className="shrink-0 self-center text-[10px] text-muted">{fmtTime(item.dueAt)}</span>
+        <span className="shrink-0 self-center text-xs text-muted">{fmtTime(item.dueAt)}</span>
       ) : null}
     </button>
   );
@@ -363,7 +363,7 @@ export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
   const overdue = atRisk.filter((a) => a.kind === "overdue");
   if (overdue.length === 0) return null;
   return (
-    <div className="mb-3 rounded-lg border border-danger/40 bg-danger-soft/60 px-3 py-2">
+    <div className="mb-3 rounded-lg border border-danger bg-surface px-3 py-2">
       <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-3">
         <span className="flex items-center gap-2 text-sm font-semibold text-danger">
           <Glyph d={ICON.alert} size={16} /> {overdue.length} overdue
@@ -384,7 +384,7 @@ export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
                   <span className="truncate">{a.name}</span>
                 )}
               </span>
-              <span className="shrink-0 rounded-full bg-danger-soft px-2 py-0.5 font-medium text-danger">Past due</span>
+              <span className="shrink-0 rounded-full border border-danger px-2 py-0.5 font-medium text-danger">Past due</span>
             </li>
           ))}
         </ul>
