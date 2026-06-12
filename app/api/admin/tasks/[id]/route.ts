@@ -23,6 +23,8 @@ function parseId(v: string): number | null {
 //   { title }            → rename in place
 //   { status }           → move to the end of another column
 //   { status, position } → move/reorder to an explicit 0-based slot (drag-drop)
+// The card's board is read from the row — reordering only ever touches cards on the
+// SAME board, so the two boards never interleave positions.
 export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
   const id = parseId((await ctx.params).id);
   if (id === null) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -62,8 +64,9 @@ export const PATCH = withAdmin(async (_admin, req, ctx: Ctx) => {
       return tx.adminTask.findUnique({ where: { id }, select: KANBAN_TASK_SELECT });
     }
 
+    // Re-sequence only within the moved card's OWN board + target column.
     const others = await tx.adminTask.findMany({
-      where: { status: newStatus, id: { not: id } },
+      where: { board: task.board, status: newStatus, id: { not: id } },
       orderBy: { position: "asc" },
       select: { id: true },
     });

@@ -1,5 +1,7 @@
-// One-time seed: replace the admin board with the 24 StudyPlan MVP backlog tickets.
+// One-time seed: replace the BUILD board with the 24 StudyPlan MVP backlog tickets.
 // Run against the live DB with `npx tsx prisma/seed-backlog.ts` (needs DATABASE_URL).
+// Scoped to board "build" so it never touches the marketing board (which seeds
+// itself on first open — see lib/marketingBacklog.ts).
 //
 // Already-done tickets get a SYNTHETIC completedAt spread evenly (by points) across
 // June 1 → June 11 so the burndown shows a consistent average slope — we don't have
@@ -35,11 +37,13 @@ function syntheticCompletions(): Map<number, Date> {
 
 async function main() {
   // Idempotent: this runs in the Vercel build, so guard it to seed EXACTLY once.
-  // Once any numbered ticket exists the board is the source of truth — never wipe
-  // the team's work on a later deploy.
-  const alreadySeeded = await prisma.adminTask.count({ where: { ticketNumber: { not: null } } });
+  // Once any numbered BUILD ticket exists the board is the source of truth — never
+  // wipe the team's work on a later deploy.
+  const alreadySeeded = await prisma.adminTask.count({
+    where: { board: "build", ticketNumber: { not: null } },
+  });
   if (alreadySeeded > 0) {
-    console.log(`Backlog already seeded (${alreadySeeded} numbered tickets) — skipping.`);
+    console.log(`Build backlog already seeded (${alreadySeeded} numbered tickets) — skipping.`);
     return;
   }
 
@@ -47,12 +51,14 @@ async function main() {
   // Position is PER-COLUMN and 0-based (BACKLOG is in build-number order, so each
   // column keeps that order). The board/API treat position as a 0-based slot.
   const posInColumn = new Map<string, number>();
-  const removed = await prisma.adminTask.deleteMany({});
+  // Only ever clear the build lane — the marketing board lives in the same table.
+  const removed = await prisma.adminTask.deleteMany({ where: { board: "build" } });
   await prisma.adminTask.createMany({
     data: BACKLOG.map((t) => {
       const position = posInColumn.get(t.status) ?? 0;
       posInColumn.set(t.status, position + 1);
       return {
+        board: "build",
         title: t.title,
         description: t.scope,
         status: t.status,
@@ -67,8 +73,8 @@ async function main() {
       };
     }),
   });
-  const n = await prisma.adminTask.count();
-  console.log(`Cleared ${removed.count} old card(s); seeded ${n} backlog tickets.`);
+  const n = await prisma.adminTask.count({ where: { board: "build" } });
+  console.log(`Cleared ${removed.count} old build card(s); seeded ${n} backlog tickets.`);
 }
 
 main()

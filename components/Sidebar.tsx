@@ -16,6 +16,7 @@ const NAV = [
 ];
 
 const BOARD_ICON = "M4 5h16v14H4zM9 5v14M15 5v14";
+const MARKETING_ICON = "M4 9v6h3l5 4V5L7 9H4Z M16 9a3 3 0 0 1 0 6";
 const AI_ICON = "M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4L12 3Z";
 const HIERARCHY_ICON = "M10 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4zM12 7v4M5 17v-2h14v2";
 const BURNDOWN_ICON = "M4 4v16h16M7 8l10 9";
@@ -113,6 +114,10 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
             <Link href="/admin" className={linkClass(pathname === "/admin")} title="Board">
               <Icon d={BOARD_ICON} />
               {!collapsed && "Board"}
+            </Link>
+            <Link href="/admin/marketing" className={linkClass(pathname.startsWith("/admin/marketing"))} title="Marketing board">
+              <Icon d={MARKETING_ICON} />
+              {!collapsed && "Marketing"}
             </Link>
             <Link href="/admin/hierarchy" className={linkClass(pathname.startsWith("/admin/hierarchy"))} title="Hierarchy map">
               <Icon d={HIERARCHY_ICON} />

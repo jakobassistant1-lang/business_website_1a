@@ -16,6 +16,20 @@ export function isKanbanStatus(s: unknown): s is KanbanStatus {
   return typeof s === "string" && (KANBAN_STATUSES as string[]).includes(s);
 }
 
+// Which board a set of cards belongs to. Both boards share the same columns and
+// card shape; the discriminator just keeps them in separate lanes (and gives each
+// its own ticket numbering). "build" is the existing StudyPlan MVP backlog.
+export const BOARDS = ["build", "marketing"] as const;
+export type Board = (typeof BOARDS)[number];
+export const DEFAULT_BOARD: Board = "build";
+export function isBoard(b: unknown): b is Board {
+  return typeof b === "string" && (BOARDS as readonly string[]).includes(b);
+}
+/** Coerce an arbitrary value (query param / body field) to a valid Board. */
+export function asBoard(b: unknown): Board {
+  return isBoard(b) ? b : DEFAULT_BOARD;
+}
+
 // Ticket-size tag — constrained to a fixed set (the only validated tag).
 export const TICKET_SIZES = ["small", "medium", "large"] as const;
 export type TicketSize = (typeof TICKET_SIZES)[number];
