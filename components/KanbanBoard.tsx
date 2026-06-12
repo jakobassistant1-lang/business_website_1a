@@ -10,6 +10,7 @@ import {
   type KanbanStatus,
   type KanbanTask,
   type TicketSize,
+  type Board,
 } from "@/lib/kanban";
 import { toneBar, toneSoft, type Tone } from "@/lib/tone";
 import { fmtDateUTC } from "@/lib/calendarDates";
@@ -96,7 +97,21 @@ function reorder(tasks: KanbanTask[], id: number, status: KanbanStatus, index: n
   return [...rest, ...resequenced];
 }
 
-export function KanbanBoard({ initial, adminName, nowMs }: { initial: KanbanTask[]; adminName: string; nowMs: number }) {
+export function KanbanBoard({
+  initial,
+  adminName,
+  nowMs,
+  board = "build",
+  title = "Project Board",
+  blurb = "MVP backlog — click a ticket to open it. Drag between columns to move it.",
+}: {
+  initial: KanbanTask[];
+  adminName: string;
+  nowMs: number;
+  board?: Board;
+  title?: string;
+  blurb?: string;
+}) {
   const [tasks, setTasks] = useState<KanbanTask[]>(initial);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [dragId, setDragId] = useState<number | null>(null);
@@ -136,7 +151,7 @@ export function KanbanBoard({ initial, adminName, nowMs }: { initial: KanbanTask
 
   const refetch = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/tasks");
+      const res = await fetch(`/api/admin/tasks?board=${board}`);
       if (res.ok) {
         const body = await res.json();
         setTasks(body.tasks ?? []);
@@ -144,7 +159,7 @@ export function KanbanBoard({ initial, adminName, nowMs }: { initial: KanbanTask
     } catch {
       /* ignore — keep showing what we have */
     }
-  }, []);
+  }, [board]);
 
   // Bucket + sort once per tasks change, rather than filtering+sorting the full
   // array 4× on every render (including drag-hover re-renders).
@@ -164,7 +179,7 @@ export function KanbanBoard({ initial, adminName, nowMs }: { initial: KanbanTask
       const res = await fetch("/api/admin/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({ ...draft, board }),
       });
       if (!res.ok) throw new Error();
       const { task } = await res.json();
@@ -359,10 +374,10 @@ export function KanbanBoard({ initial, adminName, nowMs }: { initial: KanbanTask
     <div className="flex min-h-[calc(100vh-5rem)] flex-col">
       {/* Topbar */}
       <header className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Project Board</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">Admin</span>
         <p className="w-full text-sm text-muted sm:w-auto sm:flex-1">
-          MVP backlog — click a ticket to open it. Drag between columns to move it.
+          {blurb}
         </p>
         <button onClick={() => openCreate("todo")} className="btn-primary">
           + New ticket

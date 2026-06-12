@@ -43,6 +43,9 @@ model User {
 // Canvas coursework — this is how the owner + team track building the business.
 model AdminTask {
   id          Int       @id @default(autoincrement())
+  // Which board this card belongs to: "build" (the StudyPlan MVP backlog) or
+  // "marketing" (launch/marketing work). Same columns + card shape, separate lane.
+  board       String    @default("build")
   title       String
   description String?
   status      String    @default("todo") // "backlog" | "todo" | "doing" | "done"
@@ -53,7 +56,7 @@ model AdminTask {
   ticketSize  String? // "small" | "medium" | "large" (validated in app) → points 1/2/3
   contributor String? // free-text contributor (name or initials); shown as initials
   // Backlog/hierarchy fields (StudyPlan MVP backlog). All optional/additive.
-  ticketNumber Int?     @unique // global build number (1..N); null = ad-hoc (multiple NULLs allowed)
+  ticketNumber Int?     // build number within a board (1..N); null = ad-hoc (multiple NULLs allowed)
   goal        String? // top of the hierarchy, e.g. "AHA #1 — Clarity"
   subgoal     String? // mid level, e.g. "1A — Foundation"
   acceptance  String? // acceptance criteria text
@@ -66,7 +69,9 @@ model AdminTask {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@index([status, position])
+  // Build numbering is per-board, so the same #1 can exist on each board.
+  @@unique([board, ticketNumber])
+  @@index([board, status, position])
 }
 
 // Global app settings (key/value). Currently holds the editable Gemini briefing
