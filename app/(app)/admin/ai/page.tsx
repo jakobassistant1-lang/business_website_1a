@@ -1,9 +1,15 @@
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
-import { getSetting, BRIEFING_PROMPT_KEY, ANALYSIS_PROMPT_KEY, PERIOD_COACH_PROMPT_KEY } from "@/lib/settings";
+import { getSetting, BRIEFING_PROMPT_KEY, ANALYSIS_PROMPT_KEY, PERIOD_COACH_PROMPT_KEY, STUDY_PROMPT_KEYS } from "@/lib/settings";
 import { DEFAULT_BRIEFING_INSTRUCTION, DEFAULT_PERIOD_COACH_INSTRUCTION } from "@/lib/briefing";
 import { DEFAULT_ANALYSIS_INSTRUCTION } from "@/lib/analysis";
+import {
+  DEFAULT_STUDY_PLAN_INSTRUCTION,
+  DEFAULT_STUDY_GUIDE_INSTRUCTION,
+  DEFAULT_STUDY_QUESTIONS_INSTRUCTION,
+} from "@/lib/study";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
+import { StudyPromptsSettings } from "@/components/StudyPromptsSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +18,13 @@ export default async function AiSettingsPage() {
   const admin = await getAdminUser();
   if (!admin) notFound();
 
-  const [savedBriefing, savedAnalysis, savedCoach] = await Promise.all([
+  const [savedBriefing, savedAnalysis, savedCoach, savedPlan, savedGuide, savedQuestions] = await Promise.all([
     getSetting(BRIEFING_PROMPT_KEY),
     getSetting(ANALYSIS_PROMPT_KEY),
     getSetting(PERIOD_COACH_PROMPT_KEY),
+    getSetting(STUDY_PROMPT_KEYS.plan),
+    getSetting(STUDY_PROMPT_KEYS.guide),
+    getSetting(STUDY_PROMPT_KEYS.questions),
   ]);
 
   return (
@@ -27,6 +36,18 @@ export default async function AiSettingsPage() {
       </p>
 
       <div className="mt-8 space-y-10">
+        <StudyPromptsSettings
+          initial={{
+            plan: { prompt: savedPlan ?? DEFAULT_STUDY_PLAN_INSTRUCTION, isCustom: savedPlan !== null },
+            guide: { prompt: savedGuide ?? DEFAULT_STUDY_GUIDE_INSTRUCTION, isCustom: savedGuide !== null },
+            questions: { prompt: savedQuestions ?? DEFAULT_STUDY_QUESTIONS_INSTRUCTION, isCustom: savedQuestions !== null },
+          }}
+          defaults={{
+            plan: DEFAULT_STUDY_PLAN_INSTRUCTION,
+            guide: DEFAULT_STUDY_GUIDE_INSTRUCTION,
+            questions: DEFAULT_STUDY_QUESTIONS_INSTRUCTION,
+          }}
+        />
         <AiSettingsForm
           title="Study coach (Calendar & Timeline)"
           description="The game-plan note at the top of each Calendar/Timeline period. The app supplies the student's scheduled, deadline-safe priorities for that day/week/month automatically; this is where you tune the tone and which learning-science techniques it leans on."

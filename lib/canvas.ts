@@ -183,6 +183,46 @@ export async function fetchPageBody(host: string, token: string, courseId: numbe
   }
 }
 
+export interface CanvasFile {
+  id: number;
+  display_name: string;
+  "content-type": string; // e.g. "application/pdf" (hyphenated in Canvas's JSON)
+  size: number; // bytes
+  url: string; // pre-signed download URL (carries its own verifier token)
+}
+
+/** One file's metadata (name/type/size + a signed download URL). Fails open. */
+export async function fetchFileMeta(host: string, token: string, fileId: number): Promise<CanvasFile | null> {
+  try {
+    const res = await canvasFetch(host, token, `/files/${fileId}`);
+    if (!res.ok) return null;
+    const json = (await res.json()) as CanvasFile;
+    return typeof json?.url === "string" ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Download a Canvas file via its pre-signed URL, size-capped. Fails open. The
+ *  URL embeds its own auth verifier, so no Bearer header is needed (and Canvas
+ *  redirects to raw storage where one would leak anyway). */
+export async function downloadCanvasFile(url: string, maxBytes: number): Promise<Buffer | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, cache: "no-store" });
+    if (!res.ok) return null;
+    const len = Number(res.headers.get("content-length") ?? 0);
+    if (len > maxBytes) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.byteLength <= maxBytes ? buf : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The course syllabus body (HTML) — often lists exam coverage. Fails open. */
 export async function fetchSyllabus(host: string, token: string, courseId: number): Promise<string | null> {
   try {

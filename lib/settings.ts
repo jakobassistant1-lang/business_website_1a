@@ -5,6 +5,13 @@ import { prisma } from "./prisma";
 export const BRIEFING_PROMPT_KEY = "briefing_prompt";
 export const ANALYSIS_PROMPT_KEY = "analysis_prompt";
 export const PERIOD_COACH_PROMPT_KEY = "period_coach_prompt";
+// Study-output prompts (the "Study outputs" group on /admin/ai).
+export const STUDY_PROMPT_KEYS = {
+  plan: "study_plan_prompt",
+  guide: "study_guide_prompt",
+  questions: "study_questions_prompt",
+} as const;
+export type StudyPromptKind = keyof typeof STUDY_PROMPT_KEYS;
 
 export async function getSetting(key: string): Promise<string | null> {
   const row = await prisma.setting.findUnique({ where: { key } });

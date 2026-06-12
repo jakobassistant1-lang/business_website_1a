@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { gradeShortAnswer, isQuestionType } from "@/lib/studyShared";
-import { parsePlanContent, parseGuideContent, parseQuestionsContent, studyHash, stripHtml } from "@/lib/study";
+import {
+  parsePlanContent,
+  parseGuideContent,
+  parseQuestionsContent,
+  studyHash,
+  stripHtml,
+  buildGuidePrompt,
+  DEFAULT_STUDY_GUIDE_INSTRUCTION,
+  type AssessmentMeta,
+  type StudyMaterial,
+} from "@/lib/study";
 
 describe("gradeShortAnswer", () => {
   it("accepts a phrase contained in the answer (case/punct-insensitive)", () => {
@@ -79,6 +89,30 @@ describe("studyHash / stripHtml", () => {
   });
   it("stripHtml flattens tags/entities and truncates", () => {
     expect(stripHtml("<p>Hello&nbsp;<b>world</b></p><script>x()</script>", 50)).toBe("Hello world");
+  });
+});
+
+describe("buildGuidePrompt (admin-editable instruction)", () => {
+  const meta: AssessmentMeta = {
+    canvasId: 1,
+    name: "Quiz 2",
+    courseName: "BIO 101",
+    courseCanvasId: 9,
+    type: "quiz",
+    dueAt: null,
+    pointsPossible: 40,
+    description: null,
+    aiSummary: null,
+  };
+  const material: StudyMaterial = { sources: [], moduleName: null, sparse: true, hash: "x" };
+  it("uses the custom instruction when provided, the default otherwise", () => {
+    expect(buildGuidePrompt(meta, material)).toContain(DEFAULT_STUDY_GUIDE_INSTRUCTION);
+    const custom = buildGuidePrompt(meta, material, "CUSTOM VOICE");
+    expect(custom).toContain("CUSTOM VOICE");
+    expect(custom).not.toContain(DEFAULT_STUDY_GUIDE_INSTRUCTION);
+  });
+  it("keeps the JSON output contract regardless of instruction (the parser depends on it)", () => {
+    expect(buildGuidePrompt(meta, material, "CUSTOM VOICE")).toContain("Return ONLY JSON");
   });
 });
 

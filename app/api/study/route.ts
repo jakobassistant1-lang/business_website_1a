@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
 import { itemType, isStudyType } from "@/lib/itemType";
 import { loadCalendarData } from "@/lib/calendarData";
+import { STUDY_PROMPT_KEYS } from "@/lib/settings";
 import {
   STUDY_PROMPT_VERSION,
   collectStudyMaterial,
@@ -65,6 +66,13 @@ export async function POST(req: Request) {
   const where = { userId_canvasId_kind_questionType: { userId: user.id, canvasId, kind, questionType: qt } };
   const cached = await prisma.studyGeneration.findUnique({ where });
 
+  // Admin-tunable instruction (the /admin/ai "Study outputs" group). It's part
+  // of the inputHash, and an edit AFTER a row was cached also defeats the 24h
+  // fast-path below — prompt changes take effect on the next request.
+  const promptRow = await prisma.setting.findUnique({ where: { key: STUDY_PROMPT_KEYS[kind] } });
+  const instruction = promptRow?.value ?? null;
+  const promptEditedAfterCache = !!(cached && promptRow && promptRow.updatedAt > cached.updatedAt);
+
   const serve = (content: unknown, isCached: boolean, generatedAt: Date) =>
     NextResponse.json({ ok: true, kind, questionType: qt || null, content, cached: isCached, generatedAt });
 
@@ -76,6 +84,7 @@ export async function POST(req: Request) {
       STUDY_PROMPT_VERSION,
       "plan",
       canvasId,
+      instruction,
       a.dueAt?.toISOString(),
       a.pointsPossible,
       type,
@@ -84,7 +93,7 @@ export async function POST(req: Request) {
     ]);
     if (!force && cached && cached.inputHash === hash) return serve(JSON.parse(cached.content), true, cached.updatedAt);
 
-    const gen = await generateStudyPlan(meta, sessions);
+    const gen = await generateStudyPlan(meta, sessions, instruction ?? undefined);
     if (!gen.ok) return NextResponse.json({ error: gen.reason }, { status: 502 });
     const content = JSON.stringify(gen.content);
     const row = await prisma.studyGeneration.upsert({
@@ -96,7 +105,7 @@ export async function POST(req: Request) {
   }
 
   // ---- guide / questions: material requires Canvas calls → TTL-gated revalidation
-  if (!force && cached && Date.now() - cached.updatedAt.getTime() < REVALIDATE_MS) {
+  if (!force && cached && !promptEditedAfterCache && Date.now() - cached.updatedAt.getTime() < REVALIDATE_MS) {
     return serve(JSON.parse(cached.content), true, cached.updatedAt);
   }
 
@@ -114,6 +123,7 @@ export async function POST(req: Request) {
     kind,
     qt,
     canvasId,
+    instruction,
     material.hash,
     a.name,
     a.dueAt?.toISOString(),
@@ -127,8 +137,8 @@ export async function POST(req: Request) {
 
   const gen =
     kind === "guide"
-      ? await generateStudyGuide(meta, material)
-      : await generateStudyQuestions(meta, material, questionType);
+      ? await generateStudyGuide(meta, material, instruction ?? undefined)
+      : await generateStudyQuestions(meta, material, questionType, instruction ?? undefined);
   if (!gen.ok) return NextResponse.json({ error: gen.reason }, { status: 502 });
   const content = JSON.stringify(gen.content);
   const row = await prisma.studyGeneration.upsert({
