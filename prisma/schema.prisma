@@ -15,7 +15,8 @@ datasource db {
 model User {
   id                 Int      @id @default(autoincrement())
   email              String   @unique
-  password           String
+  // Null for accounts created via "Sign in with Google" (passwordless).
+  password           String?
   fullName           String
   phone              String?
   // Gates the admin-only team Kanban board (see lib/admin.ts). Defaults false;

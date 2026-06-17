@@ -27,6 +27,9 @@ the final DNS step.
    - `ADMIN_EMAILS` → comma-separated admin emails (e.g. `you@pinnavel.com`)
    - `SIGNUP_INVITE_CODE` → a secret code to allow invited signups, **or leave unset**
      to keep signup fully closed (accounts created via the CLI — step 4).
+   - `GOOGLE_AUTH_CLIENT_ID` / `GOOGLE_AUTH_CLIENT_SECRET` / `GOOGLE_AUTH_REDIRECT_URI` →
+     enable "Sign in with Google" (see *Sign in with Google* below); leave unset to hide the button.
+   - `ENCRYPTION_KEY` → 32+ random characters; encrypts stored OAuth tokens and signs the login CSRF state.
 4. Deploy. You'll get a `https://<project>.vercel.app` URL.
 
 ## 3. Push the schema to the database (one time)
@@ -74,6 +77,28 @@ DATABASE_URL="postgresql://...neon...?sslmode=require" \
 4. Wait for DNS propagation + Vercel's automatic SSL (minutes to a couple hours).
 
 ---
+
+## Sign in with Google (optional)
+
+Adds a "Continue with Google" button to the student login/signup. Give it its **own**
+OAuth client — separate from the Google *Calendar* client — so it only ever requests
+basic profile info, which keeps it out of Google's verification process.
+
+1. **Google Cloud Console → APIs & Services → Credentials → Create credentials →
+   OAuth client ID → Web application.**
+2. **Authorized redirect URI:** `https://pinnavel.com/api/auth/google/callback`
+   (add `http://localhost:3000/api/auth/google/callback` too for local dev).
+3. **OAuth consent screen:** request only the `openid`, `email`, and `profile` scopes
+   (all non-sensitive), set User type **External**, then **Publish to Production**.
+   Because the scopes are non-sensitive this is effectively instant — **no Google
+   verification review** is required (this is the key difference from the calendar
+   integration, whose calendar scope is sensitive).
+4. In Vercel, set `GOOGLE_AUTH_CLIENT_ID`, `GOOGLE_AUTH_CLIENT_SECRET`, and
+   `GOOGLE_AUTH_REDIRECT_URI` (the exact callback URL from step 2). The button only
+   appears once all three are present.
+
+New Google sign-ins create a **passwordless** account and **auto-link** to any existing
+account with the same verified email, so there are never duplicate accounts.
 
 ## Local development
 
