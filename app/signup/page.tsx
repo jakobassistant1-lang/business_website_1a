@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isSignupOpen } from "@/lib/signup";
+import { isGoogleAuthConfigured } from "@/lib/googleAuth";
 import { AuthFlow } from "@/components/AuthFlow";
 import { BrandMark } from "@/components/BrandMark";
 
@@ -16,7 +17,7 @@ export default async function SignupPage() {
         <div className="mb-8 flex justify-center">
           <BrandMark />
         </div>
-        <AuthFlow initialMode="signup" inviteConfigured={isSignupOpen()} />
+        <AuthFlow initialMode="signup" inviteConfigured={isSignupOpen()} googleEnabled={isGoogleAuthConfigured()} />
       </div>
     </main>
   );

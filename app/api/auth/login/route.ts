@@ -14,7 +14,8 @@ export async function POST(req: Request) {
 
   const user = await prisma.user.findUnique({ where: { email } });
   // Constant-ish work either way; bcrypt.compare returns false for a wrong hash.
-  if (!user || !(await verifyPassword(password, user.password))) {
+  // password is null for Google-only accounts → they must use "Continue with Google".
+  if (!user || !user.password || !(await verifyPassword(password, user.password))) {
     return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
   }
   await createSession(user.id);
