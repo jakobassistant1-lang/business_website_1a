@@ -30,6 +30,11 @@ the final DNS step.
    - `GOOGLE_AUTH_CLIENT_ID` / `GOOGLE_AUTH_CLIENT_SECRET` / `GOOGLE_AUTH_REDIRECT_URI` →
      enable "Sign in with Google" (see *Sign in with Google* below); leave unset to hide the button.
    - `ENCRYPTION_KEY` → 32+ random characters; encrypts stored OAuth tokens and signs the login CSRF state.
+   - `RESEND_API_KEY` / `EMAIL_FROM` → send the "forgot password" reset email (see *Forgot-password
+     email* below); leave both unset and reset links are only logged server-side (no email sent).
+   - `APP_URL` → canonical site origin (e.g. `https://pinnavel.com`); builds reset links from trusted
+     config rather than the spoofable request `Host`. Optional on Vercel (falls back to the platform's
+     production URL) but recommended.
 4. Deploy. You'll get a `https://<project>.vercel.app` URL.
 
 ## 3. Push the schema to the database (one time)
@@ -100,6 +105,24 @@ basic profile info, which keeps it out of Google's verification process.
 New Google sign-ins create a **passwordless** account and **auto-link** to any existing
 account with the same verified email, so there are never duplicate accounts.
 
+## Forgot-password email (Resend)
+
+The "Forgot password?" flow emails a one-time reset link, sent via **Resend**.
+
+1. Create an account at https://resend.com.
+2. **Add your domain** (`pinnavel.com`) and add the **SPF** (TXT) + **DKIM** (CNAME/TXT)
+   records Resend shows at your registrar; wait until it reads "Verified".
+3. Create an **API key**.
+4. In Vercel set `RESEND_API_KEY` (the key) and `EMAIL_FROM` (an address on the verified
+   domain, e.g. `StudyPlan <noreply@pinnavel.com>`) — Production + Preview.
+5. Set `APP_URL` to your canonical site origin (e.g. `https://pinnavel.com`) so reset links in
+   emails are built from trusted config, **never the request `Host` header** (which is spoofable →
+   reset-link poisoning, CWE-640). If unset it falls back to `GOOGLE_AUTH_REDIRECT_URI`'s origin,
+   then Vercel's `VERCEL_PROJECT_PRODUCTION_URL` (set automatically), then the request origin (dev only).
+
+Until both vars are set the flow still works end-to-end, but instead of sending, the reset
+link is **logged to the server console** — so local dev and staging never need Resend.
+
 ## Local development
 
 Local dev now also uses Postgres (the app no longer uses a SQLite file). Point a
@@ -115,6 +138,9 @@ npm run dev
 ## Security notes
 
 - **Passwords** are bcrypt-hashed (12 rounds). **Signup is invite-only / closed.**
+- **Password reset** tokens are random (32 bytes), stored only as a **sha256 hash**,
+  single-use, and expire after 1 hour; completing a reset invalidates the user's existing
+  sessions. The request endpoint never reveals whether an email has an account.
 - The **Canvas API token is still stored in plaintext** in the DB. That's acceptable
   for a trusted-team deploy; encrypt-at-rest (or per-user KMS) is the recommended next
   hardening step before broader exposure.
