@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Role = "student" | "admin";
 type Mode = "login" | "signup";
@@ -172,6 +173,11 @@ function LoginForm({ onDone }: { onDone: (isAdmin: boolean) => void }) {
       <div>
         <label className="label" htmlFor="password">Password</label>
         <input id="password" type="password" className="field" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+      </div>
+      <div className="-mt-1 text-right">
+        <Link href="/forgot-password" className="text-sm font-medium text-accent hover:text-accent-hover">
+          Forgot password?
+        </Link>
       </div>
       <button type="submit" className="btn-primary w-full" disabled={busy}>
         {busy ? "Signing in…" : "Log in"}

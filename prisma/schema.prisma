@@ -39,6 +39,23 @@ model User {
   googleCalendar GoogleCalendarConnection?
   googleEvents   GoogleCalendarEvent[]
   studyGenerations StudyGeneration[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+// Single-use, time-limited password-reset tokens (the "forgot password" flow).
+// Only the sha256 HASH of the token is stored — the raw token lives solely in the
+// emailed link — so a database leak can't be used to reset anyone's password.
+// Consumed on use (usedAt) and expired after 1h (see lib/passwordReset.ts).
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  tokenHash String    @unique
+  userId    Int
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Cached AI study artifacts (study-plan layer / study guide / practice questions),
