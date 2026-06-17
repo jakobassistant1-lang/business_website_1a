@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createResetToken } from "@/lib/passwordReset";
 import { sendEmail } from "@/lib/email";
-import { googleAuthOrigin } from "@/lib/googleAuth";
+import { appOrigin } from "@/lib/appUrl";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -44,10 +44,9 @@ export async function POST(req: Request) {
   if (!EMAIL_RE.test(email)) return NextResponse.json({ ok: true }); // no-op, same shape
 
   const user = await prisma.user.findUnique({ where: { email } });
-  // Public origin for the links — reuse the same resolver the Google login flow
-  // uses (configured redirect-URI origin, falling back to the request origin), so
-  // the emailed link is never built from an untrusted Host header.
-  const base = googleAuthOrigin(new URL(req.url).origin);
+  // Public origin for the emailed link — resolved from TRUSTED config only (never
+  // the request Host header), to prevent reset-link poisoning. See lib/appUrl.ts.
+  const base = appOrigin(new URL(req.url).origin);
 
   if (user && user.password) {
     // Normal password account → send a reset link.
