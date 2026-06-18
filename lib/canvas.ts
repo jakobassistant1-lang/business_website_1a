@@ -15,8 +15,19 @@ export function normalizeHost(input: string): string {
   return h.toLowerCase();
 }
 
+/** Local/sandbox Canvas (a Dockerized Canvas, localhost) serves plain HTTP, not
+ *  HTTPS — detect those hosts so we don't try a TLS handshake that can't succeed. */
+function isLocalCanvasHost(host: string): boolean {
+  const h = host.split(":")[0].toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".docker") || h.endsWith(".local");
+}
+
 export function apiBase(host: string): string {
-  return `https://${host}/api/v1`;
+  // Public Canvas is always HTTPS. A local sandbox (e.g. canvas.docker) serves
+  // HTTP — but honor that only OUTSIDE production, so the deployed app never makes
+  // plaintext or loopback requests (keeps an SSRF path from opening up in prod).
+  const scheme = process.env.NODE_ENV !== "production" && isLocalCanvasHost(host) ? "http" : "https";
+  return `${scheme}://${host}/api/v1`;
 }
 
 /** Map a thrown fetch/network error to a CanvasStatus (FR-5 matrix). */
