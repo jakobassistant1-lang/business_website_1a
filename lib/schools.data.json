@@ -1,0 +1,882 @@
+[
+  {
+    "name": "American University",
+    "aliases": ["AU", "American"],
+    "canvasHost": "american.instructure.com",
+    "region": "DC",
+    "confidence": "high",
+    "source": "https://www.american.edu/library/technology/canvas/"
+  },
+  {
+    "name": "Arizona State University",
+    "aliases": ["ASU"],
+    "canvasHost": "canvas.asu.edu",
+    "region": "AZ",
+    "confidence": "high",
+    "source": "https://canvas.asu.edu/login"
+  },
+  {
+    "name": "Auburn University",
+    "aliases": ["Auburn", "War Eagle"],
+    "canvasHost": "auburn.instructure.com",
+    "region": "AL",
+    "confidence": "high",
+    "source": "https://biggio.auburn.edu/programs/instructional-technology-programs/canvas-course-access"
+  },
+  {
+    "name": "Boston College",
+    "aliases": ["BC"],
+    "canvasHost": "bostoncollege.instructure.com",
+    "region": "MA",
+    "confidence": "high",
+    "source": "https://cteresources.bc.edu/documentation/canvas-quickstart/access-canvas/"
+  },
+  {
+    "name": "Brigham Young University",
+    "aliases": ["BYU"],
+    "canvasHost": "byu.instructure.com",
+    "region": "UT",
+    "confidence": "high",
+    "source": "https://byucanvas.byu.edu/canvas-instances-at-byu"
+  },
+  {
+    "name": "Brown University",
+    "aliases": ["Brown"],
+    "canvasHost": "canvas.brown.edu",
+    "region": "RI",
+    "confidence": "high",
+    "source": "https://it.brown.edu/services/canvas-learning-management-system"
+  },
+  {
+    "name": "Cal Poly Pomona",
+    "aliases": ["CPP", "Cal Poly Pomona"],
+    "canvasHost": "canvas.cpp.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://canvas.cpp.edu/"
+  },
+  {
+    "name": "Cal Poly San Luis Obispo",
+    "aliases": ["Cal Poly SLO", "Cal Poly", "CPSL"],
+    "canvasHost": "calpoly.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://canvassupport.calpoly.edu/how-login"
+  },
+  {
+    "name": "California State University, Fresno",
+    "aliases": ["Fresno State", "CSUF"],
+    "canvasHost": "fresnostate.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://academics.fresnostate.edu/canvas/students/index.html"
+  },
+  {
+    "name": "California State University, Fullerton",
+    "aliases": ["CSUF", "Cal State Fullerton"],
+    "canvasHost": "csufullerton.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://csufullerton.instructure.com/"
+  },
+  {
+    "name": "California State University, Long Beach",
+    "aliases": ["CSULB", "Cal State Long Beach", "Long Beach State"],
+    "canvasHost": "csulb.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.csulb.edu/academic-technology-services/canvas-at-the-beach"
+  },
+  {
+    "name": "California State University, Los Angeles",
+    "aliases": ["Cal State LA", "CSULA"],
+    "canvasHost": "calstatela.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.calstatela.edu/cetl/edtech/canvas"
+  },
+  {
+    "name": "California State University, Monterey Bay",
+    "aliases": ["CSUMB", "Cal State Monterey Bay"],
+    "canvasHost": "csumb.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://csumb.instructure.com/login/canvas"
+  },
+  {
+    "name": "California State University, Northridge",
+    "aliases": ["CSUN", "Cal State Northridge"],
+    "canvasHost": "canvas.csun.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.csun.edu/it/software-services/services/canvas"
+  },
+  {
+    "name": "California State University, Sacramento",
+    "aliases": ["Sacramento State", "Sac State", "CSUS"],
+    "canvasHost": "canvas.csus.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://canvas.csus.edu/"
+  },
+  {
+    "name": "Carnegie Mellon University",
+    "aliases": ["CMU"],
+    "canvasHost": "canvas.cmu.edu",
+    "region": "PA",
+    "confidence": "high",
+    "source": "https://www.cmu.edu/canvas/"
+  },
+  {
+    "name": "City College of San Francisco",
+    "aliases": ["CCSF", "City College SF"],
+    "canvasHost": "ccsf.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.ccsf.edu/about-ccsf/administration/academic-institutional-affairs/office-instruction/office-online-learning-and-educational-technology/canvas"
+  },
+  {
+    "name": "Colorado State University",
+    "aliases": ["CSU", "Colorado State"],
+    "canvasHost": "canvas.colostate.edu",
+    "region": "CO",
+    "confidence": "high",
+    "source": "https://canvas.colostate.edu/students/"
+  },
+  {
+    "name": "Columbia University",
+    "aliases": ["Columbia"],
+    "canvasHost": "courseworks2.columbia.edu",
+    "region": "NY",
+    "confidence": "high",
+    "source": "https://www.cuit.columbia.edu/courseworks"
+  },
+  {
+    "name": "Cornell University",
+    "aliases": ["Cornell"],
+    "canvasHost": "canvas.cornell.edu",
+    "region": "NY",
+    "confidence": "high",
+    "source": "https://login.canvas.cornell.edu/"
+  },
+  {
+    "name": "Dartmouth College",
+    "aliases": ["Dartmouth"],
+    "canvasHost": "canvas.dartmouth.edu",
+    "region": "NH",
+    "confidence": "high",
+    "source": "https://services.dartmouth.edu/TDClient/1806/Portal/KB/ArticleDet?ID=64692"
+  },
+  {
+    "name": "De Anza College",
+    "aliases": ["De Anza"],
+    "canvasHost": "deanza.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://deanza.instructure.com/login/canvas"
+  },
+  {
+    "name": "Diablo Valley College",
+    "aliases": ["DVC"],
+    "canvasHost": "dvc.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.dvc.edu/academics/online-programs/online-learning-support/canvas-support"
+  },
+  {
+    "name": "Drexel University",
+    "aliases": ["Drexel"],
+    "canvasHost": "canvas.drexel.edu",
+    "region": "PA",
+    "confidence": "high",
+    "source": "https://canvas.drexel.edu/"
+  },
+  {
+    "name": "Duke University",
+    "aliases": ["Duke"],
+    "canvasHost": "canvas.duke.edu",
+    "region": "NC",
+    "confidence": "high",
+    "source": "https://go.canvas.duke.edu/students/"
+  },
+  {
+    "name": "Emory University",
+    "aliases": ["Emory"],
+    "canvasHost": "canvas.emory.edu",
+    "region": "GA",
+    "confidence": "high",
+    "source": "https://canvas.emory.edu/login"
+  },
+  {
+    "name": "Florida Atlantic University",
+    "aliases": ["FAU"],
+    "canvasHost": "canvas.fau.edu",
+    "region": "FL",
+    "confidence": "high",
+    "source": "https://www.fau.edu/canvas/getting-started/"
+  },
+  {
+    "name": "Florida International University",
+    "aliases": ["FIU"],
+    "canvasHost": "canvas.fiu.edu",
+    "region": "FL",
+    "confidence": "high",
+    "source": "https://canvas.fiu.edu/"
+  },
+  {
+    "name": "Florida State University",
+    "aliases": ["FSU"],
+    "canvasHost": "canvas.fsu.edu",
+    "region": "FL",
+    "confidence": "high",
+    "source": "https://odl.fsu.edu/canvas"
+  },
+  {
+    "name": "Foothill College",
+    "aliases": ["Foothill"],
+    "canvasHost": "foothillcollege.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://foothill.edu/onlinelearning/students/canvas-login-instructions-students.html"
+  },
+  {
+    "name": "Georgetown University",
+    "aliases": ["Georgetown"],
+    "canvasHost": "canvas.georgetown.edu",
+    "region": "DC",
+    "confidence": "high",
+    "source": "https://canvas.georgetown.edu/"
+  },
+  {
+    "name": "Georgia Institute of Technology",
+    "aliases": ["Georgia Tech", "GaTech"],
+    "canvasHost": "canvas.gatech.edu",
+    "region": "GA",
+    "confidence": "high",
+    "source": "https://canvas.gatech.edu/"
+  },
+  {
+    "name": "Harvard University",
+    "aliases": ["Harvard"],
+    "canvasHost": "canvas.harvard.edu",
+    "region": "MA",
+    "confidence": "high",
+    "source": "https://www.huit.harvard.edu/canvas"
+  },
+  {
+    "name": "Houston Community College",
+    "aliases": ["HCC", "Houston City College"],
+    "canvasHost": "eagleonline.hccs.edu",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://library.hccs.edu/canvas-for-students"
+  },
+  {
+    "name": "Howard University",
+    "aliases": ["Howard", "HU"],
+    "canvasHost": "canvas.howard.edu",
+    "region": "DC",
+    "confidence": "high",
+    "source": "https://technology.howard.edu/student-resources/canvas"
+  },
+  {
+    "name": "Indiana University",
+    "aliases": ["IU", "IUB", "Indiana"],
+    "canvasHost": "canvas.iu.edu",
+    "region": "IN",
+    "confidence": "high",
+    "source": "https://servicenow.iu.edu/kb?id=kb_article_view&sysparm_article=KB0023771"
+  },
+  {
+    "name": "Iowa State University",
+    "aliases": ["ISU", "Iowa State", "Cyclones"],
+    "canvasHost": "canvas.iastate.edu",
+    "region": "IA",
+    "confidence": "high",
+    "source": "https://celt.iastate.edu/prepare-and-teach/design-your-course/get-started-with-canvas/"
+  },
+  {
+    "name": "Kansas State University",
+    "aliases": ["K-State", "KSU", "Kansas State"],
+    "canvasHost": "canvas.k-state.edu",
+    "region": "KS",
+    "confidence": "high",
+    "source": "https://canvas.k-state.edu/"
+  },
+  {
+    "name": "Long Beach City College",
+    "aliases": ["LBCC"],
+    "canvasHost": "lbcc.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.lbcc.edu/pod/canvas-lms-login-instructions-students"
+  },
+  {
+    "name": "Los Angeles Community College District",
+    "aliases": ["LACCD", "iLearn LACCD", "LA City College", "LACC"],
+    "canvasHost": "ilearn.laccd.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.lacitycollege.edu/Academics/Distance-Education/Student-Resources/Canvas-Basics"
+  },
+  {
+    "name": "Maricopa Community Colleges",
+    "aliases": ["MCCCD", "Maricopa"],
+    "canvasHost": "learn.maricopa.edu",
+    "region": "AZ",
+    "confidence": "high",
+    "source": "https://www.maricopa.edu/students/technical-support/canvas"
+  },
+  {
+    "name": "Massachusetts Institute of Technology",
+    "aliases": ["MIT"],
+    "canvasHost": "canvas.mit.edu",
+    "region": "MA",
+    "confidence": "high",
+    "source": "https://web.mit.edu/canvas/"
+  },
+  {
+    "name": "Miami University",
+    "aliases": ["Miami Ohio", "MU"],
+    "canvasHost": "miamioh.instructure.com",
+    "region": "OH",
+    "confidence": "medium",
+    "source": "https://miamioh.edu/online/canvas/index.html"
+  },
+  {
+    "name": "Mississippi State University",
+    "aliases": ["MSU", "Mississippi State"],
+    "canvasHost": "canvas.msstate.edu",
+    "region": "MS",
+    "confidence": "high",
+    "source": "https://www.online.msstate.edu/faq/canvas"
+  },
+  {
+    "name": "Mt. San Antonio College",
+    "aliases": ["Mt. SAC", "MTSAC"],
+    "canvasHost": "mtsac.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.mtsac.edu/fclt/canvas.html"
+  },
+  {
+    "name": "Northeastern University",
+    "aliases": ["Northeastern", "NEU"],
+    "canvasHost": "canvas.northeastern.edu",
+    "region": "MA",
+    "confidence": "high",
+    "source": "https://canvas.northeastern.edu/"
+  },
+  {
+    "name": "Northwestern University",
+    "aliases": ["Northwestern", "NU"],
+    "canvasHost": "canvas.northwestern.edu",
+    "region": "IL",
+    "confidence": "high",
+    "source": "https://www.it.northwestern.edu/support/login/canvas.html"
+  },
+  {
+    "name": "Ohio State University",
+    "aliases": ["OSU", "Ohio State"],
+    "canvasHost": "carmen.osu.edu",
+    "region": "OH",
+    "confidence": "high",
+    "source": "https://carmen.osu.edu/"
+  },
+  {
+    "name": "Oregon State University",
+    "aliases": ["OSU", "Oregon State", "Beavers"],
+    "canvasHost": "canvas.oregonstate.edu",
+    "region": "OR",
+    "confidence": "high",
+    "source": "https://technology.oregonstate.edu/services/canvas"
+  },
+  {
+    "name": "Pasadena City College",
+    "aliases": ["PCC"],
+    "canvasHost": "canvas.pasadena.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://pasadena.edu/canvas-outage.php"
+  },
+  {
+    "name": "Pennsylvania State University",
+    "aliases": ["Penn State", "PSU"],
+    "canvasHost": "psu.instructure.com",
+    "region": "PA",
+    "confidence": "high",
+    "source": "https://www.it.psu.edu/services/canvas/"
+  },
+  {
+    "name": "Princeton University",
+    "aliases": ["Princeton"],
+    "canvasHost": "canvas.princeton.edu",
+    "region": "NJ",
+    "confidence": "high",
+    "source": "https://canvas.princeton.edu/"
+  },
+  {
+    "name": "Rutgers University",
+    "aliases": ["Rutgers", "RU"],
+    "canvasHost": "canvas.rutgers.edu",
+    "region": "NJ",
+    "confidence": "high",
+    "source": "https://canvas.rutgers.edu/"
+  },
+  {
+    "name": "San Diego State University",
+    "aliases": ["SDSU", "Aztecs"],
+    "canvasHost": "canvas.sdsu.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://its.sdsu.edu/software/canvas"
+  },
+  {
+    "name": "San Francisco State University",
+    "aliases": ["SFSU", "SF State"],
+    "canvasHost": "canvas.sfsu.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://at.sfsu.edu/canvas/students"
+  },
+  {
+    "name": "San Jose State University",
+    "aliases": ["SJSU", "San Jose State"],
+    "canvasHost": "sjsu.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.sjsu.edu/engineering/docs/id/canvas_login_in_to_canvas_03_2018.pdf"
+  },
+  {
+    "name": "Santa Monica College",
+    "aliases": ["SMC"],
+    "canvasHost": "online.smc.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.smc.edu/academics/online-learning/canvas.php"
+  },
+  {
+    "name": "Stanford University",
+    "aliases": ["Stanford"],
+    "canvasHost": "canvas.stanford.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://web.stanford.edu/group/canvas/discovery.html"
+  },
+  {
+    "name": "Temple University",
+    "aliases": ["Temple"],
+    "canvasHost": "templeu.instructure.com",
+    "region": "PA",
+    "confidence": "high",
+    "source": "https://computerservices.temple.edu/canvas"
+  },
+  {
+    "name": "Texas A&M University",
+    "aliases": ["TAMU", "Texas A&M", "Aggies"],
+    "canvasHost": "canvas.tamu.edu",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.tamu.edu/"
+  },
+  {
+    "name": "Tufts University",
+    "aliases": ["Tufts"],
+    "canvasHost": "canvas.tufts.edu",
+    "region": "MA",
+    "confidence": "high",
+    "source": "https://access.tufts.edu/canvas"
+  },
+  {
+    "name": "UC Berkeley",
+    "aliases": ["Berkeley", "Cal", "UCB", "UC Berkeley"],
+    "canvasHost": "bcourses.berkeley.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://dls.berkeley.edu/services/bcourses"
+  },
+  {
+    "name": "UC Davis",
+    "aliases": ["UCD", "UC Davis"],
+    "canvasHost": "canvas.ucdavis.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://iet.ucdavis.edu/technews/uc-davis-canvas-login-changes-coming-12-1"
+  },
+  {
+    "name": "UC Irvine",
+    "aliases": ["UCI", "UC Irvine"],
+    "canvasHost": "canvas.eee.uci.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://canvas.eee.uci.edu/"
+  },
+  {
+    "name": "UC Los Angeles",
+    "aliases": ["UCLA", "Bruins"],
+    "canvasHost": "bruinlearn.ucla.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://coe.bruinlearn.ucla.edu/access-bruin-learn"
+  },
+  {
+    "name": "UC Merced",
+    "aliases": ["UCM", "UC Merced"],
+    "canvasHost": "canvas.ucmerced.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://inclusiveaccess.ucmerced.edu/sites/g/files/ufvvjh1086/f/page/documents/connect_integration_registration_instructions117.pdf"
+  },
+  {
+    "name": "UC Riverside",
+    "aliases": ["UCR", "UC Riverside"],
+    "canvasHost": "canvas.ucr.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://canvas.ucr.edu/"
+  },
+  {
+    "name": "UC San Diego",
+    "aliases": ["UCSD", "UC San Diego"],
+    "canvasHost": "canvas.ucsd.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://students.ucsd.edu/my-tritonlink/tools/tool-help/about-canvas.html"
+  },
+  {
+    "name": "UC San Francisco",
+    "aliases": ["UCSF"],
+    "canvasHost": "ucsf.instructure.com",
+    "region": "CA",
+    "confidence": "medium",
+    "source": "https://it.ucsf.edu/education/canvas-central/canvas-login"
+  },
+  {
+    "name": "UC Santa Barbara",
+    "aliases": ["UCSB", "UC Santa Barbara"],
+    "canvasHost": "canvas.ucsb.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://www.canvas.ucsb.edu/"
+  },
+  {
+    "name": "UC Santa Cruz",
+    "aliases": ["UCSC", "UC Santa Cruz"],
+    "canvasHost": "canvas.ucsc.edu",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://its.ucsc.edu/canvas/"
+  },
+  {
+    "name": "UNC Charlotte",
+    "aliases": ["UNCC"],
+    "canvasHost": "canvas.charlotte.edu",
+    "region": "NC",
+    "confidence": "high",
+    "source": "https://canvas.charlotte.edu/"
+  },
+  {
+    "name": "University at Buffalo",
+    "aliases": ["UB", "SUNY Buffalo"],
+    "canvasHost": "ublearns.buffalo.edu",
+    "region": "NY",
+    "confidence": "medium",
+    "source": "https://www.buffalo.edu/lms/why.html"
+  },
+  {
+    "name": "University of Alabama at Birmingham",
+    "aliases": ["UAB"],
+    "canvasHost": "uab.instructure.com",
+    "region": "AL",
+    "confidence": "medium",
+    "source": "https://ghstudents.com/uab-canvas/"
+  },
+  {
+    "name": "University of Central Florida",
+    "aliases": ["UCF", "Knights"],
+    "canvasHost": "webcourses.ucf.edu",
+    "region": "FL",
+    "confidence": "high",
+    "source": "https://cdl.ucf.edu/support/webcourses/guides/login/"
+  },
+  {
+    "name": "University of Colorado Boulder",
+    "aliases": ["CU Boulder", "Colorado", "Buffaloes"],
+    "canvasHost": "canvas.colorado.edu",
+    "region": "CO",
+    "confidence": "high",
+    "source": "https://canvas.colorado.edu/"
+  },
+  {
+    "name": "University of Colorado Denver",
+    "aliases": ["CU Denver", "UCD"],
+    "canvasHost": "ucdenver.instructure.com",
+    "region": "CO",
+    "confidence": "high",
+    "source": "http://canvas.ucdenver.edu/"
+  },
+  {
+    "name": "University of Denver",
+    "aliases": ["DU", "Denver"],
+    "canvasHost": "canvas.du.edu",
+    "region": "CO",
+    "confidence": "high",
+    "source": "https://canvas.du.edu/"
+  },
+  {
+    "name": "University of Florida",
+    "aliases": ["UF", "Florida", "Gators"],
+    "canvasHost": "ufl.instructure.com",
+    "region": "FL",
+    "confidence": "high",
+    "source": "https://elearning.ufl.edu/"
+  },
+  {
+    "name": "University of Illinois at Chicago",
+    "aliases": ["UIC"],
+    "canvasHost": "canvas.uic.edu",
+    "region": "IL",
+    "confidence": "high",
+    "source": "https://it.uic.edu/news-stories/canvas-access-begins-december-1-what-you-need-to-know-for-spring-2026/"
+  },
+  {
+    "name": "University of Illinois Urbana-Champaign",
+    "aliases": ["UIUC", "U of I", "Illinois"],
+    "canvasHost": "canvas.illinois.edu",
+    "region": "IL",
+    "confidence": "high",
+    "source": "https://citl.illinois.edu/canvas"
+  },
+  {
+    "name": "University of Iowa",
+    "aliases": ["Iowa", "UIowa", "Hawkeyes"],
+    "canvasHost": "uiowa.instructure.com",
+    "region": "IA",
+    "confidence": "high",
+    "source": "https://its.uiowa.edu/services/icon"
+  },
+  {
+    "name": "University of Kansas",
+    "aliases": ["KU", "Jayhawks"],
+    "canvasHost": "canvas.ku.edu",
+    "region": "KS",
+    "confidence": "high",
+    "source": "https://canvas.ku.edu/"
+  },
+  {
+    "name": "University of Kentucky",
+    "aliases": ["UK", "Kentucky", "Wildcats"],
+    "canvasHost": "uky.instructure.com",
+    "region": "KY",
+    "confidence": "high",
+    "source": "https://www.uky.edu/canvas/"
+  },
+  {
+    "name": "University of Maryland, College Park",
+    "aliases": ["UMD", "Maryland", "Terps"],
+    "canvasHost": "elms.umd.edu",
+    "region": "MD",
+    "confidence": "high",
+    "source": "https://elms.umd.edu/"
+  },
+  {
+    "name": "University of Michigan",
+    "aliases": ["UMich", "Michigan", "U of M"],
+    "canvasHost": "umich.instructure.com",
+    "region": "MI",
+    "confidence": "high",
+    "source": "https://its.umich.edu/academics-research/teaching-learning/canvas/students"
+  },
+  {
+    "name": "University of Minnesota Twin Cities",
+    "aliases": ["UMN", "Minnesota", "Gophers"],
+    "canvasHost": "canvas.umn.edu",
+    "region": "MN",
+    "confidence": "high",
+    "source": "https://it.umn.edu/services-technologies/canvas"
+  },
+  {
+    "name": "University of Missouri",
+    "aliases": ["Mizzou", "MU", "Missouri"],
+    "canvasHost": "canvas.umsystem.edu",
+    "region": "MO",
+    "confidence": "high",
+    "source": "https://canvas.umsystem.edu/"
+  },
+  {
+    "name": "University of Nebraska-Lincoln",
+    "aliases": ["UNL", "Nebraska", "Cornhuskers"],
+    "canvasHost": "canvas.unl.edu",
+    "region": "NE",
+    "confidence": "high",
+    "source": "https://nusupport.nebraska.edu/TDClient/33/Portal/Requests/ServiceOfferingDet?ID=35"
+  },
+  {
+    "name": "University of New Mexico",
+    "aliases": ["UNM", "New Mexico", "Lobos"],
+    "canvasHost": "canvas.unm.edu",
+    "region": "NM",
+    "confidence": "high",
+    "source": "https://canvasinfo.unm.edu/support/how-to-log-in-to-canvas.html"
+  },
+  {
+    "name": "University of North Carolina at Chapel Hill",
+    "aliases": ["UNC", "UNC Chapel Hill", "Tar Heels"],
+    "canvasHost": "uncch.instructure.com",
+    "region": "NC",
+    "confidence": "high",
+    "source": "https://edtech.unc.edu/service/canvas/"
+  },
+  {
+    "name": "University of Oklahoma",
+    "aliases": ["OU", "Oklahoma", "Sooners"],
+    "canvasHost": "canvas.ou.edu",
+    "region": "OK",
+    "confidence": "high",
+    "source": "https://itsupport.ou.edu/TDClient/30/Unified/KB/ArticleDet?ID=3346"
+  },
+  {
+    "name": "University of Oregon",
+    "aliases": ["UO", "Oregon", "Ducks"],
+    "canvasHost": "canvas.uoregon.edu",
+    "region": "OR",
+    "confidence": "high",
+    "source": "https://canvas.uoregon.edu/"
+  },
+  {
+    "name": "University of Pittsburgh",
+    "aliases": ["Pitt", "UPitt"],
+    "canvasHost": "canvas.pitt.edu",
+    "region": "PA",
+    "confidence": "high",
+    "source": "https://teaching.pitt.edu/resources/how-to-log-in-and-find-your-canvas-courses/"
+  },
+  {
+    "name": "University of San Diego",
+    "aliases": ["USD"],
+    "canvasHost": "sandiego.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://usdkb.sandiego.edu/s/article/How-do-I-log-into-Canvas"
+  },
+  {
+    "name": "University of San Francisco",
+    "aliases": ["USF", "USFCA"],
+    "canvasHost": "usfca.instructure.com",
+    "region": "CA",
+    "confidence": "high",
+    "source": "https://myusf.usfca.edu/canvas"
+  },
+  {
+    "name": "University of South Florida",
+    "aliases": ["USF", "Bulls"],
+    "canvasHost": "usf.instructure.com",
+    "region": "FL",
+    "confidence": "medium",
+    "source": "https://www.usf.edu/innovative-education/digital-learning/student-resources/tools-and-technologies/canvas.aspx"
+  },
+  {
+    "name": "University of Tennessee, Knoxville",
+    "aliases": ["UTK", "Tennessee", "Vols"],
+    "canvasHost": "ut.instructure.com",
+    "region": "TN",
+    "confidence": "high",
+    "source": "https://oit.utk.edu/teachingtools/online/"
+  },
+  {
+    "name": "University of Texas at Austin",
+    "aliases": ["UT Austin", "UT", "Longhorns"],
+    "canvasHost": "canvas.utexas.edu",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.utexas.edu/index.html"
+  },
+  {
+    "name": "University of Texas at Dallas",
+    "aliases": ["UTD", "UT Dallas"],
+    "canvasHost": "utdallas.instructure.com",
+    "region": "TX",
+    "confidence": "medium",
+    "source": "https://ets.utdallas.edu/elearning-services/canvas-migration/"
+  },
+  {
+    "name": "University of Texas at San Antonio",
+    "aliases": ["UTSA"],
+    "canvasHost": "utsa.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://provost.utsa.edu/canvas/"
+  },
+  {
+    "name": "University of Virginia",
+    "aliases": ["UVA", "Virginia", "Cavaliers"],
+    "canvasHost": "canvas.virginia.edu",
+    "region": "VA",
+    "confidence": "high",
+    "source": "https://canvas.virginia.edu/"
+  },
+  {
+    "name": "University of Washington",
+    "aliases": ["UW", "Washington", "Huskies"],
+    "canvasHost": "canvas.uw.edu",
+    "region": "WA",
+    "confidence": "high",
+    "source": "https://it.uw.edu/uware/canvas/"
+  },
+  {
+    "name": "University of Wisconsin-Madison",
+    "aliases": ["UW-Madison", "Wisconsin", "Badgers"],
+    "canvasHost": "canvas.wisc.edu",
+    "region": "WI",
+    "confidence": "high",
+    "source": "https://it.wisc.edu/services/canvas/"
+  },
+  {
+    "name": "Utah State University",
+    "aliases": ["USU", "Utah State"],
+    "canvasHost": "usu.instructure.com",
+    "region": "UT",
+    "confidence": "high",
+    "source": "https://www.usu.edu/teach/help-topics/canvas/log-into-canvas"
+  },
+  {
+    "name": "Valencia College",
+    "aliases": ["Valencia"],
+    "canvasHost": "online.valenciacollege.edu",
+    "region": "FL",
+    "confidence": "high",
+    "source": "https://valenciacollege.edu/faculty/canvas-resources/"
+  },
+  {
+    "name": "Virginia Tech",
+    "aliases": ["VT", "Hokies"],
+    "canvasHost": "canvas.vt.edu",
+    "region": "VA",
+    "confidence": "high",
+    "source": "https://4help.vt.edu/sp?id=kb_article&sysparm_article=KB0012934"
+  },
+  {
+    "name": "Wake Forest University",
+    "aliases": ["WFU", "Wake Forest"],
+    "canvasHost": "wakeforest.instructure.com",
+    "region": "NC",
+    "confidence": "high",
+    "source": "https://canvas.wfu.edu/support/"
+  },
+  {
+    "name": "Washington State University",
+    "aliases": ["WSU", "Cougars"],
+    "canvasHost": "canvas.wsu.edu",
+    "region": "WA",
+    "confidence": "high",
+    "source": "https://li.wsu.edu/academic-tech-tools/learning-management-systems-lms/"
+  },
+  {
+    "name": "Yale University",
+    "aliases": ["Yale"],
+    "canvasHost": "canvas.yale.edu",
+    "region": "CT",
+    "confidence": "high",
+    "source": "https://canvas.yale.edu/canvas-administration"
+  }
+]
