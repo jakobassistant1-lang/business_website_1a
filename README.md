@@ -31,16 +31,17 @@ Production build:
 npm run build && npm start
 ```
 
-Then open the app, **sign up**, go to **Connections**, and enter your Canvas
-domain (e.g. `school.instructure.com`) + a personal access token
-(Canvas → Account → Settings → New Access Token).
+Then open the app, **sign up**, and go to **Connections**. Pick your school
+from the searchable dropdown (or choose "enter the link manually" for an
+unlisted school), then follow the guided steps to create a Canvas access token
+and paste it in.
 
 ## How it works
 
 | Screen | What it does | PRD |
 |---|---|---|
 | **Plan** (`/`) | Default landing. Per-day plan over the window, stat bar, AT_RISK + undated sections, Refresh, hours override. | FR-3, FR-8, FR-9 |
-| **Connections** | Save Canvas domain + token; validates immediately and shows distinct status. | FR-4, FR-5 |
+| **Connections** | Pick your school (searchable dropdown) or enter your Canvas domain manually, then a guided token step (deep link + step-by-step instructions); validates immediately and shows distinct status. | FR-4, FR-5 |
 | **Settings** | Defaults: hours/day, planning window (days), effort/assignment. | FR-8, §9 |
 | **Account** | Edit profile (name, email, phone, password). | FR-1 |
 
