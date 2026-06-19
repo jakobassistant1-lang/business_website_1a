@@ -1,11 +1,10 @@
 "use client";
 
-// The Dashboard — a single-focus "command screen". A solid-violet Focus module
-// (the #1 upcoming task), a priority-ranked Today list whose rows complete
-// themselves the moment Canvas reports a submission (flash accent → settle grey),
-// a daily-progress ring, and a context rail (This week / Overdue / jump links).
-// Overdue work lives only in the rail; Focus + Next-up are forward-looking, so
-// the three zones never contradict each other.
+// The Dashboard — a calm, wide "command screen". Top: an AI summary of the week,
+// then a quiet bar of KPIs (week intensity, overdue → opens the full list) with
+// the Timeline/Calendar jumps. Below: ONE card whose flush violet Focus block
+// (the #1 task) sits above a 7-day "what's coming up" list; a bare progress ring +
+// an Upcoming-assessments card into /study sit in the rail.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -13,36 +12,44 @@ import { useRouter } from "next/navigation";
 import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_SHORT, MONTHS_LONG } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
-import { ItemDetail, Glyph, ICON, fmtHours, fmtTime } from "@/components/calendar/parts";
+import { deterministicIntensity, type Intensity } from "@/lib/intensity";
+import { Glyph, ICON, fmtTime, fmtHours } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
-import type { ItemType } from "@/lib/itemType";
+import { itemHref, type ItemType } from "@/lib/itemType";
 
-const TODAY_MAX = 7;
+const FOCUS_LIST_MAX = 5;
 const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
 const shortCourse = (name: string) => name.split(" · ")[0];
-// Locale-independent date strings (avoid a server/client locale hydration mismatch).
 const fmtLongDate = (d: Date) => `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
-const fmtShortDate = (d: Date) => `${WEEKDAYS[d.getDay()]}, ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+
+// Human countdown for a due date relative to today: Today / Tomorrow / weekday / "Mon DD".
+function countdownLabel(dueAtIso: string, todayYmd: string): string {
+  const d = parseYmd(ymd(new Date(dueAtIso)));
+  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days <= 6) return WEEKDAYS_FULL[d.getDay()];
+  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+}
 
 export function DashboardView({ data, todayYmd: serverToday, firstName }: { data: CalendarData; todayYmd: string; firstName: string }) {
   const router = useRouter();
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
   const [todayYmd, setTodayYmd] = useState(serverToday);
-  const [selected, setSelected] = useState<CalendarItem | null>(null);
-  const [newlyDone, setNewlyDone] = useState<Set<number>>(new Set());
+  const [showOverdue, setShowOverdue] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiIntensity, setAiIntensity] = useState<Intensity | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const didAutoSync = useRef(false);
 
   useEffect(() => {
     const h = new Date().getHours();
     setGreeting(h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
-    // "Today" is the USER's local day, not the server's (which is UTC on Vercel),
-    // so day-membership matches how the items below are bucketed. (#3)
     const t = ymd(new Date());
     if (t !== serverToday) setTodayYmd(t);
   }, [serverToday]);
 
-  // Sync Canvas once per browser session (shared key with the Calendar). A fresh
-  // sync is what turns a just-submitted assignment "done" on the dashboard.
+  // Sync Canvas once per browser session (shared key with the Calendar).
   useEffect(() => {
     if (!data.connected || didAutoSync.current) return;
     didAutoSync.current = true;
@@ -56,111 +63,164 @@ export function DashboardView({ data, todayYmd: serverToday, firstName }: { data
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Today's work, ranked by importance (not clock time) ---------------
-  // `ranked` is the FULL importance order, so every Today row sorts correctly
-  // (recommendations alone is just the top few). (#1)
-  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i]));
-  const isDueToday = (it: CalendarItem) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd;
-
-  const todayActive = data.items
-    .filter((it) => it.status !== "done" && isDueToday(it))
-    .sort((a, b) => {
-      const ra = rank.get(a.canvasId) ?? 1e9;
-      const rb = rank.get(b.canvasId) ?? 1e9;
-      if (ra !== rb) return ra - rb;
-      return (a.dueAt ? +new Date(a.dueAt) : 0) - (b.dueAt ? +new Date(b.dueAt) : 0);
-    });
-  const todayDone = data.completed.filter(isDueToday);
-  const leadId = todayActive[0]?.canvasId ?? null;
-
-  // Study blocks only make sense for assessments still AHEAD — never surface
-  // "study for X" once X is due today (or already taken), and never a 0h block.
-  const todayBlocks = data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? [];
-  const studyFuture = todayBlocks.filter((b) => b.study && b.hours > 0 && ymd(new Date(b.dueAt)) > todayYmd);
-
-  // Newly-submitted-today rows flash the accent once, then settle grey. State is
-  // day-scoped + bounded; the first load of a day seeds silently so already-done
-  // work doesn't all flash at once. (#4)
-  const doneKey = todayDone
-    .map((i) => i.canvasId)
-    .sort((a, b) => a - b)
-    .join(",");
+  // AI summary + Gemini week rating (fail-open: deterministic rating already shows;
+  // this upgrades it + fills the summary line when Gemini answers).
   useEffect(() => {
-    const ids = doneKey ? doneKey.split(",").map(Number) : [];
-    let stored: { day?: string; ids?: number[] } = {};
-    try {
-      const parsed = JSON.parse(localStorage.getItem("sp_seen_done") || "{}");
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) stored = parsed;
-    } catch {
-      /* ignore */
-    }
-    const sameDay = stored.day === todayYmd && Array.isArray(stored.ids);
-    const seen = new Set<number>(sameDay ? (stored.ids as number[]) : []);
-    const fresh = sameDay ? ids.filter((id) => !seen.has(id)) : [];
-    if (fresh.length) setNewlyDone((prev) => new Set([...prev, ...fresh]));
-    try {
-      localStorage.setItem("sp_seen_done", JSON.stringify({ day: todayYmd, ids }));
-    } catch {
-      /* ignore */
-    }
-  }, [doneKey, todayYmd]);
+    if (!data.connected) return;
+    let cancelled = false;
+    setSummaryLoading(true);
+    fetch("/api/dashboard-summary")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled || !body) return;
+        if (typeof body.summary === "string") setAiSummary(body.summary);
+        if (body.intensity === "easy" || body.intensity === "moderate" || body.intensity === "hard") setAiIntensity(body.intensity);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data.connected]);
 
   const today = parseYmd(todayYmd);
-  const dialTotal = todayActive.length + todayDone.length;
+  const isDueToday = (it: CalendarItem) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd;
+
+  // Today's-progress ring counts (today's submitted vs total due today).
+  const dueTodayActive = data.items.filter((it) => it.status !== "done" && isDueToday(it)).length;
+  const dueTodayDone = data.completed.filter(isDueToday).length;
+  const dialTotal = dueTodayActive + dueTodayDone;
+
+  // Do-next ordering — EVERYTHING on the dashboard follows the importance ranking
+  // (lib/priority), never the clock. That intelligent order is the product's value;
+  // due dates are shown as context, never used as the sort key.
+  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
+  const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
+
+  const focusId = data.recommendations[0]?.canvasId;
+  // The do-next queue beneath the #1 Focus item: the next most important work, in
+  // the order to tackle it.
+  const doNext = data.items.filter((it) => it.status === "normal" && it.canvasId !== focusId).sort(byRank).slice(0, FOCUS_LIST_MAX);
+
+  // Overdue, most-important-first — surfaced as an action, not just a count.
+  const overdueItems = data.items.filter((it) => it.status === "overdue").sort(byRank);
+
+  // Today's scheduled study sessions (restored to the dashboard).
+  const todayStudy = (data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? []).filter((b) => b.study && b.hours > 0 && ymd(new Date(b.dueAt)) >= todayYmd);
+
+  // Week intensity — deterministic baseline (instant), upgraded by Gemini when it answers.
+  const windowDates = new Set(data.plan.days.map((d) => d.date));
+  const dueThisWeek = data.items.filter((it) => it.dueAt && windowDates.has(ymd(new Date(it.dueAt))));
+  const examQuizWeek = dueThisWeek.filter((it) => it.type === "exam" || it.type === "quiz").length;
+  const plannedHours = data.plan.days.reduce((s, d) => s + d.allocated, 0);
+  const budgetHours = round1(data.hoursPerDay * data.plan.days.length);
+  const workHours = round1(plannedHours + data.overloadHours);
+  const baseIntensity = deterministicIntensity({
+    dueThisWeek: dueThisWeek.length,
+    examQuiz: examQuizWeek,
+    workHours,
+    budgetHours,
+    overloadHours: data.overloadHours,
+  });
+  const intensity = aiIntensity ?? baseIntensity;
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="mb-7 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xl font-semibold text-ink">
-            {greeting}
-            {firstName ? `, ${firstName}` : ""}
-          </p>
-          <p className="mt-0.5 text-sm text-muted">{fmtLongDate(today)}</p>
-        </div>
-        {data.connected && <ProgressRing done={todayDone.length} total={dialTotal} />}
+    <div className="mx-auto max-w-7xl">
+      <div className="mb-6">
+        <p className="text-[22px] font-semibold text-ink">
+          {greeting}
+          {firstName ? `, ${firstName}` : ""}
+        </p>
+        <p className="mt-0.5 text-[15px] text-muted">{fmtLongDate(today)}</p>
       </div>
 
       {!data.connected ? (
         <ConnectCard />
       ) : (
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <div className="min-w-0 flex-1 space-y-6">
-            <FocusModule data={data} todayYmd={todayYmd} onSelect={setSelected} />
-            <TodayCard
-              today={today}
-              active={todayActive}
-              doneItems={todayDone}
-              study={studyFuture}
-              leadId={leadId}
-              newlyDone={newlyDone}
-              busyCount={data.events.filter((e) => ymd(new Date(e.startTime)) === todayYmd).length}
-              onSelect={setSelected}
-            />
+        <>
+          <AiSummary text={aiSummary} loading={summaryLoading} />
+
+          {/* KPI bar — quiet at-a-glance status against the page. */}
+          <div className="mb-7 flex flex-wrap items-center gap-x-12 gap-y-4 border-b border-line-subtle pb-5">
+            <IntensityKpi intensity={intensity} />
+            <OverdueKpi count={data.atRisk.length} onOpen={() => setShowOverdue(true)} />
           </div>
-          <aside className="w-full shrink-0 space-y-6 lg:w-96">
-            <WeekCard data={data} />
-            <OverdueCard atRisk={data.atRisk} />
-            <div className="space-y-2 px-1">
-              <Link href="/timeline" className="block text-[15px] font-medium text-accent hover:underline">
-                Jump to timeline →
-              </Link>
-              <Link href="/calendar" className="block text-[15px] font-medium text-accent hover:underline">
-                Open calendar →
-              </Link>
+
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <div className="min-w-0 flex-1 space-y-6">
+              <FocusTodayCard data={data} todayYmd={todayYmd} list={doNext} />
+              {overdueItems.length > 0 && <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} />}
             </div>
-          </aside>
-        </div>
+            <aside className="w-full shrink-0 space-y-7 lg:w-96">
+              <ProgressDial done={dueTodayDone} total={dialTotal} />
+              {todayStudy.length > 0 && <TodayStudyCard blocks={todayStudy} />}
+              <UpcomingTestsCard data={data} todayYmd={todayYmd} />
+            </aside>
+          </div>
+        </>
       )}
 
-      {selected && <ItemDetail item={selected} onClose={() => setSelected(null)} />}
+      {showOverdue && <OverdueModal atRisk={data.atRisk} onClose={() => setShowOverdue(false)} />}
     </div>
   );
 }
 
-// ── Daily-progress ring: ONE smooth continuous ring whose filled arc deepens
-// through 4 discrete violet shades as the day's submissions roll in — the shades
-// read in COLOR only, not as separated segments. Big % in the middle. ──────────
+// ── AI summary banner — fail-open: renders nothing once we know there's no text. ─
+function AiSummary({ text, loading }: { text: string | null; loading: boolean }) {
+  if (!text && !loading) return null;
+  return (
+    <div className="mb-6 flex items-start gap-3 rounded-2xl border border-line-subtle bg-surface-soft/60 p-4">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z" />
+        </svg>
+      </span>
+      <p className="text-[16px] leading-relaxed text-ink">{text ?? <span className="text-muted">Reading your week…</span>}</p>
+    </div>
+  );
+}
+
+// ── KPIs (card-less, quiet) ────────────────────────────────────────────────────
+const KPI_LABEL = "text-[12px] font-semibold uppercase tracking-wider text-muted";
+
+function IntensityKpi({ intensity }: { intensity: Intensity }) {
+  const cfg = {
+    easy: { word: "Easy", soft: toneSoft.success, dot: "bg-success" },
+    moderate: { word: "Moderate", soft: toneSoft.warning, dot: "bg-warning" },
+    hard: { word: "Hard", soft: toneSoft.danger, dot: "bg-danger" },
+  }[intensity];
+  return (
+    <div>
+      <p className={KPI_LABEL}>This week</p>
+      <span className={`mt-1.5 inline-flex items-center gap-2 rounded-full px-3 py-1 ${cfg.soft}`}>
+        <span className={`h-2.5 w-2.5 rounded-full ${cfg.dot}`} aria-hidden />
+        <span className="text-[17px] font-bold leading-none">{cfg.word}</span>
+      </span>
+    </div>
+  );
+}
+
+function OverdueKpi({ count, onOpen }: { count: number; onOpen: () => void }) {
+  if (count === 0) {
+    return (
+      <div>
+        <p className={KPI_LABEL}>Overdue</p>
+        <p className="mt-1.5 text-[26px] font-bold leading-none text-ink">0</p>
+      </div>
+    );
+  }
+  return (
+    <button onClick={onOpen} className="group text-left" title="View overdue items">
+      <p className={KPI_LABEL}>Overdue</p>
+      <p className="mt-1.5 text-[26px] font-bold leading-none text-danger">{count}</p>
+      <span className="mt-1 inline-block text-[13px] font-medium text-danger group-hover:underline">View all ›</span>
+    </button>
+  );
+}
+
+// ── Daily-progress ring (unchanged math; bare on the page, no card). ────────────
 function ringPoint(cx: number, cy: number, r: number, f: number): [number, number] {
   const a = (-90 + f * 360) * (Math.PI / 180);
   return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
@@ -187,7 +247,6 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
           const start = i / 4;
           if (ratio <= start) return null;
           const end = Math.min((i + 1) / 4, ratio);
-          // darker bands draw last and overlap a hair backward so joins are seamless
           return <path key={i} d={ringArc(cx, cy, r, i === 0 ? 0 : start - 0.006, end)} fill="none" stroke={shades[i]} strokeWidth={sw} strokeLinecap="butt" />;
         })}
       </svg>
@@ -199,7 +258,18 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
   );
 }
 
-// A reason-chip on the violet Focus card (white-on-accent is the only variant).
+function ProgressDial({ done, total }: { done: number; total: number }) {
+  return (
+    <div>
+      <p className={`mb-2 ${KPI_LABEL}`}>Today&apos;s progress</p>
+      <div className="flex justify-center">
+        <ProgressRing done={done} total={total} />
+      </div>
+    </div>
+  );
+}
+
+// A reason-chip on the violet Focus block (white-on-accent is the only variant).
 function Chip({ text }: { text: string }) {
   return <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white ring-1 ring-inset ring-white/25">{text}</span>;
 }
@@ -219,246 +289,226 @@ function focusRationale(item: CalendarItem, isToday: boolean): string {
   return lead + (isToday ? " — knock it out today." : " — a strong place to start.");
 }
 
-function FocusModule({ data, todayYmd, onSelect }: { data: CalendarData; todayYmd: string; onSelect: (it: CalendarItem) => void }) {
-  // `recommendations` is already forward-looking (overdue excluded upstream), so
-  // the top entry is the thing to do next — never an overdue item. (#1, #10)
+// Empty status disc — mirrors Canvas (fills to a green check there once submitted).
+function StatusDisc() {
+  return <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-line" aria-hidden />;
+}
+
+function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
+  return (
+    <Link href={itemHref(item.canvasId, item.type)} className="flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60">
+      <StatusDisc />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[16px] font-medium text-ink">{item.name}</span>
+        <span className="block truncate text-[14px] text-muted">
+          {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
+        </span>
+      </span>
+      <span className="shrink-0 text-[14px] font-medium text-ink">{dueLabel}</span>
+    </Link>
+  );
+}
+
+// ── Focus + what's next: a flush, rounded-bottom violet Focus block (the #1 task)
+// sits edge-to-edge atop a 7-day due list, all in one card. ─────────────────────
+function FocusTodayCard({ data, todayYmd, list }: { data: CalendarData; todayYmd: string; list: CalendarItem[] }) {
   const top = data.recommendations[0];
   const topItem = top ? data.items.find((it) => it.canvasId === top.canvasId) : undefined;
-  const nextRecs = data.recommendations.slice(1, 3);
   const isToday = !!topItem?.dueAt && ymd(new Date(topItem.dueAt)) === todayYmd;
-
-  if (!top) {
-    const caughtUp = data.atRisk.length === 0;
-    return (
-      <div className="card p-8 text-center">
-        <div className="flex justify-center text-success">
-          <Glyph d={ICON.check} size={34} />
-        </div>
-        <p className="mt-3 text-xl font-semibold text-ink">{caughtUp ? "You're all caught up." : "Nothing new queued up."}</p>
-        <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
-          {caughtUp
-            ? "Nothing's due and nothing's overdue. Enjoy the breathing room — we'll nudge you when something lands."
-            : "Your upcoming work is clear; the overdue items in the rail are the thing to chip away at when you're ready."}
-        </p>
-      </div>
-    );
-  }
+  const caughtUp = data.atRisk.length === 0;
+  const href = topItem ? itemHref(topItem.canvasId, topItem.type) : null;
 
   return (
-    <div className="rounded-xl bg-accent p-7 text-white shadow-card">
-      <div className="flex gap-6">
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">Focus now</p>
-          <button onClick={() => topItem && onSelect(topItem)} className="mt-1.5 block max-w-full text-left" disabled={!topItem}>
-            <span className="block text-[2rem] font-bold leading-[1.1] tracking-tight">{top.name}</span>
-          </button>
+    <div className="card overflow-hidden p-0">
+      {top ? (
+        <div className="rounded-b-2xl bg-accent px-6 py-6 text-white sm:px-8 sm:py-7">
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-white/80">Focus now</p>
+          {href ? (
+            <Link href={href} className="mt-1.5 block max-w-full text-left">
+              <span className="block text-[1.9rem] font-bold leading-[1.12] tracking-tight sm:text-[2.15rem]">{top.name}</span>
+            </Link>
+          ) : (
+            <span className="mt-1.5 block max-w-full text-[1.9rem] font-bold leading-[1.12] tracking-tight sm:text-[2.15rem]">{top.name}</span>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             {(topItem ? focusChips(topItem, isToday) : []).map((c, i) => (
               <Chip key={i} text={c} />
             ))}
           </div>
-          <p className="mt-3 text-[15px] text-white/90">{topItem ? focusRationale(topItem, isToday) : top.reason}</p>
-          <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
-            {topItem ? (
-              <button onClick={() => onSelect(topItem)} className="rounded-[14px] bg-white px-5 py-2.5 text-sm font-semibold text-accent transition hover:bg-white/90">
+          <p className="mt-3 text-[16px] text-white/90">{topItem ? focusRationale(topItem, isToday) : top.reason}</p>
+          <div className="mt-5">
+            {href ? (
+              <Link href={href} className="inline-block rounded-[14px] bg-white px-5 py-2.5 text-[15px] font-semibold text-accent transition hover:bg-white/90">
                 Open
-              </button>
+              </Link>
             ) : top.htmlUrl ? (
-              <a href={top.htmlUrl} target="_blank" rel="noreferrer" className="rounded-[14px] bg-white px-5 py-2.5 text-sm font-semibold text-accent transition hover:bg-white/90">
+              <a href={top.htmlUrl} target="_blank" rel="noreferrer" className="rounded-[14px] bg-white px-5 py-2.5 text-[15px] font-semibold text-accent transition hover:bg-white/90">
                 Open ↗
               </a>
             ) : null}
-            <Link href="/timeline" className="rounded-[14px] border border-white/40 px-5 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10">
-              See my plan ›
-            </Link>
           </div>
         </div>
-        {nextRecs.length > 0 && (
-          <div className="hidden w-48 shrink-0 border-l border-white/20 pl-5 sm:block">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">Next up</p>
-            <div className="mt-3 space-y-3.5">
-              {nextRecs.map((r) => {
-                const it = data.items.find((x) => x.canvasId === r.canvasId);
-                return (
-                  <div key={r.canvasId} className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">{r.name}</p>
-                    <p className="truncate text-[13px] text-white/70">
-                      {it ? `${TYPE_LABEL[it.type]} · ` : ""}
-                      {shortCourse(r.courseName)}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
+      ) : (
+        <div className="rounded-b-2xl bg-surface-soft/70 px-6 py-8 text-center">
+          <div className="flex justify-center text-success">
+            <Glyph d={ICON.check} size={30} />
+          </div>
+          <p className="mt-2 text-xl font-semibold text-ink">{caughtUp ? "You're all caught up." : "Nothing new queued up."}</p>
+          <p className="mx-auto mt-1 max-w-md text-[15px] text-muted">
+            {caughtUp ? "Nothing's due and nothing's overdue — enjoy the breathing room." : "Your upcoming work is clear; chip away at the overdue items when you're ready."}
+          </p>
+        </div>
+      )}
+
+      <div className="p-3 sm:p-4">
+        {list.length === 0 ? (
+          <p className="py-4 text-center text-[15px] text-muted">Nothing else queued up.</p>
+        ) : (
+          <div className="space-y-0.5">
+            {list.map((it) => (
+              <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} />
+            ))}
           </div>
         )}
+        <Link
+          href="/plan"
+          className="mt-2 flex items-center justify-center rounded-xl border border-line py-2.5 text-[15px] font-medium text-accent transition hover:bg-surface-soft"
+        >
+          See your full plan →
+        </Link>
       </div>
     </div>
   );
 }
 
-// One status disc per row. It mirrors Canvas — empty until submitted, then a
-// filled green check. It is NOT a manual toggle (completion comes from Canvas).
-function StatusDisc({ kind }: { kind: "done" | "study" | "active" }) {
-  if (kind === "done")
-    return (
-      <span role="img" aria-label="Completed" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-success text-white">
-        <Glyph d={ICON.check} size={13} />
-      </span>
-    );
-  const ring = kind === "study" ? "border-success/70" : "border-line";
-  return <span className={`h-[22px] w-[22px] shrink-0 rounded-full border-2 ${ring}`} aria-hidden />;
-}
-
-function ItemRow({ item, lead, done, glow, onSelect }: { item: CalendarItem; lead: boolean; done: boolean; glow: boolean; onSelect: (it: CalendarItem) => void }) {
-  const timeColor = lead ? "text-accent" : "text-ink";
-  return (
-    <div className={`flex items-center gap-3.5 rounded-xl px-3 py-3.5 ${lead ? "border-l-[3px] border-accent bg-accent-soft/50" : ""} ${glow ? "animate-done-glow" : ""}`}>
-      <StatusDisc kind={done ? "done" : "active"} />
-      <button onClick={() => onSelect(item)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        <span className="min-w-0 flex-1">
-          <span className={`block truncate text-[15px] ${done ? "text-muted line-through" : "font-medium text-ink"} ${lead && !done ? "font-semibold" : ""}`}>{item.name}</span>
-          <span className="block truncate text-[13px] text-muted">
-            {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
-          </span>
-        </span>
-        {done ? (
-          <span className="shrink-0 text-[12px] font-medium text-success">Done</span>
-        ) : (
-          <span className={`shrink-0 text-[13px] font-medium ${timeColor}`}>{item.dueAt ? fmtTime(item.dueAt) : ""}</span>
-        )}
-      </button>
-      {!done && (item.type === "quiz" || item.type === "exam") && (
-        <Link href={`/study/${item.canvasId}`} className="shrink-0 text-[12px] font-medium text-accent hover:underline">
-          Study
-        </Link>
-      )}
-    </div>
-  );
-}
-
-function TodayCard({
-  today,
-  active,
-  doneItems,
-  study,
-  leadId,
-  newlyDone,
-  busyCount,
-  onSelect,
-}: {
-  today: Date;
-  active: CalendarItem[];
-  doneItems: CalendarItem[];
-  study: { canvasId: number; name: string; hours: number }[];
-  leadId: number | null;
-  newlyDone: Set<number>;
-  busyCount: number;
-  onSelect: (it: CalendarItem) => void;
-}) {
-  const totalRows = active.length + study.length + doneItems.length;
-  const empty = totalRows === 0;
-  // Active (priority order) → future study → completed (struck), capped.
-  const activeShown = active.slice(0, TODAY_MAX);
-  let budget = TODAY_MAX - activeShown.length;
-  const studyShown = study.slice(0, Math.max(0, budget));
-  budget -= studyShown.length;
-  const doneShown = doneItems.slice(0, Math.max(0, budget));
-  const hidden = totalRows - activeShown.length - studyShown.length - doneShown.length;
-  // Only an overflow of coursework means "Today" is truncated; busy events are
-  // extra context shown alongside, never the sole reason for the link. (#7)
-  const overflowText = hidden > 0 ? `${hidden} more${busyCount > 0 ? ` · ${busyCount} busy` : ""}` : "";
+// ── Upcoming assessments → a glance at tests/quizzes + a door to /study. ─────────
+function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
+  const studyBooked = new Set(data.plan.days.flatMap((d) => d.blocks.filter((b) => b.study).map((b) => b.canvasId)));
+  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
+  const tests = data.items
+    .filter((it) => (it.type === "exam" || it.type === "quiz") && it.status === "normal")
+    .sort((a, b) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9))
+    .slice(0, 5);
 
   return (
     <div className="card p-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold text-ink">Today</h2>
-        <span className="text-sm text-muted">{fmtShortDate(today)}</span>
-      </div>
-      {empty ? (
-        <p className="py-10 text-center text-sm text-muted">You&apos;re all caught up for today.</p>
-      ) : (
-        <div className="mt-2 space-y-0.5">
-          {activeShown.map((it) => (
-            <ItemRow key={it.canvasId} item={it} lead={it.canvasId === leadId} done={false} glow={false} onSelect={onSelect} />
-          ))}
-          {studyShown.map((b, i) => (
-            <div key={`s${b.canvasId}-${i}`} className="flex items-center gap-3.5 rounded-xl px-3 py-3.5">
-              <StatusDisc kind="study" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-medium text-ink">Study: {b.name}</span>
-                <span className="block truncate text-[13px] text-muted">Study block · self-scheduled</span>
-              </span>
-              <span className="shrink-0 text-[13px] font-medium text-success">{fmtHours(b.hours)}</span>
-            </div>
-          ))}
-          {doneShown.map((it) => (
-            <ItemRow key={it.canvasId} item={it} lead={false} done glow={newlyDone.has(it.canvasId)} onSelect={onSelect} />
-          ))}
-        </div>
-      )}
-      {overflowText && (
-        <Link href="/calendar" className="mt-3 block text-sm font-medium text-accent hover:underline">
-          {overflowText} → Open day in Calendar ›
+        <h2 className="text-xl font-semibold text-ink">Upcoming assessments</h2>
+        <Link href="/study" className="text-[15px] font-medium text-accent hover:underline">
+          Study →
         </Link>
+      </div>
+      {tests.length === 0 ? (
+        <p className="py-5 text-center text-[15px] text-muted">No tests or quizzes on the horizon.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-line-subtle">
+          {tests.map((t) => (
+            <li key={t.canvasId}>
+              <Link href={`/study/${t.canvasId}`} className="flex items-center justify-between gap-3 rounded-lg py-3 transition hover:bg-surface-soft/60">
+                <span className="min-w-0">
+                  <span className="block truncate text-[16px] font-medium text-ink">{t.name}</span>
+                  <span className="block truncate text-[14px] text-muted">
+                    {TYPE_LABEL[t.type]} · {shortCourse(t.courseName)}
+                    {t.pointsPossible != null && t.pointsPossible > 0 ? ` · ${t.pointsPossible} pts` : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-[14px] font-semibold text-accent">{t.dueAt ? countdownLabel(t.dueAt, todayYmd) : "No date"}</span>
+                  {studyBooked.has(t.canvasId) && <span className="block text-[12px] font-medium text-success">Study booked</span>}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
 }
 
-function WeekCard({ data }: { data: CalendarData }) {
-  const windowDates = new Set(data.plan.days.map((d) => d.date));
-  const dueThisWeek = data.items.filter((it) => it.dueAt && windowDates.has(ymd(new Date(it.dueAt))));
-  const examQuiz = dueThisWeek.filter((it) => it.type === "exam" || it.type === "quiz").length;
-  const planned = round1(data.plan.days.reduce((s, d) => s + d.allocated, 0));
-  const budget = data.hoursPerDay * data.plan.days.length;
-  const work = round1(planned + data.overloadHours);
-  const over = data.overloadHours >= 1;
-  // "free" must net out the overload too, or an over-subscribed week could claim
-  // free hours and contradict the "Nh over" pill. (#2)
-  const free = round1(Math.max(0, budget - work));
-
+// ── Overdue list — opened from the Overdue KPI (it has no card of its own now). ──
+// ── Catch up: overdue work, most-important-first, as an action — not just a count.
+function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: () => void }) {
+  const shown = items.slice(0, 3);
   return (
-    <div className="card p-6">
-      <h2 className="text-lg font-semibold text-ink">This week</h2>
-      <p className="mt-3 text-[32px] font-bold leading-none tracking-tight text-accent">
-        {fmtHours(work)} <span className="text-sm font-normal text-muted">of work</span>
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm">
-        {over ? (
-          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>{Math.round(data.overloadHours)}h over</span>
-        ) : (
-          <span className="text-muted">{fmtHours(free)} free</span>
+    <div className="card border-danger/30 p-5 sm:p-6">
+      <div className="flex items-baseline justify-between">
+        <h2 className="flex items-center gap-2 text-xl font-semibold text-danger">
+          <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden /> Catch up
+        </h2>
+        {items.length > shown.length && (
+          <button onClick={onOpenAll} className="text-[15px] font-medium text-danger hover:underline">
+            All {items.length} →
+          </button>
         )}
       </div>
-      <p className="mt-3 border-t border-line-subtle pt-3 text-sm text-muted">
-        {dueThisWeek.length} due · {examQuiz} exams / quizzes
-      </p>
+      <p className="mt-1 text-[14px] text-muted">Overdue, most important first — start at the top.</p>
+      <div className="mt-2 space-y-0.5">
+        {shown.map((it) => (
+          <Link key={it.canvasId} href={itemHref(it.canvasId, it.type)} className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60">
+            <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-danger/50" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[16px] font-medium text-ink">{it.name}</span>
+              <span className="block truncate text-[14px] text-muted">
+                {TYPE_LABEL[it.type]} · {shortCourse(it.courseName)}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-full bg-danger-soft px-2.5 py-0.5 text-[12px] font-medium text-danger">Past due</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
 
-function OverdueCard({ atRisk }: { atRisk: CalendarData["atRisk"] }) {
-  if (atRisk.length === 0) return null;
+// ── Today's study — the scheduled study sessions, restored to home. ──────────────
+function TodayStudyCard({ blocks }: { blocks: { canvasId: number; name: string; hours: number }[] }) {
   return (
-    <div className="card border-danger/30 p-6">
-      <h2 className="flex items-center gap-2 text-base font-semibold text-danger">
-        <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden /> Overdue ({atRisk.length})
-      </h2>
-      <ul className="mt-3.5 space-y-3">
-        {atRisk.map((a) => (
-          <li key={a.canvasId} className="flex items-center justify-between gap-2">
-            {a.htmlUrl ? (
-              <a href={a.htmlUrl} target="_blank" rel="noreferrer" className="min-w-0 truncate text-[15px] text-ink hover:text-accent">
-                {a.name}
-              </a>
-            ) : (
-              <span className="min-w-0 truncate text-[15px] text-ink">{a.name}</span>
-            )}
-            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft.danger}`}>Past due</span>
+    <div className="card p-6">
+      <h2 className="text-xl font-semibold text-ink">Today&apos;s study</h2>
+      <ul className="mt-2 divide-y divide-line-subtle">
+        {blocks.map((b, i) => (
+          <li key={`${b.canvasId}-${i}`}>
+            <Link href={`/study/${b.canvasId}`} className="flex items-center justify-between gap-3 rounded-lg py-3 transition hover:bg-surface-soft/60">
+              <span className="min-w-0">
+                <span className="block truncate text-[16px] font-medium text-ink">{b.name}</span>
+                <span className="block text-[14px] text-muted">Scheduled study</span>
+              </span>
+              <span className="shrink-0 text-[14px] font-semibold text-success">{fmtHours(b.hours)}</span>
+            </Link>
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function OverdueModal({ atRisk, onClose }: { atRisk: CalendarData["atRisk"]; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-danger">
+            <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden /> Overdue ({atRisk.length})
+          </h2>
+          <button onClick={onClose} aria-label="Close" className="text-[22px] leading-none text-muted transition hover:text-ink">
+            ✕
+          </button>
+        </div>
+        <ul className="mt-4 max-h-[60vh] space-y-3 overflow-auto">
+          {atRisk.map((a) => (
+            <li key={a.canvasId} className="flex items-center justify-between gap-2">
+              {a.htmlUrl ? (
+                <a href={a.htmlUrl} target="_blank" rel="noreferrer" className="min-w-0 truncate text-[16px] text-ink hover:text-accent">
+                  {a.name}
+                </a>
+              ) : (
+                <span className="min-w-0 truncate text-[16px] text-ink">{a.name}</span>
+              )}
+              <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft.danger}`}>Past due</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -469,8 +519,8 @@ function ConnectCard() {
       <div className="flex justify-center text-accent">
         <Glyph d={ICON.calendar} size={36} />
       </div>
-      <p className="mt-4 text-base font-medium text-ink">Welcome to StudyPlan.</p>
-      <p className="mt-1.5 text-sm text-muted">Connect your Canvas account and we&apos;ll turn your coursework into a calm, day-by-day plan.</p>
+      <p className="mt-4 text-[17px] font-medium text-ink">Welcome to StudyPlan.</p>
+      <p className="mt-1.5 text-[15px] text-muted">Connect your Canvas account and we&apos;ll turn your coursework into a calm, day-by-day plan.</p>
       <Link href="/connections" className="btn-primary mt-5">
         Connect Canvas
       </Link>

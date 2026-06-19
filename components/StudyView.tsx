@@ -39,8 +39,8 @@ export function StudyView({
       <div className="mx-auto max-w-xl">
         <div className="card p-10 text-center">
           <p className="text-base font-medium text-ink">No upcoming tests or quizzes.</p>
-          <p className="mt-1.5 text-sm text-muted">When one lands on your calendar, it&apos;ll show up here with a study plan ready to go.</p>
-          <Link href="/calendar" className="btn-primary mt-5">Open calendar</Link>
+          <p className="mt-1.5 text-sm text-muted">When one lands on your plan, it&apos;ll show up here with a study plan ready to go.</p>
+          <Link href="/plan" className="btn-primary mt-5">Open plan</Link>
         </div>
       </div>
     );

@@ -12,6 +12,13 @@ export function isStudyType(t: ItemType): boolean {
   return t === "exam" || t === "quiz";
 }
 
+/** Where an item row should navigate: the study flow for exams/quizzes, the
+ *  assignment-detail leaf for everything else. One source of truth so every
+ *  list (dashboard, course page, plan) routes a given item the same way. */
+export function itemHref(canvasId: number, type: ItemType): string {
+  return isStudyType(type) ? `/study/${canvasId}` : `/assignment/${canvasId}`;
+}
+
 export function itemType(submissionTypes: string | null | undefined, name: string): ItemType {
   const st = (submissionTypes ?? "").toLowerCase();
   const n = (name ?? "").toLowerCase();

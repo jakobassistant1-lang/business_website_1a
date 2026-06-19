@@ -152,6 +152,36 @@ export function fetchAnnouncements(host: string, token: string, courseId: number
   );
 }
 
+// Single-assignment rubric (best-effort, for the assignment-detail page). Returns
+// null when the assignment has no rubric or the call fails — always fails open.
+export interface CanvasRubricCriterion {
+  description: string;
+  longDescription: string | null;
+  points: number;
+}
+export async function fetchAssignmentRubric(host: string, token: string, courseId: number, assignmentId: number): Promise<CanvasRubricCriterion[] | null> {
+  try {
+    const res = await canvasFetch(host, token, `/courses/${courseId}/assignments/${assignmentId}?include[]=rubric`);
+    if (!res.ok) return null;
+    const json = (await res.json().catch(() => null)) as { rubric?: unknown } | null;
+    const rubric = json?.rubric;
+    if (!Array.isArray(rubric) || rubric.length === 0) return null;
+    const out = rubric
+      .map((r): CanvasRubricCriterion => {
+        const c = (r ?? {}) as Record<string, unknown>;
+        return {
+          description: String(c.description ?? ""),
+          longDescription: typeof c.long_description === "string" ? c.long_description : null,
+          points: Number(c.points ?? 0),
+        };
+      })
+      .filter((c) => c.description);
+    return out.length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Study-page material sources (modules / pages / syllabus) -----------------
 
 export interface CanvasModuleItem {

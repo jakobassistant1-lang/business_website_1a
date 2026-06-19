@@ -1,0 +1,177 @@
+"use client";
+
+// The assignment-detail leaf (/assignment/[id]). The one place a student lands to
+// actually DO an assignment: what it is, where it stands, an AI "how to approach"
+// with concrete sub-steps, the Canvas brief, a best-effort rubric, and a jump out
+// to Canvas. AI + rubric both fail open — the page is fully useful without them.
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
+import { toneSoft, type Tone } from "@/lib/tone";
+import { TYPE_LABEL, type ItemType } from "@/lib/itemType";
+import type { CanvasRubricCriterion } from "@/lib/canvas";
+
+const cleanCourse = (name: string) => name.replace(/^\d{4}[A-Za-z]{1,4}-\d+:\s*/, "").trim() || name;
+
+/** Relative, do-next voice for the due date — matches the rest of the app. */
+function dueLabel(iso: string | null, todayYmd: string): string {
+  if (!iso) return "No due date";
+  const d = parseYmd(ymd(new Date(iso)));
+  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
+  const date = `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+  if (days < 0) return `Past due · ${date}`;
+  if (days === 0) return `Due today · ${date}`;
+  if (days === 1) return `Due tomorrow · ${date}`;
+  return `Due ${date}`;
+}
+
+function submissionBadge(
+  state: string | null,
+  score: number | null,
+  points: number | null,
+  iso: string | null,
+  todayYmd: string
+): { label: string; tone: Tone } {
+  if (state === "graded") {
+    const pts = score != null ? `${score}${points != null && points > 0 ? `/${points}` : ""} pts` : "";
+    return { label: pts ? `Graded · ${pts}` : "Graded", tone: "success" };
+  }
+  if (state === "submitted" || state === "pending_review") return { label: "Submitted", tone: "success" };
+  // Not submitted — is it already late?
+  const overdue = iso ? parseYmd(ymd(new Date(iso))).getTime() < parseYmd(todayYmd).getTime() : false;
+  return overdue ? { label: "Not submitted — overdue", tone: "danger" } : { label: "Not submitted yet", tone: "warning" };
+}
+
+export function AssignmentPage(props: {
+  canvasId: number;
+  name: string;
+  courseName: string;
+  type: ItemType;
+  dueAt: string | null;
+  points: number | null;
+  htmlUrl: string | null;
+  description: string | null;
+  submissionState: string | null;
+  submissionScore: number | null;
+  summary: string | null;
+  rubric: CanvasRubricCriterion[] | null;
+  todayYmd: string;
+}) {
+  const { canvasId, name, courseName, type, dueAt, points, htmlUrl, description, submissionState, submissionScore, summary, rubric, todayYmd } = props;
+  const router = useRouter();
+
+  // AI approach + steps, lazy-fetched. Seed the approach with the stored one-liner
+  // (if any) so something useful shows instantly, then upgrade in place.
+  const [approach, setApproach] = useState<string | null>(summary);
+  const [steps, setSteps] = useState<string[]>([]);
+  const [loadingPlan, setLoadingPlan] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingPlan(true);
+    fetch(`/api/assignment/approach?id=${canvasId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled || !body) return;
+        if (typeof body.approach === "string" && body.approach.trim()) setApproach(body.approach);
+        if (Array.isArray(body.steps)) setSteps(body.steps.filter((s: unknown): s is string => typeof s === "string" && s.trim().length > 0));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingPlan(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canvasId]);
+
+  const badge = submissionBadge(submissionState, submissionScore, points, dueAt, todayYmd);
+  const hasPlan = Boolean(approach) || steps.length > 0;
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <button onClick={() => router.back()} className="text-[14px] font-medium text-muted transition-colors hover:text-ink">
+        ← Back
+      </button>
+
+      <p className="mt-4 text-[13px] font-semibold uppercase tracking-wider text-muted">
+        {TYPE_LABEL[type]} · {cleanCourse(courseName)}
+      </p>
+      <h1 className="mt-1 text-[28px] font-bold leading-tight tracking-tight text-ink">{name}</h1>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2.5 text-[13.5px] font-medium">
+        <span className="rounded-full bg-surface-soft px-3 py-1 text-ink">{dueLabel(dueAt, todayYmd)}</span>
+        {points != null && points > 0 && <span className="rounded-full bg-surface-soft px-3 py-1 text-ink">{points} pts</span>}
+        <span className={`rounded-full px-3 py-1 ${toneSoft[badge.tone]}`}>{badge.label}</span>
+      </div>
+
+      {/* How to approach — the value add: turn a vague task into a first move. */}
+      {(hasPlan || loadingPlan) && (
+        <section className="card mt-7 p-6">
+          <h2 className="flex items-center gap-2 text-[19px] font-semibold text-ink">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-accent" aria-hidden="true">
+              <path d="M12 2l2.3 6.1L20.5 10l-6.2 1.9L12 18l-2.3-6.1L3.5 10l6.2-1.9z" />
+            </svg>
+            How to approach this
+          </h2>
+          {approach ? (
+            <p className="mt-2 text-[16px] leading-relaxed text-ink">{approach}</p>
+          ) : loadingPlan ? (
+            <p className="mt-2 text-[15px] text-muted">Working out a plan…</p>
+          ) : null}
+          {steps.length > 0 && (
+            <ol className="mt-4 space-y-2.5">
+              {steps.map((s, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[13px] font-semibold text-accent">{i + 1}</span>
+                  <span className="pt-0.5 text-[15px] leading-relaxed text-ink">{s}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      )}
+
+      {/* Canvas brief (the assignment body) — rendered HTML, basic prose styling. */}
+      {description && description.trim() && (
+        <section className="card mt-6 p-6">
+          <h2 className="text-[19px] font-semibold text-ink">Assignment brief</h2>
+          <div
+            className="mt-2 text-[15px] leading-relaxed text-ink [&_a]:text-accent [&_a]:underline [&_h1]:mt-3 [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:text-[16px] [&_h2]:font-semibold [&_li]:mb-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+            dangerouslySetInnerHTML={{ __html: description }}
+          />
+        </section>
+      )}
+
+      {/* Best-effort rubric — what it's graded on. */}
+      {rubric && rubric.length > 0 && (
+        <section className="card mt-6 p-6">
+          <h2 className="text-[19px] font-semibold text-ink">What it&rsquo;s graded on</h2>
+          <ul className="mt-2 divide-y divide-line-subtle">
+            {rubric.map((c, i) => (
+              <li key={i} className="flex items-start justify-between gap-4 py-3">
+                <span className="min-w-0">
+                  <span className="block text-[15.5px] font-medium text-ink">{c.description}</span>
+                  {c.longDescription && <span className="mt-0.5 block text-[14px] leading-relaxed text-muted">{c.longDescription}</span>}
+                </span>
+                {c.points > 0 && <span className="shrink-0 text-[14px] font-semibold text-muted">{c.points} pts</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {htmlUrl && (
+        <div className="mt-7">
+          <a href={htmlUrl} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-1.5">
+            Open in Canvas
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+              <path d="M7 17L17 7M9 7h8v8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}

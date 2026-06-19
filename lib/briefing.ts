@@ -5,10 +5,14 @@
 // the Plan page always renders the full plan + recommendations without it.
 
 import type { ScoredAssignment } from "./priority";
+import { deterministicIntensity, type Intensity, type WeekLoad } from "./intensity";
 
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const TIMEOUT_MS = 6000;
+const MAX_ATTEMPTS = 3; // Flash-Lite free-tier 429 (rate limit) / 503 (demand) are usually transient.
+const RETRYABLE = new Set([429, 503]);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Editable from /admin/ai (stored in the Setting table). This is the fallback
 // when no custom prompt has been saved.
@@ -70,36 +74,48 @@ function geminiKey(): string | undefined {
 
 /** Shared Gemini call. `fullPrompt` already includes the instruction + data.
  *  Fails open: every path returns a typed BriefingResult, never throws. */
-async function runGemini(fullPrompt: string, maxOutputTokens: number): Promise<BriefingResult> {
+async function runGemini(fullPrompt: string, maxOutputTokens: number, json = false): Promise<BriefingResult> {
   const key = geminiKey();
   if (!key) return { ok: false, reason: "no_key" }; // zero network, zero cost
 
   const body = {
     contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-    generationConfig: { temperature: 0.4, maxOutputTokens },
+    generationConfig: { temperature: 0.4, maxOutputTokens, ...(json ? { responseMimeType: "application/json" } : {}) },
   };
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) return { ok: false, reason: "http_error" };
-    const json = await res.json().catch(() => null);
-    const text = parseGeminiText(json);
-    if (text === null) return { ok: false, reason: "bad_response" };
-    if (!text.trim()) return { ok: false, reason: "empty" };
-    return { ok: true, text: text.trim(), source: "gemini" };
-  } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") return { ok: false, reason: "timeout" };
-    return { ok: false, reason: "http_error" };
-  } finally {
-    clearTimeout(timer);
+  // Retry transient rate-limit (429) / high-demand (503) / timeouts with a short
+  // exponential backoff. A hard quota or a non-retryable error still falls open.
+  let reason: "timeout" | "http_error" | "bad_response" | "empty" = "http_error";
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(600 * 2 ** (attempt - 1)); // 600ms, then 1200ms
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        reason = "http_error";
+        if (RETRYABLE.has(res.status) && attempt < MAX_ATTEMPTS - 1) continue;
+        return { ok: false, reason };
+      }
+      const data = await res.json().catch(() => null);
+      const text = parseGeminiText(data);
+      if (text === null) return { ok: false, reason: "bad_response" };
+      if (!text.trim()) return { ok: false, reason: "empty" };
+      return { ok: true, text: text.trim(), source: "gemini" };
+    } catch (e) {
+      reason = e instanceof Error && e.name === "AbortError" ? "timeout" : "http_error";
+      if (attempt < MAX_ATTEMPTS - 1) continue; // retry timeouts / network blips
+      return { ok: false, reason };
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return { ok: false, reason };
 }
 
 export async function generateBriefing(
@@ -197,4 +213,90 @@ export function buildDescriptionPrompt(i: AssignmentDescInput): string {
 
 export async function generateAssignmentDescription(input: AssignmentDescInput): Promise<BriefingResult> {
   return runGemini(buildDescriptionPrompt(input), 120);
+}
+
+// --- Assignment "how to approach" + sub-steps (the assignment-detail page) -------
+// ONE Gemini call → a short approach + ordered sub-steps. Fails open to empty.
+
+export const DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION =
+  "You are StudyPlan's study coach. For the assignment below, reply with ONLY a JSON object " +
+  '{"approach": string, "steps": string[]}. "approach" is 1-2 plain-English sentences on how to ' +
+  'tackle it well. "steps" is 3-5 short, concrete sub-steps in the order to do them (each a short ' +
+  "imperative phrase). Be specific to the assignment's title and type, but do NOT invent precise " +
+  "requirements, page numbers, or rubric criteria you cannot know. No markdown.";
+
+export type AssignmentPlan = { approach: string | null; steps: string[]; source: "gemini" | "none" };
+
+export async function generateAssignmentPlan(input: AssignmentDescInput, instruction: string = DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION): Promise<AssignmentPlan> {
+  const res = await runGemini(`${instruction}\n\n${buildDescriptionPrompt(input)}`, 320, true);
+  if (!res.ok) return { approach: null, steps: [], source: "none" };
+  try {
+    const parsed = JSON.parse(res.text) as { approach?: unknown; steps?: unknown };
+    const approach = typeof parsed.approach === "string" && parsed.approach.trim() ? parsed.approach.trim() : null;
+    const steps = Array.isArray(parsed.steps)
+      ? parsed.steps.filter((s): s is string => typeof s === "string" && s.trim().length > 0).map((s) => s.trim()).slice(0, 6)
+      : [];
+    return { approach, steps, source: "gemini" };
+  } catch {
+    return { approach: null, steps: [], source: "none" };
+  }
+}
+
+// --- Dashboard summary + week intensity (Home) -------------------------------
+// ONE Gemini call returns both a short "what to focus on this week" briefing AND
+// a traffic-light rating of how demanding the week is. The rating ALWAYS resolves
+// — deterministicIntensity (lib/intensity) is the fail-open fallback — so the
+// dashboard KPI is never blank when Gemini is unavailable.
+
+export const DASHBOARD_SUMMARY_INSTRUCTION =
+  "You are StudyPlan's study coach. From the student's week summary and ranked priorities, reply with ONLY a JSON " +
+  'object of the form {"summary": string, "intensity": "easy" | "moderate" | "hard"}. ' +
+  '"summary" is a warm, plain-English 2-3 sentence briefing of what to focus on this week and why — no markdown, no ' +
+  'lists, no headings. "intensity" is your judgment of how demanding THIS WEEK is overall, weighing the number and ' +
+  "importance of items due, the exams/quizzes, and whether the planned work fits the time available. Do not invent " +
+  "assignments, points, or deadlines beyond what is given.";
+
+export interface DashboardSummaryInput extends WeekLoad {
+  firstName: string;
+  windowDays: number;
+  atRiskCount: number;
+  top: ScoredAssignment[];
+}
+
+export type DashboardSummary = { summary: string | null; intensity: Intensity; source: "gemini" | "fallback" };
+
+const INTENSITIES: readonly Intensity[] = ["easy", "moderate", "hard"];
+
+export function buildDashboardPrompt(i: DashboardSummaryInput): string {
+  const lines = [
+    `Student: ${i.firstName || "there"}. Planning window: ${i.windowDays} days.`,
+    `Due this week: ${i.dueThisWeek} (exams/quizzes among them: ${i.examQuiz}). Overdue: ${i.atRiskCount}.`,
+    `Planned study load: ${Math.round(i.workHours)}h against ~${Math.round(i.budgetHours)}h available` +
+      (i.overloadHours >= 1 ? ` (over by ${Math.round(i.overloadHours)}h).` : "."),
+  ];
+  if (i.top.length) {
+    lines.push("Top priorities (already ranked by our system):");
+    i.top.forEach((t, n) => lines.push(`${n + 1}. ${t.name} (${t.courseName})${t.reason ? ` — ${t.reason}` : ""}`));
+  } else {
+    lines.push("No outstanding priorities.");
+  }
+  return lines.join("\n");
+}
+
+/** Fails open: any failure → null summary + the deterministic rating. */
+export async function generateDashboardSummary(
+  input: DashboardSummaryInput,
+  instruction: string = DASHBOARD_SUMMARY_INSTRUCTION,
+): Promise<DashboardSummary> {
+  const fallback = deterministicIntensity(input);
+  const res = await runGemini(`${instruction}\n\n${buildDashboardPrompt(input)}`, 260, true);
+  if (!res.ok) return { summary: null, intensity: fallback, source: "fallback" };
+  try {
+    const parsed = JSON.parse(res.text) as { summary?: unknown; intensity?: unknown };
+    const summary = typeof parsed.summary === "string" && parsed.summary.trim() ? parsed.summary.trim() : null;
+    const intensity = INTENSITIES.includes(parsed.intensity as Intensity) ? (parsed.intensity as Intensity) : fallback;
+    return { summary, intensity, source: "gemini" };
+  } catch {
+    return { summary: null, intensity: fallback, source: "fallback" };
+  }
 }

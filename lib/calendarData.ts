@@ -22,6 +22,7 @@ export interface CalendarItem {
   canvasId: number;
   name: string;
   courseName: string;
+  courseCanvasId: number;
   dueAt: string | null; // ISO; null = undated
   type: ItemType;
   status: ItemStatus;
@@ -113,6 +114,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     canvasId: a.canvasId,
     name: a.name,
     courseName: a.course.name,
+    courseCanvasId: a.courseCanvasId,
     dueAt: a.dueAt ? a.dueAt.toISOString() : null,
     type: itemType(a.submissionType, a.name),
     status: done ? "done" : overdue.has(a.canvasId) ? "overdue" : "normal",

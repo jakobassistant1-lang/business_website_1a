@@ -1,13 +1,7 @@
-import { getCurrentUser } from "@/lib/auth";
-import { loadCalendarData } from "@/lib/calendarData";
-import { ymd } from "@/lib/calendarDates";
-import { CalendarView } from "@/components/CalendarView";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-// Home view after login: the student's coursework on a calendar (day/week/month).
-export default async function CalendarPage() {
-  const user = await getCurrentUser(); // layout guarantees auth
-  const data = await loadCalendarData(user!.id);
-  return <CalendarView data={data} todayYmd={ymd(new Date())} />;
+// Calendar folded into the unified Plan surface; keep the old path as a redirect
+// so existing bookmarks/links still land somewhere sensible.
+export default function CalendarPage() {
+  redirect("/plan");
 }

@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 
+// Daily-use surfaces live in the main nav; setup screens (Connections / Settings /
+// Account) live in the account menu at the bottom, so they don't compete with home.
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z" },
-  { href: "/calendar", label: "Calendar", icon: "M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" },
-  { href: "/timeline", label: "Timeline", icon: "M3 4v16M4 7h9M4 12h13M4 17h6" },
+  { href: "/plan", label: "Plan", icon: "M8 6h12M8 12h12M8 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01" },
   { href: "/study", label: "Study", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15ZM4 19.5A2.5 2.5 0 0 0 6.5 22H20M8 7h8" },
+  { href: "/courses", label: "Courses", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z" },
+];
+
+const SETUP = [
   { href: "/connections", label: "Connections", icon: "M8 7a4 4 0 1 1 8 0M5 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2" },
   { href: "/settings", label: "Settings", icon: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7-3a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1l-.4-2.5H9.6L9.2 5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4L5 10a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4.8l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.06-.32.1-.65.1-1Z" },
   { href: "/account", label: "Account", icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" },
@@ -22,6 +27,7 @@ const HIERARCHY_ICON = "M10 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4zM12 7v4M5 17v-2h1
 const BURNDOWN_ICON = "M4 4v16h16M7 8l10 9";
 const CHEV_L = "M15 6l-6 6 6 6";
 const CHEV_R = "M9 6l6 6-6 6";
+const CHEV_D = "M6 9l6 6 6-6";
 const LOGOUT_ICON = "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9";
 
 function Icon({ d, size = 18 }: { d: string; size?: number }) {
@@ -32,10 +38,17 @@ function Icon({ d, size = 18 }: { d: string; size?: number }) {
   );
 }
 
+function initials(name: string) {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  return ((p[0]?.[0] ?? "") + (p[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
 export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: string; userEmail: string; isAdmin?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -44,6 +57,17 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
       /* ignore */
     }
   }, []);
+
+  // Close the account menu on an outside click or a route change.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
+  useEffect(() => setMenuOpen(false), [pathname]);
 
   function toggleCollapse() {
     setCollapsed((c) => {
@@ -68,6 +92,8 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
       collapsed ? "justify-center px-2" : "px-3"
     } ${active ? "bg-accent text-accent-on" : "text-gray-300 hover:bg-gray-800 hover:text-white"}`;
   }
+
+  const menuItemClass = "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white";
 
   return (
     <aside className={`flex shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 ${collapsed ? "w-16 px-2" : "w-64 px-4"}`}>
@@ -94,15 +120,12 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
       )}
 
       <nav className="mt-4 flex flex-col gap-1">
-        {NAV.map((item) => {
-          const active = pathname.startsWith(item.href);
-          return (
-            <Link key={item.href} href={item.href} className={linkClass(active)} title={item.label}>
-              <Icon d={item.icon} />
-              {!collapsed && item.label}
-            </Link>
-          );
-        })}
+        {NAV.map((item) => (
+          <Link key={item.href} href={item.href} className={linkClass(pathname.startsWith(item.href))} title={item.label}>
+            <Icon d={item.icon} />
+            {!collapsed && item.label}
+          </Link>
+        ))}
 
         {isAdmin && (
           <>
@@ -135,27 +158,44 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
         )}
       </nav>
 
-      <div className="mt-auto border-t border-gray-800 pt-4">
-        {!collapsed && (
-          <div className="px-2">
-            <p className="truncate text-sm font-medium text-white">{userName}</p>
-            <p className="truncate text-xs text-gray-400">{userEmail}</p>
+      {/* Account menu — setup screens + theme + logout, tucked under the avatar. */}
+      <div className="relative mt-auto border-t border-gray-800 pt-3" ref={menuRef}>
+        {menuOpen && (
+          <div className={`absolute bottom-full mb-2 rounded-lg border border-gray-700 bg-gray-800 p-1.5 shadow-xl ${collapsed ? "left-0 w-56" : "left-0 right-0"}`}>
+            {SETUP.map((item) => (
+              <Link key={item.href} href={item.href} className={menuItemClass}>
+                <Icon d={item.icon} />
+                {item.label}
+              </Link>
+            ))}
+            <div className="my-1 border-t border-gray-700" />
+            <ThemeToggle className={menuItemClass} />
+            <button onClick={logout} className={menuItemClass}>
+              <Icon d={LOGOUT_ICON} />
+              Log out
+            </button>
           </div>
         )}
-        <div className={`mt-3 flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          title="Account menu"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className={`flex w-full items-center gap-3 rounded-md py-2 text-left transition-colors hover:bg-gray-800 ${collapsed ? "justify-center px-1" : "px-2"}`}
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-[12px] font-semibold text-accent-on">{initials(userName)}</span>
           {!collapsed && (
-            <ThemeToggle className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white" />
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-white">{userName}</span>
+                <span className="block truncate text-xs text-gray-400">{userEmail}</span>
+              </span>
+              <span className="shrink-0 text-gray-400">
+                <Icon d={CHEV_D} size={16} />
+              </span>
+            </>
           )}
-          <button
-            onClick={logout}
-            title="Log out"
-            className={`rounded-md py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white ${
-              collapsed ? "px-2" : "w-full px-3 text-left"
-            }`}
-          >
-            {collapsed ? <Icon d={LOGOUT_ICON} /> : "Log out"}
-          </button>
-        </div>
+        </button>
       </div>
     </aside>
   );

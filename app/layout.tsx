@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { WaveBackdrop } from "@/components/WaveBackdrop";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -19,7 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        <WaveBackdrop />
+        {children}
+      </body>
     </html>
   );
 }

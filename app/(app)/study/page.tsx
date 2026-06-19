@@ -17,21 +17,21 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
   const user = await getCurrentUser(); // (app)/layout guarantees auth
   const data = await loadCalendarData(user!.id);
 
-  const now = Date.now();
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i]));
+  // "Upcoming" defined the SAME way the dashboard does (status === "normal"): keeps
+  // tests with no due date and tests due today, excludes completed + past-due. The
+  // old `dueAt >= now` check silently dropped every undated test (Exams, Practice
+  // Assessments) and any test due earlier today. Ordered do-next, never by the clock.
   const upcoming = data.items
-    .filter(
-      (it) =>
-        (it.type === "quiz" || it.type === "exam") &&
-        it.status !== "done" &&
-        it.dueAt !== null &&
-        new Date(it.dueAt).getTime() >= now,
-    )
+    .filter((it) => (it.type === "quiz" || it.type === "exam") && it.status === "normal")
     .sort((a, b) => {
       const ra = rank.get(a.canvasId) ?? 1e9;
       const rb = rank.get(b.canvasId) ?? 1e9;
       if (ra !== rb) return ra - rb;
-      return new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime();
+      // Tiebreak only matters for unranked items: earliest due first, undated last.
+      const ta = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+      const tb = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+      return ta - tb;
     });
 
   const sessions: Record<number, { date: string; hours: number }[]> = {};

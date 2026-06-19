@@ -14,6 +14,8 @@ next-env.d.ts
 
 # Env holds the local SQLite path; safe to keep, but ignore by default
 .env
+# One-off Canvas clone tokens — NEVER commit
+.canvas-clone.env
 
 # Local agent/editor tooling (e.g. preview launch config)
 /.claude

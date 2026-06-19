@@ -1,0 +1,280 @@
+[
+  {
+    "courseId": "7515761",
+    "course": "2025F-10:FOUNDATIONS OF MGMT & ENTREPRENEURS",
+    "quizId": 13355937,
+    "title": "Entrepreneurship Midterm Exam- Requires Respondus LockDown Browser",
+    "questions": [
+      { "type": "mc", "prompt": "Which best defines entrepreneurship?", "choices": ["Managing an established firm's daily operations", "The process of creating and capturing value by pursuing opportunities, often under uncertainty", "Investing only in publicly traded stocks", "Cutting costs inside a large corporation"], "correct": 1 },
+      { "type": "mc", "prompt": "A startup's 'value proposition' primarily describes:", "choices": ["The benefit it promises a specific customer segment", "Its total tax liability", "The founder's personal net worth", "The color scheme of its logo"], "correct": 0 },
+      { "type": "mc", "prompt": "'Bootstrapping' a venture means:", "choices": ["Issuing an IPO immediately", "Outsourcing all production overseas", "Funding growth from personal resources and revenue rather than outside investors", "Hiring a large salesforce first"], "correct": 2 },
+      { "type": "mc", "prompt": "Which is a common source of early-stage startup funding?", "choices": ["Federal Reserve open-market operations", "Municipal bond coupons", "Corporate dividend reinvestment", "Angel investors"], "correct": 3 },
+      { "type": "tf", "prompt": "Opportunity recognition is a core early activity in the entrepreneurial process.", "correct": true },
+      { "type": "tf", "prompt": "A business model and a business plan are exactly the same document.", "correct": false },
+      { "type": "sa", "prompt": "What three-letter term describes the simplest version of a product built to test a business idea with real customers?", "correct": "MVP" },
+      { "type": "sa", "prompt": "Name the financial statement that reports a company's revenues and expenses over a period of time.", "correct": "income statement" }
+    ]
+  },
+  {
+    "courseId": "7515761",
+    "course": "2025F-10:FOUNDATIONS OF MGMT & ENTREPRENEURS",
+    "quizId": 13355936,
+    "title": "First Week Quiz (Individual)",
+    "questions": [
+      { "type": "mc", "prompt": "Where should you first look for assignment due dates and course policies?", "choices": ["The course syllabus and schedule", "A competitor's website", "The campus dining menu", "A weather app"], "correct": 0 },
+      { "type": "mc", "prompt": "FME is best described as a course where students:", "choices": ["Only read textbooks", "Found and run a real business as a team", "Study abroad for a semester", "Take a single final exam and nothing else"], "correct": 1 },
+      { "type": "mc", "prompt": "If a quiz allows only one attempt, the best practice is to:", "choices": ["Guess randomly", "Skip the reading", "Review the material thoroughly before starting", "Wait until after the deadline"], "correct": 2 },
+      { "type": "tf", "prompt": "Reading the syllabus carefully helps you understand grading and course expectations.", "correct": true },
+      { "type": "tf", "prompt": "Course participation policies are typically found on a food-delivery app.", "correct": false },
+      { "type": "sa", "prompt": "What document outlines a course's grading, schedule, and policies?", "correct": "syllabus" }
+    ]
+  },
+  {
+    "courseId": "7515654",
+    "course": "2025F-05:PRINCIPLES OF MICROECONOMICS",
+    "quizId": 13651586,
+    "title": "Sample Test 1",
+    "questions": [
+      { "type": "mc", "prompt": "In economics, 'opportunity cost' is:", "choices": ["The dollar price printed on a tag", "The value of the next-best alternative forgone", "The cost of raw materials only", "Always zero for free goods"], "correct": 1 },
+      { "type": "mc", "prompt": "A production possibilities frontier (PPF) illustrates:", "choices": ["A company's marketing plan", "The money supply over time", "The tradeoffs and maximum output combinations of two goods", "Consumer credit scores"], "correct": 2 },
+      { "type": "mc", "prompt": "If demand increases while supply is unchanged, the equilibrium price will generally:", "choices": ["Rise", "Fall", "Stay exactly the same", "Become negative"], "correct": 0 },
+      { "type": "tf", "prompt": "Scarcity means human wants exceed the resources available to satisfy them.", "correct": true },
+      { "type": "tf", "prompt": "Microeconomics primarily studies national unemployment and inflation rates.", "correct": false },
+      { "type": "sa", "prompt": "What term describes the point where quantity demanded equals quantity supplied?", "correct": "equilibrium" }
+    ]
+  },
+  {
+    "courseId": "7515654",
+    "course": "2025F-05:PRINCIPLES OF MICROECONOMICS",
+    "quizId": 13712962,
+    "title": "Sample Test 2",
+    "questions": [
+      { "type": "mc", "prompt": "A rightward shift of the demand curve can be caused by:", "choices": ["A fall in the good's own price", "An increase in consumer income for a normal good", "A new tax on producers", "A decrease in population"], "correct": 1 },
+      { "type": "mc", "prompt": "Which is a determinant of supply?", "choices": ["Input (resource) prices", "Consumer tastes", "Buyers' income", "Buyers' expectations"], "correct": 0 },
+      { "type": "mc", "prompt": "A 'normal good' is one for which demand:", "choices": ["Falls when income rises", "Never changes", "Rises when income rises", "Is always perfectly inelastic"], "correct": 2 },
+      { "type": "tf", "prompt": "A change in a good's own price causes a movement along its demand curve, not a shift of the curve.", "correct": true },
+      { "type": "tf", "prompt": "Two goods are substitutes if a rise in the price of one decreases demand for the other.", "correct": false },
+      { "type": "sa", "prompt": "What do we call goods that are typically consumed together, like printers and ink?", "correct": "complements" }
+    ]
+  },
+  {
+    "courseId": "7515654",
+    "course": "2025F-05:PRINCIPLES OF MICROECONOMICS",
+    "quizId": 13742053,
+    "title": "Sample Test 3",
+    "questions": [
+      { "type": "mc", "prompt": "Price elasticity of demand measures:", "choices": ["The slope of the supply curve in dollars", "How responsive quantity demanded is to a change in price", "Total government spending", "The inflation rate"], "correct": 1 },
+      { "type": "mc", "prompt": "Demand is described as 'inelastic' when:", "choices": ["Quantity demanded changes little when price changes", "A small price change causes a huge quantity change", "The good has many close substitutes", "Elasticity is infinite"], "correct": 0 },
+      { "type": "mc", "prompt": "Goods with many close substitutes tend to have demand that is:", "choices": ["Perfectly inelastic", "Always unit elastic", "More elastic", "Unaffected by price"], "correct": 2 },
+      { "type": "tf", "prompt": "If demand is elastic, a price increase reduces a seller's total revenue.", "correct": true },
+      { "type": "tf", "prompt": "Necessities tend to have more elastic demand than luxuries.", "correct": false },
+      { "type": "sa", "prompt": "What is the term for the responsiveness of quantity demanded to a change in income (two words)?", "correct": "income elasticity" }
+    ]
+  },
+  {
+    "courseId": "7515654",
+    "course": "2025F-05:PRINCIPLES OF MICROECONOMICS",
+    "quizId": 13854545,
+    "title": "Sample Test 4",
+    "questions": [
+      { "type": "mc", "prompt": "A firm's 'fixed costs' are costs that:", "choices": ["Rise with each additional unit", "Do not vary with the quantity of output produced", "Are always larger than variable costs", "Equal marginal revenue"], "correct": 1 },
+      { "type": "mc", "prompt": "Marginal cost is:", "choices": ["The additional cost of producing one more unit", "Total cost divided by price", "The cost of advertising", "Always decreasing"], "correct": 0 },
+      { "type": "mc", "prompt": "In a perfectly competitive market, individual firms are:", "choices": ["Monopolies", "Price makers with market power", "Price takers", "Able to set any price they want"], "correct": 2 },
+      { "type": "tf", "prompt": "Economic profit accounts for both explicit and implicit (opportunity) costs.", "correct": true },
+      { "type": "tf", "prompt": "A monopoly faces a perfectly elastic (horizontal) demand curve.", "correct": false },
+      { "type": "sa", "prompt": "What term describes the difference between what consumers are willing to pay and what they actually pay?", "correct": "consumer surplus" }
+    ]
+  },
+  {
+    "courseId": "7515654",
+    "course": "2025F-05:PRINCIPLES OF MICROECONOMICS",
+    "quizId": 13712529,
+    "title": "Sample Test Chapter 3",
+    "questions": [
+      { "type": "mc", "prompt": "A person has a comparative advantage in producing a good if they:", "choices": ["Can produce it at a lower opportunity cost than others", "Can produce more of everything than others", "Use the most workers", "Charge the highest price"], "correct": 0 },
+      { "type": "mc", "prompt": "Absolute advantage refers to the ability to:", "choices": ["Produce at lower opportunity cost", "Always win in trade", "Produce a good using fewer inputs than another producer", "Set prices freely"], "correct": 2 },
+      { "type": "mc", "prompt": "Mutually beneficial trade is fundamentally based on differences in:", "choices": ["Opportunity costs (comparative advantage)", "National flags", "Currency colors", "Company size"], "correct": 0 },
+      { "type": "tf", "prompt": "Specialization according to comparative advantage can increase total output and gains from trade.", "correct": true },
+      { "type": "tf", "prompt": "A producer who has no absolute advantage cannot have a comparative advantage in anything.", "correct": false },
+      { "type": "sa", "prompt": "What two-word term describes the value of what you give up to produce a good?", "correct": "opportunity cost" }
+    ]
+  },
+  {
+    "courseId": "7515654",
+    "course": "2025F-05:PRINCIPLES OF MICROECONOMICS",
+    "quizId": 13712961,
+    "title": "Sample Test_Chapter 6",
+    "questions": [
+      { "type": "mc", "prompt": "A binding price ceiling set below the equilibrium price causes:", "choices": ["A shortage", "A surplus", "No effect", "A higher equilibrium price"], "correct": 0 },
+      { "type": "mc", "prompt": "A binding price floor (such as a minimum wage above equilibrium) tends to cause:", "choices": ["A shortage", "A surplus (e.g., unemployment)", "Market equilibrium", "Lower production costs"], "correct": 1 },
+      { "type": "mc", "prompt": "When a tax is placed on a good, the burden of the tax is:", "choices": ["Always paid entirely by sellers", "Always paid entirely by buyers", "Shared by buyers and sellers depending on elasticity", "Paid only by the government"], "correct": 2 },
+      { "type": "tf", "prompt": "A price ceiling is a legal maximum on the price of a good or service.", "correct": true },
+      { "type": "tf", "prompt": "Rent control is an example of a price floor.", "correct": false },
+      { "type": "sa", "prompt": "What two-word term describes the loss of total surplus caused by a tax or price control?", "correct": "deadweight loss" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942971,
+    "title": "Lockdown Browser for Final Exam - Requires Respondus LockDown Browser",
+    "questions": [
+      { "type": "mc", "prompt": "This practice quiz is mainly used to:", "choices": ["Confirm LockDown Browser is installed and working", "Calculate your final course grade", "Submit your term paper", "Register for next semester"], "correct": 0 },
+      { "type": "tf", "prompt": "Principles of Finance studies how individuals and firms allocate resources over time under uncertainty.", "correct": true }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942957,
+    "title": "Practice Assessment 1",
+    "questions": [
+      { "type": "mc", "prompt": "The core idea of the 'time value of money' is that:", "choices": ["A dollar today is worth more than a dollar in the future", "Money loses all value over time", "Interest rates are irrelevant", "Future dollars are always worth more than today's"], "correct": 0 },
+      { "type": "mc", "prompt": "'Compounding' refers to:", "choices": ["Paying off a loan early", "Earning interest on both principal and previously earned interest", "Splitting a stock", "Reducing a firm's debt"], "correct": 1 },
+      { "type": "mc", "prompt": "All else equal, a higher discount rate makes the present value of a future cash flow:", "choices": ["Higher", "Unchanged", "Lower", "Negative"], "correct": 2 },
+      { "type": "tf", "prompt": "Present value is the current worth of a future sum of money given a discount rate.", "correct": true },
+      { "type": "tf", "prompt": "Future value decreases as the interest rate increases.", "correct": false },
+      { "type": "sa", "prompt": "What two-word term describes the interest rate used to convert future cash flows to present value?", "correct": "discount rate" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942958,
+    "title": "Practice Assessment 2",
+    "questions": [
+      { "type": "mc", "prompt": "The future value of $100 invested at 10% for one year is:", "choices": ["$110", "$100", "$90", "$210"], "correct": 0 },
+      { "type": "mc", "prompt": "Which formula gives future value with annual compounding?", "choices": ["FV = PV - r", "FV = PV / n", "FV = PV x (1 + r)^n", "FV = PV x r x 0"], "correct": 2 },
+      { "type": "mc", "prompt": "If you need a fixed amount in the future, a higher interest rate means you must invest:", "choices": ["Less today", "More today", "Exactly the same today", "Nothing today"], "correct": 0 },
+      { "type": "tf", "prompt": "Discounting and compounding are inverse operations.", "correct": true },
+      { "type": "tf", "prompt": "With positive interest rates, the present value of $1,000 received in 5 years is more than $1,000.", "correct": false },
+      { "type": "sa", "prompt": "The process of finding today's value of a future amount is called ___.", "correct": "discounting" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942965,
+    "title": "Practice Assessment 3",
+    "questions": [
+      { "type": "mc", "prompt": "An 'annuity' is:", "choices": ["A series of equal payments made at regular intervals", "A single lump sum", "A stock that never pays dividends", "A type of government tax"], "correct": 0 },
+      { "type": "mc", "prompt": "A 'perpetuity' pays:", "choices": ["Nothing at all", "A fixed payment forever", "A payment only once", "A growing payment for exactly five years"], "correct": 1 },
+      { "type": "mc", "prompt": "The present value of a perpetuity paying C each year at rate r is:", "choices": ["C x r", "C - r", "C / r", "C x r^n"], "correct": 2 },
+      { "type": "tf", "prompt": "An ordinary annuity makes its payments at the end of each period.", "correct": true },
+      { "type": "tf", "prompt": "All else equal, an annuity due is worth less than an ordinary annuity.", "correct": false },
+      { "type": "sa", "prompt": "What term describes a stream of equal cash flows that continues forever?", "correct": "perpetuity" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942949,
+    "title": "Practice Assessment 4",
+    "questions": [
+      { "type": "mc", "prompt": "A bond's 'coupon' is:", "choices": ["The periodic interest payment to the bondholder", "The bond's credit rating", "The issuer's stock price", "The brokerage fee"], "correct": 0 },
+      { "type": "mc", "prompt": "When market interest rates rise, the price of an existing bond generally:", "choices": ["Rises", "Stays the same", "Falls", "Doubles"], "correct": 2 },
+      { "type": "mc", "prompt": "A bond's 'face value' (par) is:", "choices": ["The annual dividend", "The amount repaid at maturity", "The firm's market cap", "The coupon rate"], "correct": 1 },
+      { "type": "tf", "prompt": "A bond selling below its face value is said to be trading at a discount.", "correct": true },
+      { "type": "tf", "prompt": "If a bond's coupon rate equals its yield to maturity, it sells at a premium.", "correct": false },
+      { "type": "sa", "prompt": "What three-word term describes the total return earned on a bond if held to maturity?", "correct": "yield to maturity" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942962,
+    "title": "Practice Assessment 5 ",
+    "questions": [
+      { "type": "mc", "prompt": "The dividend discount model values a stock as:", "choices": ["The present value of expected future dividends", "The sum of its past prices", "Total revenue minus expenses", "The coupon divided by par"], "correct": 0 },
+      { "type": "mc", "prompt": "The constant-growth (Gordon) model, Price = D1 / (r - g), requires that:", "choices": ["g is greater than r", "r is greater than g", "r equals g", "g is negative"], "correct": 1 },
+      { "type": "mc", "prompt": "A company's 'market capitalization' equals:", "choices": ["Total debt", "Net income", "Share price x shares outstanding", "Book value of assets"], "correct": 2 },
+      { "type": "tf", "prompt": "Common shareholders have a residual claim on a firm's assets and earnings.", "correct": true },
+      { "type": "tf", "prompt": "Preferred stock typically carries stronger voting rights than common stock.", "correct": false },
+      { "type": "sa", "prompt": "What is the term for a distribution of a company's earnings to its shareholders?", "correct": "dividend" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942945,
+    "title": "Practice Assessment 6",
+    "questions": [
+      { "type": "mc", "prompt": "In a portfolio, 'diversification' primarily reduces:", "choices": ["Firm-specific (unsystematic) risk", "The risk-free rate", "Market (systematic) risk entirely", "Expected return to zero"], "correct": 0 },
+      { "type": "mc", "prompt": "Beta measures a stock's:", "choices": ["Dividend yield", "Sensitivity to overall market movements (systematic risk)", "Coupon rate", "Book value"], "correct": 1 },
+      { "type": "mc", "prompt": "The risk-return tradeoff implies that higher expected returns generally require:", "choices": ["Zero risk", "Lower risk", "Accepting higher risk", "A government guarantee"], "correct": 2 },
+      { "type": "tf", "prompt": "Systematic (market) risk cannot be eliminated through diversification.", "correct": true },
+      { "type": "tf", "prompt": "A risk-free asset has a beta of 1.", "correct": false },
+      { "type": "sa", "prompt": "What four-letter acronym names the model relating expected return to systematic risk via beta?", "correct": "CAPM" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942934,
+    "title": "Practice Assessment 7",
+    "questions": [
+      { "type": "mc", "prompt": "Net present value (NPV) is:", "choices": ["The present value of cash inflows minus the initial investment", "Total revenue minus total cost", "The payback period in years", "The coupon rate"], "correct": 0 },
+      { "type": "mc", "prompt": "A standalone project should generally be accepted if its NPV is:", "choices": ["Negative", "Positive", "Zero", "Unknown"], "correct": 1 },
+      { "type": "mc", "prompt": "The internal rate of return (IRR) is the discount rate that makes NPV equal to:", "choices": ["The initial investment", "One", "Zero", "The coupon"], "correct": 2 },
+      { "type": "tf", "prompt": "If a project's IRR exceeds the required rate of return, its NPV is positive.", "correct": true },
+      { "type": "tf", "prompt": "The basic payback-period method fully accounts for the time value of money.", "correct": false },
+      { "type": "sa", "prompt": "What three-word capital-budgeting metric equals the present value of inflows minus outflows?", "correct": "net present value" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942960,
+    "title": "Practice Assessment 8",
+    "questions": [
+      { "type": "mc", "prompt": "The current ratio measures:", "choices": ["Short-term liquidity (current assets / current liabilities)", "Long-term profitability", "Stock price growth", "The dividend payout"], "correct": 0 },
+      { "type": "mc", "prompt": "A high debt-to-equity ratio indicates:", "choices": ["No debt", "Greater financial leverage", "High liquidity", "Low risk in all cases"], "correct": 1 },
+      { "type": "mc", "prompt": "Return on equity (ROE) measures:", "choices": ["Sales relative to assets", "The bond coupon", "Net income relative to shareholders' equity", "The current ratio"], "correct": 2 },
+      { "type": "tf", "prompt": "Profitability ratios assess a firm's ability to generate earnings.", "correct": true },
+      { "type": "tf", "prompt": "A higher inventory turnover always signals that a company is in financial distress.", "correct": false },
+      { "type": "sa", "prompt": "What two-word ratio divides current assets by current liabilities?", "correct": "current ratio" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942955,
+    "title": "Practice Assessment 9",
+    "questions": [
+      { "type": "mc", "prompt": "WACC stands for:", "choices": ["Weighted average cost of capital", "Weekly accrued capital charge", "Working asset credit cost", "Wholesale average credit cost"], "correct": 0 },
+      { "type": "mc", "prompt": "A firm's cost of capital represents:", "choices": ["Its total revenue", "The required return needed to fund its investments", "Its tax refund", "Its dividend per share"], "correct": 1 },
+      { "type": "mc", "prompt": "Debt is often a cheaper source of financing than equity partly because:", "choices": ["Debt holders own the firm", "Equity is risk-free", "Interest on debt is tax-deductible", "Dividends are guaranteed by law"], "correct": 2 },
+      { "type": "tf", "prompt": "WACC blends the cost of debt and the cost of equity by their weights in the capital structure.", "correct": true },
+      { "type": "tf", "prompt": "Equity is generally a lower-cost source of financing than debt.", "correct": false },
+      { "type": "sa", "prompt": "What four-letter acronym names the blended required return on a firm's debt and equity?", "correct": "WACC" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942967,
+    "title": "Practice Assessment 10",
+    "questions": [
+      { "type": "mc", "prompt": "The three main financial statements are the income statement, the balance sheet, and the:", "choices": ["Statement of cash flows", "Tax return", "Marketing plan", "Organizational chart"], "correct": 0 },
+      { "type": "mc", "prompt": "The balance sheet is built on the identity:", "choices": ["Revenue = Cost + Tax", "Assets = Liabilities + Equity", "Cash = Debt - Equity", "Profit = Price x Beta"], "correct": 1 },
+      { "type": "mc", "prompt": "'Free cash flow' is broadly the cash a firm generates after funding:", "choices": ["Only its dividends", "Only new stock issues", "Operations and capital expenditures", "Only inventory purchases"], "correct": 2 },
+      { "type": "tf", "prompt": "The income statement reports a firm's performance over a period of time.", "correct": true },
+      { "type": "tf", "prompt": "Depreciation is a cash outflow in the period it is recorded.", "correct": false },
+      { "type": "sa", "prompt": "Which financial statement shows assets, liabilities, and equity at a single point in time?", "correct": "balance sheet" }
+    ]
+  },
+  {
+    "courseId": "7779585",
+    "course": "2026SP-01:PRINCIPLES OF FINANCE",
+    "quizId": 13942946,
+    "title": "Practice Assessment 11",
+    "questions": [
+      { "type": "mc", "prompt": "A 'primary market' transaction is one in which:", "choices": ["A company issues new securities to raise capital", "Investors trade existing shares with one another", "A bond reaches maturity", "A dividend is paid"], "correct": 0 },
+      { "type": "mc", "prompt": "The 'secondary market' is where:", "choices": ["Firms first sell brand-new shares", "Existing securities are traded among investors", "The central bank sets interest rates", "Taxes are filed"], "correct": 1 },
+      { "type": "mc", "prompt": "The efficient market hypothesis suggests that asset prices:", "choices": ["Are always wrong", "Never change", "Reflect available information", "Ignore all news"], "correct": 2 },
+      { "type": "tf", "prompt": "An initial public offering (IPO) is a primary-market event.", "correct": true },
+      { "type": "tf", "prompt": "In a perfectly efficient market, you can consistently beat the market using public information.", "correct": false },
+      { "type": "sa", "prompt": "What three-letter acronym names a company's first sale of stock to the public?", "correct": "IPO" }
+    ]
+  }
+]
