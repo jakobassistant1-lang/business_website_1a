@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateAssignmentPlan } from "@/lib/briefing";
@@ -17,12 +18,15 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const canvasId = Number(new URL(req.url).searchParams.get("id"));
-  if (!Number.isFinite(canvasId)) return NextResponse.json({ approach: null, steps: [] });
+  if (!Number.isFinite(canvasId) || canvasId <= 0) return NextResponse.json({ approach: null, steps: [] });
 
   const a = await prisma.assignment.findUnique({ where: { userId_canvasId: { userId: user.id, canvasId } }, include: { course: true } });
   if (!a) return NextResponse.json({ approach: null, steps: [] });
 
-  const key = `${user.id}:${canvasId}`;
+  // Key includes a hash of the prompt-relevant fields, so a rename / points / due
+  // change busts the cache instead of serving an hour-stale plan for the new content.
+  const sig = createHash("sha1").update(`${a.name}|${a.pointsPossible ?? ""}|${a.dueAt?.toISOString() ?? ""}|${a.submissionType ?? ""}`).digest("hex");
+  const key = `${user.id}:${canvasId}:${sig}`;
   const hit = CACHE.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return NextResponse.json({ approach: hit.approach, steps: hit.steps });
 

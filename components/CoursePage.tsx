@@ -6,11 +6,9 @@
 
 import Link from "next/link";
 import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
+import { cleanCourse } from "@/lib/courseName";
 import type { CalendarItem } from "@/lib/calendarData";
-import { itemHref, type ItemType } from "@/lib/itemType";
-
-const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
-const cleanCourse = (name: string) => name.replace(/^\d{4}[A-Za-z]{1,4}-\d+:\s*/, "").trim() || name;
+import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 
 function dueLabel(iso: string | null, todayYmd: string): string {
   if (!iso) return "No due date";
@@ -88,7 +86,7 @@ function Section({
 
 function Row({ item, todayYmd, done }: { item: CalendarItem; todayYmd: string; done?: boolean }) {
   return (
-    <Link href={itemHref(item.canvasId, item.type)} className="flex items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60">
+    <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60">
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-[16px] ${done ? "text-muted line-through" : "font-medium text-ink"}`}>{item.name}</span>
         <span className="block truncate text-[13px] text-muted">

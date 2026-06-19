@@ -3,10 +3,11 @@
 
 import { fmtTime } from "@/components/calendar/parts";
 import { WEEKDAYS, MONTHS_SHORT, parseYmd } from "@/lib/calendarDates";
-import type { ItemType } from "@/lib/itemType";
 
-export const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
-export const shortCourse = (name: string) => name.split(" · ")[0];
+// Re-exported from the canonical sources so the Study pages share one definition
+// of these with the rest of the app (no drift).
+export { TYPE_LABEL } from "@/lib/itemType";
+export { shortCourse } from "@/lib/courseName";
 
 export function dueLabel(iso: string): string {
   const d = new Date(iso);

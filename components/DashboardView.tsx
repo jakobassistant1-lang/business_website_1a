@@ -9,28 +9,17 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_SHORT, MONTHS_LONG } from "@/lib/calendarDates";
+import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_LONG, countdownLabel } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
 import { deterministicIntensity, type Intensity } from "@/lib/intensity";
 import { Glyph, ICON, fmtTime, fmtHours } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
-import { itemHref, type ItemType } from "@/lib/itemType";
+import { itemHref, TYPE_LABEL } from "@/lib/itemType";
+import { shortCourse } from "@/lib/courseName";
 
 const FOCUS_LIST_MAX = 5;
-const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
-const shortCourse = (name: string) => name.split(" · ")[0];
 const fmtLongDate = (d: Date) => `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
-
-// Human countdown for a due date relative to today: Today / Tomorrow / weekday / "Mon DD".
-function countdownLabel(dueAtIso: string, todayYmd: string): string {
-  const d = parseYmd(ymd(new Date(dueAtIso)));
-  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
-  if (days <= 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  if (days <= 6) return WEEKDAYS_FULL[d.getDay()];
-  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
-}
 
 export function DashboardView({ data, todayYmd: serverToday, firstName }: { data: CalendarData; todayYmd: string; firstName: string }) {
   const router = useRouter();
@@ -296,7 +285,7 @@ function StatusDisc() {
 
 function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
   return (
-    <Link href={itemHref(item.canvasId, item.type)} className="flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60">
+    <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60">
       <StatusDisc />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[16px] font-medium text-ink">{item.name}</span>
@@ -312,40 +301,36 @@ function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
 // ── Focus + what's next: a flush, rounded-bottom violet Focus block (the #1 task)
 // sits edge-to-edge atop a 7-day due list, all in one card. ─────────────────────
 function FocusTodayCard({ data, todayYmd, list }: { data: CalendarData; todayYmd: string; list: CalendarItem[] }) {
-  const top = data.recommendations[0];
-  const topItem = top ? data.items.find((it) => it.canvasId === top.canvasId) : undefined;
-  const isToday = !!topItem?.dueAt && ymd(new Date(topItem.dueAt)) === todayYmd;
+  const topRec = data.recommendations[0];
+  const fromRec = topRec ? data.items.find((it) => it.canvasId === topRec.canvasId) : undefined;
+  // When there are no forward recommendations (e.g. all active work is undated or
+  // far-future), fall back to the do-next #1 from the list — never show "all caught
+  // up" above a list that still has items. `list` already excludes the rec focus, so
+  // when we fall back we drop its head to avoid showing it twice.
+  const focusItem = fromRec ?? list[0];
+  const restList = fromRec ? list : list.slice(1);
+  const isToday = !!focusItem?.dueAt && ymd(new Date(focusItem.dueAt)) === todayYmd;
   const caughtUp = data.atRisk.length === 0;
-  const href = topItem ? itemHref(topItem.canvasId, topItem.type) : null;
+  const href = focusItem ? itemHref(focusItem.canvasId, focusItem.type, focusItem.status) : null;
 
   return (
     <div className="card overflow-hidden p-0">
-      {top ? (
+      {focusItem && href ? (
         <div className="rounded-b-2xl bg-accent px-6 py-6 text-white sm:px-8 sm:py-7">
           <p className="text-[12px] font-semibold uppercase tracking-wider text-white/80">Focus now</p>
-          {href ? (
-            <Link href={href} className="mt-1.5 block max-w-full text-left">
-              <span className="block text-[1.9rem] font-bold leading-[1.12] tracking-tight sm:text-[2.15rem]">{top.name}</span>
-            </Link>
-          ) : (
-            <span className="mt-1.5 block max-w-full text-[1.9rem] font-bold leading-[1.12] tracking-tight sm:text-[2.15rem]">{top.name}</span>
-          )}
+          <Link href={href} className="mt-1.5 block max-w-full text-left">
+            <span className="block text-[1.9rem] font-bold leading-[1.12] tracking-tight sm:text-[2.15rem]">{focusItem.name}</span>
+          </Link>
           <div className="mt-3 flex flex-wrap gap-2">
-            {(topItem ? focusChips(topItem, isToday) : []).map((c, i) => (
+            {focusChips(focusItem, isToday).map((c, i) => (
               <Chip key={i} text={c} />
             ))}
           </div>
-          <p className="mt-3 text-[16px] text-white/90">{topItem ? focusRationale(topItem, isToday) : top.reason}</p>
+          <p className="mt-3 text-[16px] text-white/90">{focusRationale(focusItem, isToday)}</p>
           <div className="mt-5">
-            {href ? (
-              <Link href={href} className="inline-block rounded-[14px] bg-white px-5 py-2.5 text-[15px] font-semibold text-accent transition hover:bg-white/90">
-                Open
-              </Link>
-            ) : top.htmlUrl ? (
-              <a href={top.htmlUrl} target="_blank" rel="noreferrer" className="rounded-[14px] bg-white px-5 py-2.5 text-[15px] font-semibold text-accent transition hover:bg-white/90">
-                Open ↗
-              </a>
-            ) : null}
+            <Link href={href} className="inline-block rounded-[14px] bg-white px-5 py-2.5 text-[15px] font-semibold text-accent transition hover:bg-white/90">
+              Open
+            </Link>
           </div>
         </div>
       ) : (
@@ -361,11 +346,11 @@ function FocusTodayCard({ data, todayYmd, list }: { data: CalendarData; todayYmd
       )}
 
       <div className="p-3 sm:p-4">
-        {list.length === 0 ? (
+        {restList.length === 0 ? (
           <p className="py-4 text-center text-[15px] text-muted">Nothing else queued up.</p>
         ) : (
           <div className="space-y-0.5">
-            {list.map((it) => (
+            {restList.map((it) => (
               <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} />
             ))}
           </div>
@@ -404,7 +389,7 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
         <ul className="mt-2 divide-y divide-line-subtle">
           {tests.map((t) => (
             <li key={t.canvasId}>
-              <Link href={`/study/${t.canvasId}`} className="flex items-center justify-between gap-3 rounded-lg py-3 transition hover:bg-surface-soft/60">
+              <Link href={itemHref(t.canvasId, t.type, t.status)} className="flex items-center justify-between gap-3 rounded-lg py-3 transition hover:bg-surface-soft/60">
                 <span className="min-w-0">
                   <span className="block truncate text-[16px] font-medium text-ink">{t.name}</span>
                   <span className="block truncate text-[14px] text-muted">
@@ -444,7 +429,7 @@ function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: (
       <p className="mt-1 text-[14px] text-muted">Overdue, most important first — start at the top.</p>
       <div className="mt-2 space-y-0.5">
         {shown.map((it) => (
-          <Link key={it.canvasId} href={itemHref(it.canvasId, it.type)} className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60">
+          <Link key={it.canvasId} href={itemHref(it.canvasId, it.type, it.status)} className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60">
             <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-danger/50" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[16px] font-medium text-ink">{it.name}</span>

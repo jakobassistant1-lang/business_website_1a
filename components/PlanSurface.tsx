@@ -9,10 +9,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
+import { countdownLabel } from "@/lib/calendarDates";
+import { shortCourse } from "@/lib/courseName";
 import { CalendarView } from "@/components/CalendarView";
 import { TimelineView } from "@/components/TimelineView";
-import { itemHref, type ItemType } from "@/lib/itemType";
+import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 
 type View = "list" | "calendar" | "timeline";
@@ -21,18 +22,6 @@ const VIEWS: { key: View; label: string }[] = [
   { key: "calendar", label: "Calendar" },
   { key: "timeline", label: "Timeline" },
 ];
-
-const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
-const shortCourse = (name: string) => name.split(" · ")[0];
-
-function countdownLabel(dueAtIso: string, todayYmd: string): string {
-  const d = parseYmd(ymd(new Date(dueAtIso)));
-  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
-  if (days <= 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  if (days <= 6) return WEEKDAYS_FULL[d.getDay()];
-  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
-}
 
 export function PlanSurface({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
   const [view, setView] = useState<View>("list"); // do-next first; sticky pref applied post-mount
@@ -117,7 +106,7 @@ function PlanList({ data, todayYmd }: { data: CalendarData; todayYmd: string }) 
 function PlanRow({ item, n, todayYmd }: { item: CalendarItem; n: number; todayYmd: string }) {
   const overdue = item.status === "overdue";
   return (
-    <Link href={itemHref(item.canvasId, item.type)} className="flex items-center gap-3.5 rounded-lg px-3 py-3 transition hover:bg-surface-soft/60">
+    <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3.5 rounded-lg px-3 py-3 transition hover:bg-surface-soft/60">
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent">{n}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[16px] font-medium text-ink">{item.name}</span>

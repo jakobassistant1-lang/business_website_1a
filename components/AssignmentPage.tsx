@@ -3,16 +3,16 @@
 // The assignment-detail leaf (/assignment/[id]). The one place a student lands to
 // actually DO an assignment: what it is, where it stands, an AI "how to approach"
 // with concrete sub-steps, the Canvas brief, a best-effort rubric, and a jump out
-// to Canvas. AI + rubric both fail open — the page is fully useful without them.
+// to Canvas. The AI plan and rubric are both fetched client-side and fail open —
+// the page is fully useful without them, and neither blocks the page's SSR.
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
+import { cleanCourse } from "@/lib/courseName";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { TYPE_LABEL, type ItemType } from "@/lib/itemType";
 import type { CanvasRubricCriterion } from "@/lib/canvas";
-
-const cleanCourse = (name: string) => name.replace(/^\d{4}[A-Za-z]{1,4}-\d+:\s*/, "").trim() || name;
 
 /** Relative, do-next voice for the due date — matches the rest of the app. */
 function dueLabel(iso: string | null, todayYmd: string): string {
@@ -30,6 +30,7 @@ function submissionBadge(
   state: string | null,
   score: number | null,
   points: number | null,
+  submittedAt: string | null,
   iso: string | null,
   todayYmd: string
 ): { label: string; tone: Tone } {
@@ -37,7 +38,9 @@ function submissionBadge(
     const pts = score != null ? `${score}${points != null && points > 0 ? `/${points}` : ""} pts` : "";
     return { label: pts ? `Graded · ${pts}` : "Graded", tone: "success" };
   }
-  if (state === "submitted" || state === "pending_review") return { label: "Submitted", tone: "success" };
+  // Treat a recorded submission time as submitted even if Canvas didn't sync a
+  // workflow_state — keeps this badge consistent with the "Completed" sections.
+  if (state === "submitted" || state === "pending_review" || submittedAt) return { label: "Submitted", tone: "success" };
   // Not submitted — is it already late?
   const overdue = iso ? parseYmd(ymd(new Date(iso))).getTime() < parseYmd(todayYmd).getTime() : false;
   return overdue ? { label: "Not submitted — overdue", tone: "danger" } : { label: "Not submitted yet", tone: "warning" };
@@ -53,19 +56,22 @@ export function AssignmentPage(props: {
   htmlUrl: string | null;
   description: string | null;
   submissionState: string | null;
+  submittedAt: string | null;
   submissionScore: number | null;
   summary: string | null;
-  rubric: CanvasRubricCriterion[] | null;
   todayYmd: string;
 }) {
-  const { canvasId, name, courseName, type, dueAt, points, htmlUrl, description, submissionState, submissionScore, summary, rubric, todayYmd } = props;
+  const { canvasId, name, courseName, type, dueAt, points, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, todayYmd } = props;
   const router = useRouter();
 
   // AI approach + steps, lazy-fetched. Seed the approach with the stored one-liner
-  // (if any) so something useful shows instantly, then upgrade in place.
+  // (if any) so something useful shows instantly, then upgrade in place. The parent
+  // keys this component by canvasId, so navigating to another assignment remounts
+  // it — state never leaks between assignments.
   const [approach, setApproach] = useState<string | null>(summary);
   const [steps, setSteps] = useState<string[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(true);
+  const [rubric, setRubric] = useState<CanvasRubricCriterion[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,12 +92,30 @@ export function AssignmentPage(props: {
     };
   }, [canvasId]);
 
-  const badge = submissionBadge(submissionState, submissionScore, points, dueAt, todayYmd);
+  // Rubric — live Canvas call, fetched here (not in SSR) so it never blocks render.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/assignment/rubric?id=${canvasId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!cancelled && body && Array.isArray(body.rubric)) setRubric(body.rubric);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [canvasId]);
+
+  const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, dueAt, todayYmd);
   const hasPlan = Boolean(approach) || steps.length > 0;
+
+  // "← Back" returns within the app when there's history, else falls back to the
+  // dashboard (so a bookmarked / shared / refreshed deep link never dead-ends out).
+  const goBack = () => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/dashboard"));
 
   return (
     <div className="mx-auto max-w-3xl">
-      <button onClick={() => router.back()} className="text-[14px] font-medium text-muted transition-colors hover:text-ink">
+      <button onClick={goBack} className="text-[14px] font-medium text-muted transition-colors hover:text-ink">
         ← Back
       </button>
 
@@ -133,7 +157,7 @@ export function AssignmentPage(props: {
         </section>
       )}
 
-      {/* Canvas brief (the assignment body) — rendered HTML, basic prose styling. */}
+      {/* Canvas brief (the assignment body) — sanitized HTML, basic prose styling. */}
       {description && description.trim() && (
         <section className="card mt-6 p-6">
           <h2 className="text-[19px] font-semibold text-ink">Assignment brief</h2>

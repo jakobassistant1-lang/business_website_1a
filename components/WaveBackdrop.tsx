@@ -5,7 +5,10 @@
 
 const W = 820;
 const H = 600;
-const STEP = 13;
+// Grid pitch. Kept coarse (16, not 13) so the decorative backdrop ships ~1,000
+// SVG circles instead of ~1,600 on every page; the larger per-dot radius below
+// keeps the wave's coverage looking the same.
+const STEP = 16;
 const MAX_OPACITY = 0.3; // peak per-dot alpha — visible but still a soft background
 // A saturated purple reads as purple even when faint; the theme's blue-violet
 // accent desaturates to grey at low opacity over the cream page.
@@ -25,7 +28,7 @@ function buildDots(): Dot[] {
       // Anchor to the bottom-right corner; dissolve toward the top-left.
       const fade = Math.max(0, Math.min(1, x / W + y / H - 0.45));
       const o = v * fade * MAX_OPACITY;
-      if (o > 0.012) dots.push({ x, y, r: +(0.8 + v).toFixed(2), o: +o.toFixed(3) });
+      if (o > 0.012) dots.push({ x, y, r: +(1.0 + v).toFixed(2), o: +o.toFixed(3) });
     }
   }
   return dots;

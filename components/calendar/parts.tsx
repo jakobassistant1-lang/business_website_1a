@@ -197,8 +197,9 @@ function DetailRow({ k, v }: { k: string; v: string }) {
 }
 
 /** Per-assignment control: how many days ahead to start studying for THIS
- *  exam/quiz. Saving re-plans (router.refresh reloads the server data). */
-function StudyLeadEditor({ item }: { item: CalendarItem }) {
+ *  exam/quiz. Saving re-plans (router.refresh reloads the server data). Also used
+ *  on the per-test study page so the control stays reachable from the main flow. */
+export function StudyLeadEditor({ item }: { item: CalendarItem }) {
   const router = useRouter();
   const [days, setDays] = useState(item.studyLeadDays != null ? String(item.studyLeadDays) : "");
   const [busy, setBusy] = useState(false);

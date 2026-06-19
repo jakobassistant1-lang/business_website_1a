@@ -236,6 +236,10 @@ export async function generateAssignmentPlan(input: AssignmentDescInput, instruc
     const steps = Array.isArray(parsed.steps)
       ? parsed.steps.filter((s): s is string => typeof s === "string" && s.trim().length > 0).map((s) => s.trim()).slice(0, 6)
       : [];
+    // An empty-but-valid response is reported as "none" so callers don't CACHE a
+    // blank plan for the full TTL (which would hide the section until expiry); the
+    // next visit retries instead.
+    if (!approach && steps.length === 0) return { approach: null, steps: [], source: "none" };
     return { approach, steps, source: "gemini" };
   } catch {
     return { approach: null, steps: [], source: "none" };

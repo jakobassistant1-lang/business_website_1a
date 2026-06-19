@@ -5,19 +5,9 @@
 // course's full assignment list at /class/[id].
 
 import Link from "next/link";
-import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
+import { countdownLabel } from "@/lib/calendarDates";
+import { cleanCourse } from "@/lib/courseName";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
-
-const cleanCourse = (name: string) => name.replace(/^\d{4}[A-Za-z]{1,4}-\d+:\s*/, "").trim() || name;
-
-function countdownLabel(dueAtIso: string, todayYmd: string): string {
-  const d = parseYmd(ymd(new Date(dueAtIso)));
-  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
-  if (days <= 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  if (days <= 6) return WEEKDAYS_FULL[d.getDay()];
-  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
-}
 
 export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
   const byCourse = new Map<number, { name: string; items: CalendarItem[] }>();

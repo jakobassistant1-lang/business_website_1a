@@ -66,6 +66,19 @@ export function rangeForView(view: "day" | "week" | "month", anchor: Date): { st
   return { start: new Date(anchor.getFullYear(), anchor.getMonth(), 1), days: daysInMonth(anchor) };
 }
 
+/** Human "do-next" countdown for a due date relative to today: Today / Tomorrow /
+ *  weekday (within the week) / "Mon D". Pass the server-computed `todayYmd` so the
+ *  client and server agree and there's no hydration drift. Shared by the dashboard,
+ *  plan list, and course cards (one source of truth for relative due labels). */
+export function countdownLabel(dueAtIso: string, todayYmd: string): string {
+  const d = parseYmd(ymd(new Date(dueAtIso)));
+  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days <= 6) return WEEKDAYS_FULL[d.getDay()];
+  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+}
+
 export function rangeLabel(view: "day" | "week" | "month", anchor: Date, now: Date): string {
   if (view === "day") {
     if (sameDay(anchor, now)) return "Today";

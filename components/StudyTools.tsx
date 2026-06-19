@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRef } from "react";
 import Link from "next/link";
-import { fmtHours } from "@/components/calendar/parts";
+import { fmtHours, StudyLeadEditor } from "@/components/calendar/parts";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
 import { TYPE_LABEL, shortCourse, dueLabel, sessionDateLabel, StudyChip } from "@/components/studyUi";
@@ -155,7 +155,7 @@ export function StudyTools({
       </div>
 
       <div className="mt-4">
-        {tab === "plan" && <PlanSection plan={plan} sessions={sessions} totalHours={totalHours} onRetry={() => load("plan")} onRegen={() => load("plan", { force: true })} />}
+        {tab === "plan" && <PlanSection plan={plan} assessment={assessment} sessions={sessions} totalHours={totalHours} onRetry={() => load("plan")} onRegen={() => load("plan", { force: true })} />}
         {tab === "guide" && <GuideSection guide={guide} onRetry={() => load("guide")} onRegen={() => load("guide", { force: true })} />}
         {tab === "questions" && (
           <QuestionsSection
@@ -238,12 +238,14 @@ function SourceNote({ sparse, sources, excluded = [] }: { sparse: boolean; sourc
 
 function PlanSection({
   plan,
+  assessment,
   sessions,
   totalHours,
   onRetry,
   onRegen,
 }: {
   plan: Gen<StudyPlanContent>;
+  assessment: CalendarItem;
   sessions: { date: string; hours: number }[];
   totalHours: number;
   onRetry: () => void;
@@ -257,6 +259,9 @@ function PlanSection({
   return (
     <SectionShell title="How to study this" aside={plan.status === "ready" ? <RegenButton onClick={onRegen} /> : undefined}>
       <p className="text-sm text-muted">{header}</p>
+      {/* When to start studying — re-plans on save. Lives here (the study flow) now
+          that the dashboard routes tests straight to this page. */}
+      <StudyLeadEditor item={assessment} />
       <div className="mt-3">
         {plan.status === "loading" && <Skeleton lines={4} />}
         {plan.status === "error" && <ErrorBox code={plan.error} onRetry={onRetry} />}

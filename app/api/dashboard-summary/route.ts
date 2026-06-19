@@ -40,7 +40,11 @@ export async function GET() {
     return NextResponse.json({ summary: null, intensity: deterministicIntensity(load) });
   }
 
-  const sig = JSON.stringify({ u: user.id, ...load, r: data.atRisk.length, t: top.map((t) => `${t.canvasId}:${t.score}`) });
+  const firstName = user.fullName.trim().split(/\s+/)[0] ?? "";
+  // Signature includes the prompt-relevant content (firstName + each top item's
+  // NAME, not just its id/score), so a rename re-generates instead of serving a
+  // 30-min-stale summary that narrates the old name.
+  const sig = JSON.stringify({ u: user.id, n: firstName, ...load, r: data.atRisk.length, t: top.map((t) => `${t.canvasId}:${t.score}:${t.name}`) });
   const key = createHash("sha1").update(sig).digest("hex");
   const hit = CACHE.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) {
@@ -48,7 +52,7 @@ export async function GET() {
   }
 
   const result = await generateDashboardSummary({
-    firstName: user.fullName.trim().split(/\s+/)[0] ?? "",
+    firstName,
     windowDays: data.plan.days.length,
     atRiskCount: data.atRisk.length,
     top,

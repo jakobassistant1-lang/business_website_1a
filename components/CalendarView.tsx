@@ -121,12 +121,10 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
 
   return (
     <div>
-      {/* Header — compact single row so the calendar sits high on the page */}
+      {/* Header — sync status + action only; the "Plan" title + tabs live in the
+          parent PlanSurface, so no redundant "Calendar" heading here. */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-xl font-semibold tracking-tight">Calendar</h1>
-          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPill.cls}`}>{statusPill.text}</span>
-        </div>
+        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPill.cls}`}>{statusPill.text}</span>
         {data.connected && (
           <button onClick={runSync} className="btn-ghost text-sm" disabled={syncing}>
             {syncing ? "Syncing…" : "Sync"}

@@ -102,10 +102,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight">Timeline</h1>
-      </div>
-
+      {/* No heading here — the "Plan" title + tabs live in the parent PlanSurface. */}
       {!data.connected ? (
         <div className="card mt-6 p-8 text-center">
           <div className="flex justify-center text-accent">

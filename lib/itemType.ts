@@ -12,10 +12,13 @@ export function isStudyType(t: ItemType): boolean {
   return t === "exam" || t === "quiz";
 }
 
-/** Where an item row should navigate: the study flow for exams/quizzes, the
- *  assignment-detail leaf for everything else. One source of truth so every
- *  list (dashboard, course page, plan) routes a given item the same way. */
-export function itemHref(canvasId: number, type: ItemType): string {
+/** Where an item row should navigate. One source of truth so every list
+ *  (dashboard, course page, plan) routes a given item the same way:
+ *   - finished work → its detail leaf (you review a grade, you don't study a done test),
+ *   - active exams/quizzes → the study flow,
+ *   - everything else → the assignment-detail leaf. */
+export function itemHref(canvasId: number, type: ItemType, status?: "done" | "overdue" | "normal"): string {
+  if (status === "done") return `/assignment/${canvasId}`;
   return isStudyType(type) ? `/study/${canvasId}` : `/assignment/${canvasId}`;
 }
 
@@ -41,9 +44,12 @@ export const TYPE_COLOR: Record<ItemType, string> = {
   other: "#64748b", // slate (discussions / misc)
 };
 
+// One canonical set of human labels for the four item types, used everywhere
+// (Timeline legend, assignment detail, dashboard/plan/course rows). Keep these
+// compact — they read inline in list rows ("Exam · Microeconomics").
 export const TYPE_LABEL: Record<ItemType, string> = {
   assignment: "Assignment",
   quiz: "Quiz",
-  exam: "Exam / Test",
-  other: "Other",
+  exam: "Exam",
+  other: "Task",
 };
