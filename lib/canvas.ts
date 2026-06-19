@@ -8,12 +8,10 @@ export class CanvasError extends Error {
   }
 }
 
-/** Strip scheme/path/trailing slash; return bare lowercase host (FR-4.2). */
-export function normalizeHost(input: string): string {
-  let h = input.trim().replace(/^https?:\/\//i, "");
-  h = h.split("/")[0].replace(/\/+$/, "");
-  return h.toLowerCase();
-}
+// normalizeHost moved to lib/host.ts (pure, client-safe) so the school picker can
+// reuse it without pulling this module's node imports (dns/net) into the browser.
+// Re-exported so existing importers (app/api/canvas/credentials) are unaffected.
+export { normalizeHost } from "./host";
 
 /** Local/sandbox Canvas (a Dockerized Canvas, localhost) serves plain HTTP, not
  *  HTTPS — detect those hosts so we don't try a TLS handshake that can't succeed. */
