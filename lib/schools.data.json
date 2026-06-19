@@ -24,6 +24,14 @@
     "source": "https://biggio.auburn.edu/programs/instructional-technology-programs/canvas-course-access"
   },
   {
+    "name": "Babson College",
+    "aliases": ["Babson"],
+    "canvasHost": "babson.instructure.com",
+    "region": "MA",
+    "confidence": "high",
+    "source": "https://babson.instructure.com/"
+  },
+  {
     "name": "Boston College",
     "aliases": ["BC"],
     "canvasHost": "bostoncollege.instructure.com",
