@@ -25,14 +25,14 @@ export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: s
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-      {courses.map(([id, g]) => (
-        <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} rank={rank} todayYmd={todayYmd} />
+      {courses.map(([id, g], i) => (
+        <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} rank={rank} todayYmd={todayYmd} anchor={i === 0 ? "courses-card" : undefined} />
       ))}
     </div>
   );
 }
 
-function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; rank: Map<number, number>; todayYmd: string }) {
+function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd, anchor }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; rank: Map<number, number>; todayYmd: string; anchor?: string }) {
   const overdue = items.filter((it) => it.status === "overdue").length;
   const normal = items.filter((it) => it.status === "normal");
   // Do-next: the most important item in this class, not the soonest by date.
@@ -41,6 +41,7 @@ function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd }: { cou
   return (
     <Link
       href={`/class/${courseCanvasId}`}
+      data-tour={anchor}
       className="card group flex flex-col p-5 transition hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
     >
       <div className="flex items-start justify-between gap-3">

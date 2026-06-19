@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { loadCalendarData } from "@/lib/calendarData";
 import { ymd } from "@/lib/calendarDates";
 import { DashboardView } from "@/components/DashboardView";
+import { WelcomeNudge } from "@/components/WelcomeNudge";
 
 export const dynamic = "force-dynamic";
 
@@ -11,5 +12,10 @@ export default async function DashboardPage() {
   const user = await getCurrentUser(); // layout guarantees auth
   const data = await loadCalendarData(user!.id);
   const firstName = user!.fullName.trim().split(/\s+/)[0] ?? "";
-  return <DashboardView data={data} todayYmd={ymd(new Date())} firstName={firstName} />;
+  return (
+    <>
+      <DashboardView data={data} todayYmd={ymd(new Date())} firstName={firstName} />
+      <WelcomeNudge />
+    </>
+  );
 }

@@ -168,6 +168,10 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
                 {item.label}
               </Link>
             ))}
+            <Link href="/demo" className={menuItemClass}>
+              <Icon d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5" />
+              Replay walkthrough
+            </Link>
             <div className="my-1 border-t border-gray-700" />
             <ThemeToggle className={menuItemClass} />
             <button onClick={logout} className={menuItemClass}>

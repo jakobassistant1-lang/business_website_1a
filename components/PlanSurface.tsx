@@ -23,17 +23,18 @@ const VIEWS: { key: View; label: string }[] = [
   { key: "timeline", label: "Timeline" },
 ];
 
-export function PlanSurface({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
-  const [view, setView] = useState<View>("list"); // do-next first; sticky pref applied post-mount
+export function PlanSurface({ data, todayYmd, demo = false, initialView }: { data: CalendarData; todayYmd: string; demo?: boolean; initialView?: View }) {
+  const [view, setView] = useState<View>(initialView ?? "list"); // do-next first; sticky pref applied post-mount (skipped in demo)
 
   useEffect(() => {
+    if (initialView) return; // demo controls the view; ignore the saved pref
     try {
       const saved = localStorage.getItem("sp_plan_view");
       if (saved === "list" || saved === "calendar" || saved === "timeline") setView(saved);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [initialView]);
 
   function pick(v: View) {
     setView(v);
@@ -48,7 +49,7 @@ export function PlanSurface({ data, todayYmd }: { data: CalendarData; todayYmd: 
     <div className="mx-auto max-w-6xl">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[26px] font-bold tracking-tight text-ink">Plan</h1>
-        <div role="tablist" aria-label="Plan view" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
+        <div data-tour="plan-views" role="tablist" aria-label="Plan view" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
           {VIEWS.map((v) => (
             <button
               key={v.key}
@@ -64,7 +65,7 @@ export function PlanSurface({ data, todayYmd }: { data: CalendarData; todayYmd: 
       </div>
 
       {view === "list" && <PlanList data={data} todayYmd={todayYmd} />}
-      {view === "calendar" && <CalendarView data={data} todayYmd={todayYmd} />}
+      {view === "calendar" && <CalendarView data={data} todayYmd={todayYmd} demo defaultView="week" />}
       {view === "timeline" && <TimelineView data={data} />}
     </div>
   );
@@ -94,7 +95,7 @@ function PlanList({ data, todayYmd }: { data: CalendarData; todayYmd: string }) 
         )}{" "}
         · in the order to tackle them
       </p>
-      <div className="card divide-y divide-line-subtle p-2">
+      <div data-tour="plan-list" className="card divide-y divide-line-subtle p-2">
         {items.map((it, i) => (
           <PlanRow key={it.canvasId} item={it} n={i + 1} todayYmd={todayYmd} />
         ))}

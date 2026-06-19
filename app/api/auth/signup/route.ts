@@ -61,7 +61,8 @@ export async function POST(req: Request) {
   }
 
   const user = await prisma.user.create({
-    data: { email, password: await hashPassword(password), fullName, phone, tosAcceptedAt: new Date(), isAdmin: role === "admin" },
+    // New students get the first-run demo (onboardedAt null → /demo); admins skip it.
+    data: { email, password: await hashPassword(password), fullName, phone, tosAcceptedAt: new Date(), isAdmin: role === "admin", onboardedAt: role === "admin" ? new Date() : null },
   });
   await createSession(user.id);
   return NextResponse.json({ ok: true, isAdmin: role === "admin" });

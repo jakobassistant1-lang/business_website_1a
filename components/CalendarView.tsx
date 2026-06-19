@@ -48,13 +48,13 @@ function group<T>(arr: T[], key: (t: T) => string | null): Map<string, T[]> {
   return m;
 }
 
-export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
+export function CalendarView({ data, todayYmd, demo = false, defaultView = "day" }: { data: CalendarData; todayYmd: string; demo?: boolean; defaultView?: View }) {
   const router = useRouter();
   // "Today" comes from the server (todayYmd) so the SSR'd HTML and the client's
   // first render agree — no hydration mismatch — and it's consistent with the
   // app's server-time day handling.
   const [now] = useState(() => parseYmd(todayYmd));
-  const [view, setView] = useState<View>("day");
+  const [view, setView] = useState<View>(defaultView);
   const [anchor, setAnchor] = useState(() => parseYmd(todayYmd));
   const [selected, setSelected] = useState<CalendarItem | null>(null);
   const [peek, setPeek] = useState<Date | null>(null);
@@ -77,6 +77,7 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
 
   // Auto-sync once per browser session (≈ on login), same as the old Plan page.
   useEffect(() => {
+    if (demo) return; // demo runs on mock data — never touch the network
     if (!data.connected || didAutoSync.current) return;
     didAutoSync.current = true;
     if (typeof window !== "undefined" && sessionStorage.getItem("sp_autosynced")) return;
@@ -86,6 +87,7 @@ export function CalendarView({ data, todayYmd }: { data: CalendarData; todayYmd:
   }, []);
 
   async function runSync() {
+    if (demo) return; // demo mode: never trigger a real Canvas sync
     setSyncing(true);
     await fetch("/api/sync", { method: "POST" }).catch(() => {});
     await fetch("/api/analyze", { method: "POST" }).catch(() => {});
@@ -338,9 +340,12 @@ function WeekView({
   const start = weekStart(anchor);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const MAX = 6;
+  // Tag the first populated day so the demo tour can spotlight a real, compact
+  // target (highlighting the whole week grid reads as "off").
+  const firstWithItems = days.findIndex((d) => (itemsByDay.get(ymd(d))?.length ?? 0) > 0);
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-7">
-      {days.map((d) => {
+      {days.map((d, i) => {
         const key = ymd(d);
         const items = itemsByDay.get(key) ?? [];
         const events = eventsByDay.get(key) ?? [];
@@ -351,6 +356,7 @@ function WeekView({
         return (
           <div
             key={key}
+            data-tour={i === firstWithItems ? "cal-day" : undefined}
             className={`card flex min-h-[7rem] flex-col p-3 ${isToday ? "ring-2 ring-accent bg-accent-soft/40" : ""} ${isPast ? "opacity-70" : ""}`}
           >
             <button onClick={() => onPeek(d)} className="flex items-baseline justify-between rounded hover:bg-surface-soft" title="Open this day">
@@ -361,7 +367,7 @@ function WeekView({
             </button>
             <div className="mt-2 space-y-1.5">
               {shown.map((it) => (
-                <ItemPill key={`w-${it.canvasId}`} item={it} onSelect={onSelect} showTime={false} />
+                <ItemPill key={`w-${it.canvasId}`} item={it} onSelect={onSelect} showTime={false} compact />
               ))}
               {more > 0 && (
                 <button onClick={() => onPeek(d)} className="w-full rounded-md px-2 py-1 text-left text-xs font-medium text-accent hover:bg-accent-soft">

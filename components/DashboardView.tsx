@@ -21,7 +21,7 @@ import { shortCourse } from "@/lib/courseName";
 const FOCUS_LIST_MAX = 5;
 const fmtLongDate = (d: Date) => `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
 
-export function DashboardView({ data, todayYmd: serverToday, firstName }: { data: CalendarData; todayYmd: string; firstName: string }) {
+export function DashboardView({ data, todayYmd: serverToday, firstName, demo = false }: { data: CalendarData; todayYmd: string; firstName: string; demo?: boolean }) {
   const router = useRouter();
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
   const [todayYmd, setTodayYmd] = useState(serverToday);
@@ -40,6 +40,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName }: { data
 
   // Sync Canvas once per browser session (shared key with the Calendar).
   useEffect(() => {
+    if (demo) return; // demo runs on mock data — never touch the network
     if (!data.connected || didAutoSync.current) return;
     didAutoSync.current = true;
     if (typeof window !== "undefined" && sessionStorage.getItem("sp_autosynced")) return;
@@ -55,7 +56,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName }: { data
   // AI summary + Gemini week rating (fail-open: deterministic rating already shows;
   // this upgrades it + fills the summary line when Gemini answers).
   useEffect(() => {
-    if (!data.connected) return;
+    if (demo || !data.connected) return;
     let cancelled = false;
     setSummaryLoading(true);
     fetch("/api/dashboard-summary")
@@ -133,19 +134,19 @@ export function DashboardView({ data, todayYmd: serverToday, firstName }: { data
 
           {/* KPI bar — quiet at-a-glance status against the page. */}
           <div className="mb-7 flex flex-wrap items-center gap-x-12 gap-y-4 border-b border-line-subtle pb-5">
-            <IntensityKpi intensity={intensity} />
+            <div data-tour="dash-week"><IntensityKpi intensity={intensity} /></div>
             <OverdueKpi count={data.atRisk.length} onOpen={() => setShowOverdue(true)} />
           </div>
 
           <div className="flex flex-col gap-6 lg:flex-row">
             <div className="min-w-0 flex-1 space-y-6">
-              <FocusTodayCard data={data} todayYmd={todayYmd} list={doNext} />
+              <div data-tour="dash-focus"><FocusTodayCard data={data} todayYmd={todayYmd} list={doNext} /></div>
               {overdueItems.length > 0 && <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} />}
             </div>
             <aside className="w-full shrink-0 space-y-7 lg:w-96">
-              <ProgressDial done={dueTodayDone} total={dialTotal} />
+              <div data-tour="dash-progress"><ProgressDial done={dueTodayDone} total={dialTotal} /></div>
               {todayStudy.length > 0 && <TodayStudyCard blocks={todayStudy} />}
-              <UpcomingTestsCard data={data} todayYmd={todayYmd} />
+              <div data-tour="dash-tests"><UpcomingTestsCard data={data} todayYmd={todayYmd} /></div>
             </aside>
           </div>
         </>
@@ -506,7 +507,7 @@ function ConnectCard() {
       </div>
       <p className="mt-4 text-[17px] font-medium text-ink">Welcome to StudyPlan.</p>
       <p className="mt-1.5 text-[15px] text-muted">Connect your Canvas account and we&apos;ll turn your coursework into a calm, day-by-day plan.</p>
-      <Link href="/connections" className="btn-primary mt-5">
+      <Link href="/connections" data-tour="connect-canvas" className="btn-primary mt-5">
         Connect Canvas
       </Link>
     </div>

@@ -77,7 +77,7 @@ function statusMeta(item: CalendarItem): StatusMeta {
 }
 
 /** The coursework atom rendered in every view. A button → opens ItemDetail. */
-export function ItemPill({ item, onSelect, showTime = true }: { item: CalendarItem; onSelect: (it: CalendarItem) => void; showTime?: boolean }) {
+export function ItemPill({ item, onSelect, showTime = true, compact = false }: { item: CalendarItem; onSelect: (it: CalendarItem) => void; showTime?: boolean; compact?: boolean }) {
   const s = statusMeta(item);
   const glyph = s.danger ? ICON.alert : typeGlyph(item.type);
   return (
@@ -86,14 +86,16 @@ export function ItemPill({ item, onSelect, showTime = true }: { item: CalendarIt
       onClick={() => onSelect(item)}
       title={`${item.courseName} · ${item.name}`}
       aria-label={`${item.name}, ${item.courseName}${s.pill ? `, ${s.pill.text}` : ""}`}
-      className={`flex w-full items-center gap-2 rounded-lg border bg-surface px-2.5 py-2 text-left transition hover:shadow-sm ${s.border} ${s.muted ? "opacity-60" : ""}`}
+      className={`flex w-full items-center gap-2 overflow-hidden rounded-lg border bg-surface px-2.5 py-2 text-left transition hover:shadow-sm ${s.border} ${s.muted ? "opacity-60" : ""}`}
     >
       <span className="w-1.5 shrink-0 self-stretch rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
       <span className={`shrink-0 ${s.danger ? "text-danger" : "text-muted"}`}>
         <Glyph d={glyph} size={15} />
       </span>
       <span className={`min-w-0 flex-1 truncate text-sm ${s.muted ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
-      {s.pill ? (
+      {/* compact (narrow week cells): drop the trailing pill/time so it can't
+          overflow — overdue still reads via the red border + alert icon. */}
+      {compact ? null : s.pill ? (
         <span className={`shrink-0 self-center rounded-full px-2 py-0.5 text-xs font-medium ${s.pill.cls}`}>{s.pill.text}</span>
       ) : item.dueAt && showTime ? (
         <span className="shrink-0 self-center text-xs text-muted">{fmtTime(item.dueAt)}</span>
@@ -524,7 +526,7 @@ export function PeriodToolbar({
         <span className="ml-1.5 text-sm font-semibold text-ink">{label}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
+        <div data-tour="cal-views" role="tablist" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
           {views.map((v) => (
             <button
               key={v}

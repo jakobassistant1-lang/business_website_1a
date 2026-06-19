@@ -58,7 +58,7 @@ export function StudyView({
       </div>
 
       {/* Featured: the next-up test */}
-      <div className="rounded-xl bg-accent p-7 text-white shadow-card">
+      <div data-tour="study-featured" className="rounded-xl bg-accent p-7 text-white shadow-card">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">Next up</p>
         <p className="mt-1.5 text-[2rem] font-bold leading-[1.1] tracking-tight">{featured.name}</p>
         <p className="mt-1 text-[15px] text-white/80">

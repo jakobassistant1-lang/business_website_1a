@@ -145,3 +145,21 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     ranked,
   };
 }
+
+/** The Study hub's "upcoming tests" list: quizzes/exams still active (status
+ *  "normal" — keeps undated + due-today, drops done/overdue), ordered do-next
+ *  (the shared `ranked` order; earliest-due as a tiebreak). Pure. Shared by the
+ *  Study page and the first-run demo so the two never drift. */
+export function upcomingAssessments(data: CalendarData): CalendarItem[] {
+  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
+  return data.items
+    .filter((it) => (it.type === "quiz" || it.type === "exam") && it.status === "normal")
+    .sort((a, b) => {
+      const ra = rank.get(a.canvasId) ?? 1e9;
+      const rb = rank.get(b.canvasId) ?? 1e9;
+      if (ra !== rb) return ra - rb;
+      const ta = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+      const tb = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+      return ta - tb;
+    });
+}

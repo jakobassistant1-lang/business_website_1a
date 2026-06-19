@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { loadCalendarData } from "@/lib/calendarData";
+import { loadCalendarData, upcomingAssessments } from "@/lib/calendarData";
 import { studySessionsFor } from "@/lib/study";
 import { StudyView } from "@/components/StudyView";
 
@@ -17,22 +17,9 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
   const user = await getCurrentUser(); // (app)/layout guarantees auth
   const data = await loadCalendarData(user!.id);
 
-  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i]));
-  // "Upcoming" defined the SAME way the dashboard does (status === "normal"): keeps
-  // tests with no due date and tests due today, excludes completed + past-due. The
-  // old `dueAt >= now` check silently dropped every undated test (Exams, Practice
-  // Assessments) and any test due earlier today. Ordered do-next, never by the clock.
-  const upcoming = data.items
-    .filter((it) => (it.type === "quiz" || it.type === "exam") && it.status === "normal")
-    .sort((a, b) => {
-      const ra = rank.get(a.canvasId) ?? 1e9;
-      const rb = rank.get(b.canvasId) ?? 1e9;
-      if (ra !== rb) return ra - rb;
-      // Tiebreak only matters for unranked items: earliest due first, undated last.
-      const ta = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
-      const tb = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
-      return ta - tb;
-    });
+  // Upcoming tests, do-next ordered — shared with the first-run demo (one source
+  // of truth so the Study hub and the demo never drift).
+  const upcoming = upcomingAssessments(data);
 
   const sessions: Record<number, { date: string; hours: number }[]> = {};
   for (const it of upcoming) sessions[it.canvasId] = studySessionsFor(data.plan, it.canvasId);

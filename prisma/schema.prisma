@@ -29,6 +29,11 @@ model User {
   studyDaysTest      Int      @default(7) // days ahead to start studying for exams/tests
   studyDaysQuiz      Int      @default(3) // days ahead to start studying for quizzes
   createdAt          DateTime @default(now())
+  // When the student finished (or skipped) the first-run demo. Defaults to now()
+  // so EXISTING users (backfilled when this column is added) and seeded/admin
+  // accounts skip it; the signup paths set it to NULL so genuinely new students
+  // get the demo (null → routed to /demo on first entry; set on finish/skip).
+  onboardedAt        DateTime? @default(now())
 
   sessions      Session[]
   credential    CanvasCredential?

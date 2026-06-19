@@ -39,6 +39,16 @@
   --shadow-sm: 0 1px 2px rgba(22, 22, 25, 0.05);
   --shadow-md: 0 6px 18px rgba(22, 22, 25, 0.07);
   --shadow-lg: 0 18px 48px rgba(22, 22, 25, 0.10);
+
+  /* layered, violet-tinted elevation for demo surfaces (tour popover, framed app) */
+  --shadow-demo: 0 1px 2px rgb(124 92 240 / 0.10), 0 8px 24px rgb(124 92 240 / 0.16), 0 24px 56px rgb(22 22 25 / 0.18);
+
+  /* motion — premium UI: sub-300ms, ease-out entrances; never ease-in / transition-all */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-slow: 300ms;
 }
 
 [data-theme="dark"] {
@@ -68,6 +78,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+  --shadow-demo: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.5), 0 24px 56px rgb(0 0 0 / 0.55);
 }
 
 body {
@@ -117,4 +128,69 @@ body {
 .animate-done-glow { animation: doneGlow 1.9s ease-out 1 both; }
 @media (prefers-reduced-motion: reduce) {
   .animate-done-glow { animation: none; }
+}
+
+/* driver.js coachmarks for the first-run demo tour (app/demo) — themed to the
+   design tokens so the popovers read as part of the app, not a generic library.
+   Scoped under .sp-demo-tour (set via the driver `popoverClass`); a glass surface
+   + layered violet shadow makes it feel premium. */
+.sp-demo-tour.driver-popover {
+  background-color: rgb(var(--surface) / 0.85);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(180%);
+  color: rgb(var(--ink));
+  border: 1px solid rgb(var(--line) / 0.7);
+  border-radius: 0.875rem;
+  box-shadow: var(--shadow-demo);
+  max-width: 320px;
+  animation: spDemoPop var(--dur-base) var(--ease-out) both;
+}
+@keyframes spDemoPop { from { opacity: 0; } to { opacity: 1; } }
+.sp-demo-tour .driver-popover-title { font-size: 1.0625rem; font-weight: 600; color: rgb(var(--ink)); }
+.sp-demo-tour .driver-popover-description { color: rgb(var(--muted)); font-size: 0.875rem; line-height: 1.5; }
+.sp-demo-tour .driver-popover-progress-text { color: rgb(var(--faint)); font-size: 0.75rem; }
+.sp-demo-tour .driver-popover-close-btn { color: rgb(var(--faint)); }
+.sp-demo-tour .driver-popover-close-btn:hover { color: rgb(var(--ink)); }
+.sp-demo-tour .driver-popover-next-btn {
+  background-color: rgb(var(--accent));
+  color: rgb(var(--on-accent));
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-shadow: none;
+}
+.sp-demo-tour .driver-popover-next-btn:hover { background-color: rgb(var(--accent-hover)); }
+.sp-demo-tour .driver-popover-prev-btn {
+  background-color: transparent;
+  color: rgb(var(--muted));
+  border: none;
+  text-shadow: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.sp-demo-tour .driver-popover-prev-btn:hover { color: rgb(var(--ink)); }
+.sp-demo-tour .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: rgb(var(--surface)); }
+.sp-demo-tour .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: rgb(var(--surface)); }
+.sp-demo-tour .driver-popover-arrow-side-left.driver-popover-arrow { border-left-color: rgb(var(--surface)); }
+.sp-demo-tour .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: rgb(var(--surface)); }
+
+/* Keyboard focus rings for demo controls — focus-visible only, two-tone halo. */
+.sp-demo-tour .driver-popover-next-btn:focus-visible,
+.sp-demo-tour .driver-popover-prev-btn:focus-visible,
+.sp-demo-tour .driver-popover-close-btn:focus-visible,
+.demo-control:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.25);
+}
+
+/* Finale celebration — a single drawn checkmark (used once, at the end). */
+@keyframes spCheckDraw { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
+.sp-check-draw { stroke-dasharray: 30; stroke-dashoffset: 30; animation: spCheckDraw var(--dur-slow) var(--ease-out) 120ms both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-demo-tour.driver-popover { animation: none; }
+  .sp-check-draw { animation: none; stroke-dashoffset: 0; }
 }

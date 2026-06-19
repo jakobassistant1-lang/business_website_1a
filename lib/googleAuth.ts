@@ -149,6 +149,7 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
       fullName: profile.name || email.split("@")[0],
       tosAcceptedAt: new Date(), // continuing through Google consent = TOS acceptance
       isAdmin: false,
+      onboardedAt: null, // brand-new student → show the first-run demo
     },
   });
 }

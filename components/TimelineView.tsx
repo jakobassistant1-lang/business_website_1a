@@ -123,8 +123,12 @@ export function TimelineView({ data }: { data: CalendarData }) {
             <div className="card p-8 text-center text-sm text-muted">No upcoming work to sequence. You&apos;re clear.</div>
           ) : (
             <>
-              <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
-              <TimelineLegend />
+              <div data-tour="tl-gantt">
+                <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
+              </div>
+              <div data-tour="tl-legend">
+                <TimelineLegend />
+              </div>
             </>
           )}
         </div>
@@ -208,6 +212,7 @@ function WeekGantt({
                   return (
                     <button
                       key={s.canvasId}
+                      data-tour={rank.get(s.canvasId) === 1 ? "tl-priority" : undefined}
                       onClick={() => onPick(s.canvasId)}
                       title={`${s.study ? "Study: " : ""}${s.name} · ${fmtHours(s.hours)}${s.dueIdx != null ? ` · due ${dueDow(s.dueIdx)}` : ""}`}
                       className="absolute truncate rounded px-2 text-left text-xs font-medium leading-[26px]"
