@@ -886,5 +886,213 @@
     "region": "CT",
     "confidence": "high",
     "source": "https://canvas.yale.edu/canvas-administration"
+  },
+  {
+    "name": "Liberty University",
+    "aliases": ["Liberty"],
+    "canvasHost": "libertyuniversity.instructure.com",
+    "region": "VA",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=liberty+university"
+  },
+  {
+    "name": "Old Dominion University",
+    "aliases": ["ODU"],
+    "canvasHost": "canvas.odu.edu",
+    "region": "VA",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=old+dominion+university"
+  },
+  {
+    "name": "University of Houston",
+    "aliases": ["UH", "Houston"],
+    "canvasHost": "uh.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+houston"
+  },
+  {
+    "name": "University of Houston-Downtown",
+    "aliases": ["UHD"],
+    "canvasHost": "uhd.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+houston"
+  },
+  {
+    "name": "University of Houston-Clear Lake",
+    "aliases": ["UHCL"],
+    "canvasHost": "uhcl.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+houston"
+  },
+  {
+    "name": "Texas Tech University",
+    "aliases": ["TTU", "Texas Tech"],
+    "canvasHost": "texastech.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=texas+tech+university"
+  },
+  {
+    "name": "University of North Texas",
+    "aliases": ["UNT"],
+    "canvasHost": "unt.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+north+texas"
+  },
+  {
+    "name": "University of North Texas at Dallas",
+    "aliases": ["UNT Dallas"],
+    "canvasHost": "untdallas.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+north+texas"
+  },
+  {
+    "name": "Texas State University",
+    "aliases": ["Texas State", "TXST"],
+    "canvasHost": "canvas.txstate.edu",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=texas+state+university"
+  },
+  {
+    "name": "University of Texas at Arlington",
+    "aliases": ["UT Arlington", "UTA"],
+    "canvasHost": "uta.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+texas"
+  },
+  {
+    "name": "University of Texas at Tyler",
+    "aliases": ["UT Tyler"],
+    "canvasHost": "uttyler.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+texas"
+  },
+  {
+    "name": "Texas A&M University-Corpus Christi",
+    "aliases": ["TAMUCC", "A&M Corpus Christi"],
+    "canvasHost": "canvas.tamucc.edu",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=texas+a%26m"
+  },
+  {
+    "name": "West Texas A&M University",
+    "aliases": ["WTAMU", "West Texas A&M"],
+    "canvasHost": "wtamu.instructure.com",
+    "region": "TX",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=texas+a%26m"
+  },
+  {
+    "name": "University of Utah",
+    "aliases": ["The U", "Utah"],
+    "canvasHost": "utah.instructure.com",
+    "region": "UT",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+utah"
+  },
+  {
+    "name": "Utah Valley University",
+    "aliases": ["UVU"],
+    "canvasHost": "uvu.instructure.com",
+    "region": "UT",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=utah+valley+university"
+  },
+  {
+    "name": "University of Nevada, Las Vegas",
+    "aliases": ["UNLV"],
+    "canvasHost": "unlv.instructure.com",
+    "region": "NV",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+nevada"
+  },
+  {
+    "name": "University of Nevada, Reno",
+    "aliases": ["UNR", "Nevada"],
+    "canvasHost": "webcampus.unr.edu",
+    "region": "NV",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+nevada"
+  },
+  {
+    "name": "University of Cincinnati",
+    "aliases": ["UC", "Cincinnati"],
+    "canvasHost": "uc.instructure.com",
+    "region": "OH",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+cincinnati"
+  },
+  {
+    "name": "Kent State University",
+    "aliases": ["Kent State"],
+    "canvasHost": "kent.instructure.com",
+    "region": "OH",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=kent+state+university"
+  },
+  {
+    "name": "East Carolina University",
+    "aliases": ["ECU"],
+    "canvasHost": "ecu.instructure.com",
+    "region": "NC",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=east+carolina+university"
+  },
+  {
+    "name": "Boise State University",
+    "aliases": ["Boise State"],
+    "canvasHost": "boisestatecanvas.instructure.com",
+    "region": "ID",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=boise+state+university"
+  },
+  {
+    "name": "University of Wisconsin-Milwaukee",
+    "aliases": ["UWM", "UW-Milwaukee"],
+    "canvasHost": "uws.instructure.com",
+    "region": "WI",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+wisconsin"
+  },
+  {
+    "name": "University of Wisconsin-Oshkosh",
+    "aliases": ["UW Oshkosh"],
+    "canvasHost": "uws.instructure.com",
+    "region": "WI",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+wisconsin"
+  },
+  {
+    "name": "University of Wisconsin-Whitewater",
+    "aliases": ["UW-Whitewater"],
+    "canvasHost": "uws.instructure.com",
+    "region": "WI",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+wisconsin"
+  },
+  {
+    "name": "University of Wisconsin-Eau Claire",
+    "aliases": ["UW-Eau Claire"],
+    "canvasHost": "uws.instructure.com",
+    "region": "WI",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+wisconsin"
+  },
+  {
+    "name": "University of Wisconsin-La Crosse",
+    "aliases": ["UW-La Crosse"],
+    "canvasHost": "uws.instructure.com",
+    "region": "WI",
+    "confidence": "high",
+    "source": "https://canvas.instructure.com/api/v1/accounts/search?search_term=university+of+wisconsin"
   }
 ]
