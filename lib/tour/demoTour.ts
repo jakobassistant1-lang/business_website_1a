@@ -36,10 +36,19 @@ export const DEMO_VIEW_LABEL: Record<DemoView, string> = {
   courses: "Courses",
 };
 
+// `side`/`align` mirror driver.js's popover placement. We set them explicitly on
+// every anchored step so the popover never lands on top of a large cutout or under
+// the fixed 44px demo bar. (driver.js Side: top|right|bottom|left|over; Alignment:
+// start|center|end.)
+export type TourSide = "top" | "right" | "bottom" | "left" | "over";
+export type TourAlign = "start" | "center" | "end";
+
 export interface TourStep {
   selector?: string; // undefined → a centered popover (no element highlighted)
   title: string;
   body: string;
+  side?: TourSide; // popover placement relative to the anchor
+  align?: TourAlign;
 }
 
 // The opening welcome — a centered React modal with a fork ("Take the tour" /
@@ -52,30 +61,35 @@ export const WELCOME_STEP = {
 // Per-page coachmarks. A few short, specific steps so the demo teaches each one.
 export const DEMO_STEPS: Record<DemoView, TourStep[]> = {
   dashboard: [
-    { selector: '[data-tour="dash-focus"]', title: "What to do first", body: "Your #1 task, picked from everything due — no guessing where to start." },
-    { selector: '[data-tour="dash-progress"]', title: "Today at a glance", body: "This ring fills in as you finish today's work." },
-    { selector: '[data-tour="dash-week"]', title: "How heavy is the week", body: "A quick read on the week ahead — easy, moderate, or hard." },
-    { selector: '[data-tour="dash-tests"]', title: "Tests coming up", body: "Your next quizzes and exams, each with a study plan ready." },
+    // dash-focus wraps the big violet Focus card + do-next list (tall) → popover to
+    // the RIGHT so it sits beside the card, never over it or under the bar.
+    { selector: '[data-tour="dash-focus"]', title: "What to do first", body: "Your #1 task, picked from everything due — no guessing where to start.", side: "right", align: "start" },
+    { selector: '[data-tour="dash-progress"]', title: "Today at a glance", body: "This ring fills in as you finish today's work.", side: "left", align: "start" },
+    { selector: '[data-tour="dash-week"]', title: "How heavy is the week", body: "A quick read on the week ahead — easy, moderate, or hard.", side: "bottom", align: "start" },
+    { selector: '[data-tour="dash-tests"]', title: "Tests coming up", body: "Your next quizzes and exams, each with a study plan ready.", side: "left", align: "start" },
   ],
   "plan-list": [
-    { selector: '[data-tour="plan-views"]', title: "Your work, three ways", body: "List, Calendar, or Timeline — switch views anytime up here." },
-    { selector: '[data-tour="plan-list"]', title: "The do-next order", body: "Everything ranked by what to tackle first — deadlines, points, and risk, not just the clock." },
+    { selector: '[data-tour="plan-views"]', title: "Your work, three ways", body: "List, Calendar, or Timeline — switch views anytime up here.", side: "bottom", align: "end" },
+    // Anchored to the short intro line above the list (see PlanSurface), so the
+    // cutout is small and the popover points down at the ranked list.
+    { selector: '[data-tour="plan-list"]', title: "The do-next order", body: "Everything ranked by what to tackle first — deadlines, points, and risk, not just the clock.", side: "bottom", align: "start" },
   ],
   "plan-calendar": [
-    { selector: '[data-tour="cal-views"]', title: "Day, week, or month", body: "See the same work on a calendar, however you like." },
-    { selector: '[data-tour="cal-day"]', title: "Deadlines on their day", body: "Each assignment lands on the day it's due, color-coded by class — click any to open it." },
+    { selector: '[data-tour="cal-views"]', title: "Day, week, or month", body: "See the same work on a calendar, however you like.", side: "bottom", align: "end" },
+    { selector: '[data-tour="cal-day"]', title: "Deadlines on their day", body: "Each assignment lands on the day it's due, color-coded by class — click any to open it.", side: "right", align: "start" },
   ],
   "plan-timeline": [
-    { selector: '[data-tour="tl-gantt"]', title: "Your whole term", body: "One row per class; each bar is the days set aside to work — click a bar for details." },
-    { selector: '[data-tour="tl-priority"]', title: "Done before it's due", body: "Work is scheduled to finish on time. The number is its priority order." },
-    { selector: '[data-tour="tl-legend"]', title: "What every mark means", body: "The key decodes the colors — quiz vs exam, ◆ due dates, and striped study time." },
+    // tl-gantt is wide; place the popover above it (it sits below the banner/summary).
+    { selector: '[data-tour="tl-gantt"]', title: "Your whole term", body: "One row per class; each bar is the days set aside to work — click a bar for details.", side: "top", align: "start" },
+    { selector: '[data-tour="tl-priority"]', title: "Done before it's due", body: "Work is scheduled to finish on time. The number is its priority order.", side: "bottom", align: "start" },
+    { selector: '[data-tour="tl-legend"]', title: "What every mark means", body: "The key decodes the colors — quiz vs exam, ◆ due dates, and striped study time.", side: "top", align: "start" },
   ],
   study: [
-    { selector: '[data-tour="study-featured"]', title: "Prep for any test", body: "Your next quiz or exam, front and center — with a study plan ready." },
-    { selector: '[data-tour="study-tools"]', title: "Notes → a study guide", body: "We turn its Canvas readings into a guide and practice questions. Pick an answer to try it." },
+    { selector: '[data-tour="study-featured"]', title: "Prep for any test", body: "Your next quiz or exam, front and center — with a study plan ready.", side: "bottom", align: "start" },
+    { selector: '[data-tour="study-tools"]', title: "Notes → a study guide", body: "We turn its Canvas readings into a guide and practice questions. Pick an answer to try it.", side: "top", align: "start" },
   ],
   courses: [
-    { selector: '[data-tour="courses-card"]', title: "Every class in one place", body: "A card per course shows what to do next — open one for its full list." },
+    { selector: '[data-tour="courses-card"]', title: "Every class in one place", body: "A card per course shows what to do next — open one for its full list.", side: "right", align: "start" },
   ],
 };
 

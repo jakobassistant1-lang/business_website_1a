@@ -61,6 +61,9 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
   const driverRef = useRef<Driver | null>(null);
   // When jumping back a page, start that page's driver at its LAST step.
   const startAtLastRef = useRef(false);
+  // The demo's real scroll container is <main> (overflow-auto), NOT the window —
+  // driver.js measures/scrolls the window, so we drive the scroll ourselves.
+  const mainRef = useRef<HTMLElement | null>(null);
   const sectionIdx = NAV.findIndex((n) => n.section === sectionOf(view));
 
   const destroyTour = useCallback(() => {
@@ -116,6 +119,22 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
     const raw: TourStep[] = DEMO_STEPS[view];
     const reduce = prefersReducedMotion();
 
+    // Re-measure the spotlight only once the anchor actually has a laid-out box.
+    // Plan/Calendar/Timeline remount heavy children (Gantt, week grid) that size
+    // up AFTER first paint, so a fixed-timeout refresh can measure a 0-height box.
+    // Poll a few animation frames until the element has nonzero size, then refresh.
+    // Runs even under reduced motion (correctness, not animation).
+    const settleThenRefresh = (selector: string | undefined, tries = 0) => {
+      if (cancelled) return;
+      const el = selector ? (document.querySelector(selector) as HTMLElement | null) : null;
+      const ready = !selector || (el && el.offsetWidth > 0 && el.offsetHeight > 0);
+      if (ready || tries >= 10) {
+        driverRef.current?.refresh();
+        return;
+      }
+      requestAnimationFrame(() => settleThenRefresh(selector, tries + 1));
+    };
+
     const start = (tries = 0) => {
       if (cancelled) return;
       // Keep only steps whose anchor is on screen (centered steps always qualify).
@@ -138,6 +157,8 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
           popover: {
             title: s.title,
             description: s.body,
+            ...(s.side ? { side: s.side } : {}),
+            ...(s.align ? { align: s.align } : {}),
             ...(last
               ? {
                   nextBtnText: isLastView ? "Finish ✓" : `Next: ${nextLabel} →`,
@@ -167,7 +188,13 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
         stagePadding: 8,
         stageRadius: 10,
         animate: !reduce,
-        smoothScroll: true,
+        // We own the scroll (scrollIntoView the anchor inside <main> before
+        // driving). Letting driver smooth-scroll the WINDOW races our scroll and
+        // threw the spotlight out of frame on Back. Keep it off.
+        smoothScroll: false,
+        // Big anchors (whole Focus card / Gantt) otherwise become a giant clickable
+        // cutout; highlight them, don't make them interactive.
+        disableActiveInteraction: true,
         showProgress: present.length > 1,
         allowClose: true,
         nextBtnText: "Next →",
@@ -189,16 +216,30 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
         steps,
       });
       driverRef.current = d;
-      d.drive(startAtLastRef.current ? steps.length - 1 : 0);
+      const startIdx = startAtLastRef.current ? steps.length - 1 : 0;
       startAtLastRef.current = false;
-      // Recompute the spotlight once layout settles — a heavy view (the calendar
-      // grid) can shift after first paint, which would leave the highlight stale.
-      if (!reduce) {
-        requestAnimationFrame(() => driverRef.current?.refresh());
-        window.setTimeout(() => {
-          if (!cancelled) driverRef.current?.refresh();
-        }, 250);
+
+      // Own the <main> scroll: reset the carried-over scrollTop, then bring the
+      // target anchor into view INSIDE <main> before driving. driver.js measures
+      // the window, so without this a stale main.scrollTop left the anchor — and
+      // the cutout — off where driver thought it was. Fixes Back (which uniquely
+      // drives the previous page's LAST/bottom step) and Next alike.
+      const startSelector = steps[startIdx]?.element as string | undefined;
+      const main = mainRef.current;
+      if (main) {
+        main.scrollTop = 0;
+        if (startSelector) {
+          const target = document.querySelector(startSelector) as HTMLElement | null;
+          target?.scrollIntoView({ block: startIdx === steps.length - 1 ? "center" : "nearest" });
+        }
       }
+
+      d.drive(startIdx);
+
+      // Re-measure once layout settles (heavy remounts size up after first paint).
+      // Always runs at least once — under reduced motion we skip the ANIMATION
+      // (animate:false above), not the correctness re-measure.
+      settleThenRefresh(startSelector);
     };
     start();
     return () => {
@@ -330,7 +371,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
           {/* The real surfaces, mock-fed; in-view links neutralized. Plan's three
               sub-views are separate tour pages (remounted via key so the right one
               shows). */}
-          <main onClickCapture={neutralizeNav} className="min-w-0 flex-1 overflow-auto px-6 py-8 lg:px-10 lg:py-10">
+          <main ref={mainRef} onClickCapture={neutralizeNav} className="min-w-0 flex-1 overflow-auto px-6 py-8 lg:px-10 lg:py-10">
             {view === "dashboard" && <DashboardView data={data} todayYmd={todayYmd} firstName={firstName} demo />}
             {view === "plan-list" && <PlanSurface key="pl" data={data} todayYmd={todayYmd} demo initialView="list" />}
             {view === "plan-calendar" && <PlanSurface key="pc" data={data} todayYmd={todayYmd} demo initialView="calendar" />}
