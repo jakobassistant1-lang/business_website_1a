@@ -1,4 +1,4 @@
-# StudyPlan
+# Navo
 
 A locally-hosted, single-user web app that connects to one student's Canvas
 account, caches their assignments/announcements, and runs a deterministic
@@ -18,7 +18,7 @@ in the scheduler.
 ## Quick start
 
 ```bash
-cd studyplan
+cd navo
 npm install
 cp .env.example .env   # sets DATABASE_URL for the local SQLite file
 npm run db:push        # create prisma/dev.db from the schema

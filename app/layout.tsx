@@ -6,7 +6,7 @@ import { WaveBackdrop } from "@/components/WaveBackdrop";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "StudyPlan",
+  title: "Navo",
   description: "Turn what's due into what to do today.",
 };
 

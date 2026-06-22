@@ -98,14 +98,14 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
   return (
     <aside className={`flex shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 ${collapsed ? "w-16 px-2" : "w-64 px-4"}`}>
       <div className={`mb-2 flex items-center px-1 ${collapsed ? "justify-center" : "justify-between"}`}>
-        <Link href="/dashboard" className="flex items-center gap-3" title="StudyPlan">
+        <Link href="/dashboard" className="flex items-center gap-3" title="Navo">
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path d="M5 4h9l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
               <path d="M9 12.5l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
-          {!collapsed && <span className="text-lg font-bold tracking-tight text-white">StudyPlan</span>}
+          {!collapsed && <span className="text-lg font-bold tracking-tight text-white">Navo</span>}
         </Link>
         {!collapsed && (
           <button onClick={toggleCollapse} title="Collapse menu" aria-label="Collapse menu" className="text-gray-400 transition-colors hover:text-white">

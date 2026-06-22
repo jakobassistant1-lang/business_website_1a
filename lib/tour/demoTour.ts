@@ -46,7 +46,7 @@ export interface TourStep {
 // "Explore on my own"), NOT a driver step.
 export const WELCOME_STEP = {
   title: "Everything from Canvas, in one place 👋",
-  body: "This is StudyPlan running on sample classes — poke around, you can't break anything.",
+  body: "This is Navo running on sample classes — poke around, you can't break anything.",
 };
 
 // Per-page coachmarks. A few short, specific steps so the demo teaches each one.
@@ -81,7 +81,7 @@ export const DEMO_STEPS: Record<DemoView, TourStep[]> = {
 
 // Shown after the last page's step (a React modal, not a driver popover).
 export const FINALE_STEP = {
-  title: "That's StudyPlan",
+  title: "That's Navo",
   body: "Connect Canvas to swap this sample data for your real Science, Math, and History work.",
 };
 
@@ -89,5 +89,5 @@ export const FINALE_STEP = {
 // pointing at the "Connect Canvas" button.
 export const CONNECT_STEP = {
   title: "Now make it yours",
-  body: "Connect your Canvas and StudyPlan turns your real coursework into this same do-next plan.",
+  body: "Connect your Canvas and Navo turns your real coursework into this same do-next plan.",
 };

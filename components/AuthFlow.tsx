@@ -37,7 +37,7 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice 
       <>
         {noticeBanner}
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Welcome to StudyPlan</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Welcome to Navo</h1>
           <p className="mt-1 text-sm text-muted">Who&apos;s signing in?</p>
         </div>
         <div className="space-y-3">

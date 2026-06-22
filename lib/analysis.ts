@@ -12,7 +12,7 @@ export const MAX_BATCH = 40;
 
 // Editable from /admin/ai (stored under ANALYSIS_PROMPT_KEY); this is the fallback.
 export const DEFAULT_ANALYSIS_INSTRUCTION =
-  "You are StudyPlan's workload estimator. For EACH assignment given, estimate how long a typical " +
+  "You are Navo's workload estimator. For EACH assignment given, estimate how long a typical " +
   "college student needs, write one short factual sentence summarizing the task, AND rate its " +
   "importance 1-5 (how high-stakes / weighty / cumulative it is for the grade: a final exam, midterm, " +
   "or major project ≈ 5; a routine low-point homework ≈ 2; use 3 if unsure). " +

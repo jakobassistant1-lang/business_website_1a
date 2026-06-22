@@ -18,7 +18,7 @@ export function isKanbanStatus(s: unknown): s is KanbanStatus {
 
 // Which board a set of cards belongs to. Both boards share the same columns and
 // card shape; the discriminator just keeps them in separate lanes (and gives each
-// its own ticket numbering). "build" is the existing StudyPlan MVP backlog.
+// its own ticket numbering). "build" is the existing Navo MVP backlog.
 export const BOARDS = ["build", "marketing"] as const;
 export type Board = (typeof BOARDS)[number];
 export const DEFAULT_BOARD: Board = "build";

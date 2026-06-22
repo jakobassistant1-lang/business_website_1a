@@ -136,7 +136,7 @@ function moduleContains(m: CanvasModule, a: AssessmentMeta): boolean {
 // ---------- AI relevance check (the hybrid's second stage) ----------
 
 const RELEVANCE_INSTRUCTION =
-  "You are StudyPlan's relevance checker. From the candidate materials below, decide which are actually relevant " +
+  "You are Navo's relevance checker. From the candidate materials below, decide which are actually relevant " +
   "to preparing for THIS assessment. Drop items clearly about other units/weeks/topics, or pure course logistics " +
   "(office hours, unrelated reminders). When unsure, KEEP the item.";
 
@@ -349,18 +349,18 @@ const LOW_MATERIAL_NOTE =
 // from /admin/ai under "Study outputs"). The data blocks and the JSON output
 // contracts below are NOT editable: the parsers depend on them.
 export const DEFAULT_STUDY_PLAN_INSTRUCTION =
-  "You are StudyPlan's study coach. The schedule below is FIXED by the planner — do not add, move, or resize sessions. " +
+  "You are Navo's study coach. The schedule below is FIXED by the planner — do not add, move, or resize sessions. " +
   "For EACH listed session, say HOW to use it: a one-line focus, 1-3 named techniques (e.g. active recall, spaced practice, " +
   "self-testing, worked examples — early sessions lean understanding/encoding, later sessions lean retrieval/self-testing), " +
   "and 2-4 concrete activities.";
 
 export const DEFAULT_STUDY_GUIDE_INSTRUCTION =
-  "You are StudyPlan's study-guide writer. Build a condensed, test-prep study guide from the material below. " +
+  "You are Navo's study-guide writer. Build a condensed, test-prep study guide from the material below. " +
   "Organize by topic: 3-6 sections, each with a short title, 3-6 tight bullet points (facts/concepts/skills to know), " +
   "and 0-6 key terms with one-line definitions.";
 
 export const DEFAULT_STUDY_QUESTIONS_INSTRUCTION =
-  "You are StudyPlan's practice-question writer. Questions must test understanding of the material (not trivia about " +
+  "You are Navo's practice-question writer. Questions must test understanding of the material (not trivia about " +
   "course logistics). Vary difficulty. Explanations teach the underlying concept in 1-2 sentences.";
 
 export function buildPlanPrompt(

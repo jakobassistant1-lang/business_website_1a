@@ -54,10 +54,10 @@ export async function POST(req: Request) {
     const resetUrl = `${base}/reset-password?token=${token}`;
     await sendEmail({
       to: email,
-      subject: "Reset your StudyPlan password",
+      subject: "Reset your Navo password",
       text:
         `Hi ${firstName(user.fullName)},\n\n` +
-        `We received a request to reset the password for your StudyPlan account.\n\n` +
+        `We received a request to reset the password for your Navo account.\n\n` +
         `Reset it here (this link expires in 1 hour and can be used once):\n${resetUrl}\n\n` +
         `If you didn't request this, you can safely ignore this email — your password won't change.`,
     });
@@ -65,10 +65,10 @@ export async function POST(req: Request) {
     // Google-only (passwordless) account → there is no password to reset.
     await sendEmail({
       to: email,
-      subject: "Signing in to StudyPlan",
+      subject: "Signing in to Navo",
       text:
         `Hi ${firstName(user.fullName)},\n\n` +
-        `Someone asked to reset the password for this email on StudyPlan. This account ` +
+        `Someone asked to reset the password for this email on Navo. This account ` +
         `doesn't use a password — you sign in with "Continue with Google".\n\n` +
         `Go to ${base}/login and choose "Continue with Google".\n\n` +
         `If this wasn't you, no action is needed.`,

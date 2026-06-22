@@ -269,7 +269,7 @@ export const MARKETING_BACKLOG: MarketingTicket[] = [
   {
     number: 35,
     title: 'Write what to say when people ask "what is this?"',
-    scope: "Make 3 short lines the team and helpers can copy-paste to explain StudyPlan in seconds.",
+    scope: "Make 3 short lines the team and helpers can copy-paste to explain Navo in seconds.",
     size: "small",
     status: "backlog",
   },

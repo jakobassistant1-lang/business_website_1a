@@ -17,7 +17,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Editable from /admin/ai (stored in the Setting table). This is the fallback
 // when no custom prompt has been saved.
 export const DEFAULT_BRIEFING_INSTRUCTION =
-  "You are StudyPlan's study coach. Given the student's plan summary and their top priorities, " +
+  "You are Navo's study coach. Given the student's plan summary and their top priorities, " +
   "write a warm, plain-English briefing of 2-4 short sentences telling them what to focus on today and why. " +
   "Do not invent assignments, points, or deadlines beyond what is given. No markdown, no lists, no headings.";
 
@@ -131,7 +131,7 @@ export async function generateBriefing(
 // invents deadlines. Admin-tunable (PERIOD_COACH_PROMPT_KEY); fails open.
 
 export const DEFAULT_PERIOD_COACH_INSTRUCTION =
-  "You are StudyPlan's study coach. You are given a student's workload for a specific period " +
+  "You are Navo's study coach. You are given a student's workload for a specific period " +
   "(today, this week, or this month) plus their top priorities, which our system has ALREADY ranked " +
   "and scheduled to be deadline-safe. Each item is tagged with a type in [brackets]. Write a warm, " +
   "practical game plan of 2-5 short sentences using evidence-based techniques MATCHED TO THE WORK:\n" +
@@ -219,7 +219,7 @@ export async function generateAssignmentDescription(input: AssignmentDescInput):
 // ONE Gemini call → a short approach + ordered sub-steps. Fails open to empty.
 
 export const DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION =
-  "You are StudyPlan's study coach. For the assignment below, reply with ONLY a JSON object " +
+  "You are Navo's study coach. For the assignment below, reply with ONLY a JSON object " +
   '{"approach": string, "steps": string[]}. "approach" is 1-2 plain-English sentences on how to ' +
   'tackle it well. "steps" is 3-5 short, concrete sub-steps in the order to do them (each a short ' +
   "imperative phrase). Be specific to the assignment's title and type, but do NOT invent precise " +
@@ -253,7 +253,7 @@ export async function generateAssignmentPlan(input: AssignmentDescInput, instruc
 // dashboard KPI is never blank when Gemini is unavailable.
 
 export const DASHBOARD_SUMMARY_INSTRUCTION =
-  "You are StudyPlan's study coach. From the student's week summary and ranked priorities, reply with ONLY a JSON " +
+  "You are Navo's study coach. From the student's week summary and ranked priorities, reply with ONLY a JSON " +
   'object of the form {"summary": string, "intensity": "easy" | "moderate" | "hard"}. ' +
   '"summary" is a warm, plain-English 2-3 sentence briefing of what to focus on this week and why — no markdown, no ' +
   'lists, no headings. "intensity" is your judgment of how demanding THIS WEEK is overall, weighing the number and ' +

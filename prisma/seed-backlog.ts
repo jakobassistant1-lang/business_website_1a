@@ -1,4 +1,4 @@
-// One-time seed: replace the BUILD board with the 24 StudyPlan MVP backlog tickets.
+// One-time seed: replace the BUILD board with the 24 Navo MVP backlog tickets.
 // Run against the live DB with `npx tsx prisma/seed-backlog.ts` (needs DATABASE_URL).
 // Scoped to board "build" so it never touches the marketing board (which seeds
 // itself on first open — see lib/marketingBacklog.ts).

@@ -304,7 +304,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
                   <path d="M9 12.5l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </span>
-              <span className="text-lg font-bold tracking-tight text-white">StudyPlan</span>
+              <span className="text-lg font-bold tracking-tight text-white">Navo</span>
             </div>
             <nav className="flex flex-col gap-1">
               {NAV.map((item, i) => {

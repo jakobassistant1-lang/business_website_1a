@@ -505,7 +505,7 @@ function ConnectCard() {
       <div className="flex justify-center text-accent">
         <Glyph d={ICON.calendar} size={36} />
       </div>
-      <p className="mt-4 text-[17px] font-medium text-ink">Welcome to StudyPlan.</p>
+      <p className="mt-4 text-[17px] font-medium text-ink">Welcome to Navo.</p>
       <p className="mt-1.5 text-[15px] text-muted">Connect your Canvas account and we&apos;ll turn your coursework into a calm, day-by-day plan.</p>
       <Link href="/connections" data-tour="connect-canvas" className="btn-primary mt-5">
         Connect Canvas

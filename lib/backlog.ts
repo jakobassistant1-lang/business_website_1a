@@ -1,4 +1,4 @@
-// Canonical StudyPlan MVP backlog — the 24 build tickets, structured
+// Canonical Navo MVP backlog — the 24 build tickets, structured
 // goal → subgoal → ticket. Seeded into the AdminTask board (prisma/seed-backlog.ts);
 // after seeding the DB is the source of truth (tickets get added/moved over time).
 //

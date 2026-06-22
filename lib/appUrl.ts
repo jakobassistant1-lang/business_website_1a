@@ -9,7 +9,7 @@
 let warnedUntrustedOrigin = false;
 
 export function appOrigin(requestOrigin: string): string {
-  // 1. Explicit operator override — set this in production (e.g. https://pinnavel.com).
+  // 1. Explicit operator override — set this in production (e.g. https://navolearning.com).
   const explicit = process.env.APP_URL?.trim();
   if (explicit) return explicit.replace(/\/+$/, "");
 

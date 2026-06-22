@@ -12,7 +12,7 @@ export function BrandMark({ compact = false }: { compact?: boolean }) {
           <path d="M9 12.5l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
-      {!compact && <span className="text-lg font-semibold tracking-tight">StudyPlan</span>}
+      {!compact && <span className="text-lg font-semibold tracking-tight">Navo</span>}
     </span>
   );
 }

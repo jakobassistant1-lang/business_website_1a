@@ -99,7 +99,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         setEditing(false); // collapse back to the connected summary
       }
     } catch {
-      setMessage("Something went wrong reaching StudyPlan. Please try again.");
+      setMessage("Something went wrong reaching Navo. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -110,7 +110,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
     return (
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
-        <p className="mt-1 text-sm text-muted">Link the Canvas account StudyPlan reads your coursework from.</p>
+        <p className="mt-1 text-sm text-muted">Link the Canvas account Navo reads your coursework from.</p>
 
         <div className="card mt-6 max-w-xl p-6">
           <div className="mb-4 flex items-center justify-between">
@@ -217,7 +217,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted">
                 <li>Open Canvas with the button below — it opens in a new tab.</li>
                 <li>Go to <strong className="text-ink">Account → Settings</strong>, then under <strong className="text-ink">Approved Integrations</strong> click <strong className="text-ink">+ New Access Token</strong>.</li>
-                <li>For Purpose type “StudyPlan”, leave the expiry date <strong className="text-ink">blank</strong>, then click <strong className="text-ink">Generate Token</strong>.</li>
+                <li>For Purpose type “Navo”, leave the expiry date <strong className="text-ink">blank</strong>, then click <strong className="text-ink">Generate Token</strong>.</li>
                 <li>Copy the token (Canvas shows it only once) and paste it below.</li>
               </ol>
               {tokenPageUrl && (
