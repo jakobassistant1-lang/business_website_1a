@@ -16,6 +16,7 @@ import { toneSoft } from "@/lib/tone";
 import { ItemDetail, Glyph, ICON, fmtHours, fmtTime } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { ItemType } from "@/lib/itemType";
+import { classifyDataShape, type DataShape } from "@/lib/onboardingState";
 
 const TODAY_MAX = 7;
 const TYPE_LABEL: Record<ItemType, string> = { assignment: "Assignment", quiz: "Quiz", exam: "Exam", other: "Task" };
@@ -73,6 +74,11 @@ export function DashboardView({ data, todayYmd: serverToday, firstName }: { data
   const todayDone = data.completed.filter(isDueToday);
   const leadId = todayActive[0]?.canvasId ?? null;
 
+  // Shape of the Canvas data. When it's anything but "normal" (empty/thin/odd),
+  // the Focus card is swapped for an honest, count-driven thin-state hero; the
+  // normal path renders FocusModule unchanged (byte-identical to before).
+  const shape = classifyDataShape(data, todayYmd);
+
   // Study blocks only make sense for assessments still AHEAD — never surface
   // "study for X" once X is due today (or already taken), and never a 0h block.
   const todayBlocks = data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? [];
@@ -126,7 +132,11 @@ export function DashboardView({ data, todayYmd: serverToday, firstName }: { data
       ) : (
         <div className="flex flex-col gap-6 lg:flex-row">
           <div className="min-w-0 flex-1 space-y-6">
-            <FocusModule data={data} todayYmd={todayYmd} onSelect={setSelected} />
+            {shape === "normal" ? (
+              <FocusModule data={data} todayYmd={todayYmd} onSelect={setSelected} />
+            ) : (
+              <ThinStateHero shape={shape} data={data} onSelect={setSelected} />
+            )}
             <TodayCard
               today={today}
               active={todayActive}
@@ -297,6 +307,117 @@ function FocusModule({ data, todayYmd, onSelect }: { data: CalendarData; todayYm
   );
 }
 
+// ── Thin / empty / odd Canvas data ────────────────────────────────────────────
+// Shown in place of the Focus card when the data isn't "normal". Calm, honest,
+// and COUNT-DRIVEN (every number comes from the data — nothing is hardcoded), so
+// a brand-new or quiet account gets a sensible first impression instead of a
+// stack of zeros or a misleading "all caught up". The rest of the dashboard
+// (Today, This week, the rail) renders exactly as it does normally.
+function ThinStateHero({ shape, data, onSelect }: { shape: Exclude<DataShape, "normal">; data: CalendarData; onSelect: (it: CalendarItem) => void }) {
+  const router = useRouter();
+  const [rechecking, setRechecking] = useState(false);
+
+  // Same re-sync the auto-sync runs: pull Canvas, re-analyze, refresh the page.
+  const recheck = async () => {
+    if (rechecking) return;
+    setRechecking(true);
+    await fetch("/api/sync", { method: "POST" }).catch(() => {});
+    await fetch("/api/analyze", { method: "POST" }).catch(() => {});
+    router.refresh();
+    setRechecking(false);
+  };
+
+  if (shape === "empty") {
+    return (
+      <div className="card p-8 text-center">
+        <div className="flex justify-center text-accent">
+          <Glyph d={ICON.calendar} size={34} />
+        </div>
+        <p className="mt-3 text-xl font-semibold text-ink">No upcoming work yet</p>
+        <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
+          We&apos;ve linked Canvas but don&apos;t see any upcoming work yet. That&apos;s normal early in the term — your plan will show up here as soon as
+          assignments post.
+        </p>
+        <button onClick={recheck} disabled={rechecking} className="btn-primary mt-5 disabled:opacity-60">
+          {rechecking ? "Checking…" : "Re-check Canvas"}
+        </button>
+      </div>
+    );
+  }
+
+  if (shape === "all-overdue") {
+    const first = data.atRisk[0];
+    const n = data.atRisk.length;
+    return (
+      <div className="card p-8 text-center">
+        <div className="flex justify-center text-accent">
+          <Glyph d={ICON.list} size={34} />
+        </div>
+        <p className="mt-3 text-xl font-semibold text-ink">
+          {n} {n === 1 ? "item is" : "items are"} past due
+        </p>
+        <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
+          Nothing new is coming up, so this is a calm moment to catch up. Start with {first.name} — the rest are in the Overdue list.
+        </p>
+      </div>
+    );
+  }
+
+  if (shape === "all-due-later") {
+    const top = data.recommendations[0];
+    const it = top ? data.items.find((x) => x.canvasId === top.canvasId) : undefined;
+    const day = it?.dueAt ? WEEKDAYS_FULL[new Date(it.dueAt).getDay()] : null;
+    return (
+      <div className="card p-8 text-center">
+        <div className="flex justify-center text-success">
+          <Glyph d={ICON.check} size={34} />
+        </div>
+        <p className="mt-3 text-xl font-semibold text-ink">Nothing&apos;s due today — you&apos;re ahead.</p>
+        <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
+          {top ? (
+            <>
+              Next up: {top.name}
+              {day ? ` on ${day}` : ""}.
+            </>
+          ) : (
+            "Enjoy the breathing room — your next deadline is later this week."
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  // all-undated: items exist but none carry a Canvas due date. These are normally
+  // dropped from the Today list, so surface them here — order doesn't matter.
+  const undated = data.items.filter((it) => it.dueAt == null);
+  const n = undated.length;
+  return (
+    <div className="card p-6">
+      <h2 className="text-lg font-semibold text-ink">
+        {n} {n === 1 ? "assignment has" : "assignments have"} no due date
+      </h2>
+      <p className="mt-1.5 text-sm text-muted">
+        Canvas didn&apos;t give {n === 1 ? "it" : "these"} a due date, so {n === 1 ? "it isn't" : "they aren't"} on a day yet. Here{" "}
+        {n === 1 ? "it is" : "they are"} — do {n === 1 ? "it" : "them"} whenever suits you.
+      </p>
+      <div className="mt-3 space-y-0.5">
+        {undated.map((it) => (
+          <button key={it.canvasId} onClick={() => onSelect(it)} className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3.5 text-left hover:bg-accent-soft/40">
+            <StatusDisc kind="active" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-medium text-ink">{it.name}</span>
+              <span className="block truncate text-[13px] text-muted">
+                {TYPE_LABEL[it.type]} · {shortCourse(it.courseName)}
+              </span>
+            </span>
+            <span className="shrink-0 text-[13px] font-medium text-muted">No due date</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // One status disc per row. It mirrors Canvas — empty until submitted, then a
 // filled green check. It is NOT a manual toggle (completion comes from Canvas).
 function StatusDisc({ kind }: { kind: "done" | "study" | "active" }) {
@@ -417,6 +538,17 @@ function WeekCard({ data }: { data: CalendarData }) {
   // "free" must net out the overload too, or an over-subscribed week could claim
   // free hours and contradict the "Nh over" pill. (#2)
   const free = round1(Math.max(0, budget - work));
+
+  // A genuinely empty week — no scheduled work and nothing due — reads as calm,
+  // not as a stack of zeros ("0h of work · 0 due"). (#106)
+  if (work === 0 && dueThisWeek.length === 0) {
+    return (
+      <div className="card p-6">
+        <h2 className="text-lg font-semibold text-ink">This week</h2>
+        <p className="mt-3 text-sm text-muted">Nothing scheduled yet.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="card p-6">

@@ -72,6 +72,16 @@ export async function validateCredentials(host: string, token: string): Promise<
   }
   if (res.status === 200) {
     const body = (await res.json().catch(() => ({}))) as { name?: string };
+    // The token authenticates — now confirm it can actually READ courses. A token
+    // made without the right access logs in fine but 403s on real data, which used
+    // to surface only later as an empty plan. One lightweight probe catches it here.
+    // Fails OPEN: any non-403 hiccup (timeout, transient 5xx) keeps the good token.
+    try {
+      const probe = await canvasFetch(host, token, "/courses?enrollment_state=active&per_page=1");
+      if (probe.status === 403) return { status: "insufficient_scope", httpCode: 403 };
+    } catch {
+      /* fail open — don't block a working token on a flaky probe */
+    }
     return { status: "valid", accountName: body.name };
   }
   if (res.status === 401) return { status: "invalid_token", httpCode: 401 };

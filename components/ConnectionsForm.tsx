@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { normalizeHost } from "@/lib/host";
 import { SchoolPicker } from "@/components/SchoolPicker";
@@ -15,16 +16,17 @@ interface Initial {
 
 const STATUS_PILL: Record<string, { text: string; tone: Tone }> = {
   valid: { text: "Connected", tone: "success" },
-  invalid_token: { text: "Token rejected", tone: "danger" },
-  bad_domain: { text: "Bad domain", tone: "danger" },
+  invalid_token: { text: "Code didn't work", tone: "danger" },
+  bad_domain: { text: "Address not found", tone: "danger" },
   unreachable: { text: "Unreachable", tone: "danger" },
-  insufficient_scope: { text: "Insufficient scope", tone: "danger" },
+  insufficient_scope: { text: "Needs full access", tone: "danger" },
   error: { text: "Error", tone: "danger" },
 };
 
 type Step = "choose-school" | "get-token";
 
 export function ConnectionsForm({ initial }: { initial: Initial }) {
+  const router = useRouter();
   const connectedAtStart = initial.status === "valid" && initial.hasToken;
   const [editing, setEditing] = useState(!connectedAtStart);
   const [step, setStep] = useState<Step>(initial.host ? "get-token" : "choose-school");
@@ -37,6 +39,10 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
   const [accountName, setAccountName] = useState<string | null>(initial.accountName);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // After a good code, we don't just say "connected" — we pull the classes in and
+  // then drop the student on their plan. `syncing` drives that full-card progress
+  // state so they never see a bare spinner with nothing happening.
+  const [syncing, setSyncing] = useState(false);
 
   const pill = status ? STATUS_PILL[status] : null;
   const tokenPageUrl = host ? `https://${host}/profile/settings` : null;
@@ -75,7 +81,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
     e.preventDefault();
     const t = token.trim();
     if (!t) {
-      setMessage("Paste your Canvas token first.");
+      setMessage("Paste your connection code first.");
       return;
     }
     setBusy(true);
@@ -93,16 +99,64 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
       }
       setStatus(body.status);
       setAccountName(body.accountName ?? null);
-      setMessage(body.message);
       if (body.status === "valid") {
         setToken("");
-        setEditing(false); // collapse back to the connected summary
+        // Don't stop at "connected" — pull the classes in, then hand off to the plan.
+        await finishAndSync();
+        return;
       }
+      setMessage(body.message);
     } catch {
       setMessage("Something went wrong reaching StudyPlan. Please try again.");
     } finally {
       setBusy(false);
     }
+  }
+
+  // Best-effort first pull, then route to the dashboard. Everything here fails
+  // OPEN: if the sync or analyze call errors, we STILL send the student to their
+  // plan (the dashboard handles empty/thin states) — a flaky pull must never
+  // strand them on the connect screen. We set `sp_autosynced` so the dashboard's
+  // own once-per-session sync doesn't immediately run a second time.
+  async function finishAndSync() {
+    setSyncing(true);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem("sp_autosynced", "1");
+      } catch {
+        /* private mode / storage disabled — fine, dashboard will just sync once */
+      }
+    }
+    await fetch("/api/sync", { method: "POST" }).catch(() => {});
+    await fetch("/api/analyze", { method: "POST" }).catch(() => {});
+    router.push("/dashboard");
+  }
+
+  // --- Pulling your classes in (post-connect) ----------------------------
+  // Shown after a good code while we do the first sync. Always names what's
+  // happening (never a bare spinner) and names the school so it feels real.
+  if (syncing) {
+    const where = schoolName ?? host;
+    return (
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Connect Canvas</h1>
+        <p className="mt-1 text-sm text-muted">You&apos;re connected — hang tight for a second.</p>
+
+        <div className="card mt-6 max-w-xl p-6">
+          <div className="flex items-center gap-3">
+            <span
+              className="h-5 w-5 shrink-0 rounded-full border-2 border-line-subtle border-t-accent motion-safe:animate-spin"
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">Pulling your classes…</p>
+              {where && <p className="truncate text-sm text-muted">Reading your courses from {where}</p>}
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-muted">This usually takes just a moment. We&apos;ll open your plan automatically.</p>
+        </div>
+      </div>
+    );
   }
 
   // --- Connected (collapsed) summary -------------------------------------
@@ -213,12 +267,12 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
             </div>
 
             <div className="rounded-lg border border-line-subtle p-4">
-              <p className="text-sm font-medium text-ink">Get your Canvas access token</p>
+              <p className="text-sm font-medium text-ink">Get your Canvas connection code</p>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted">
                 <li>Open Canvas with the button below — it opens in a new tab.</li>
                 <li>Go to <strong className="text-ink">Account → Settings</strong>, then under <strong className="text-ink">Approved Integrations</strong> click <strong className="text-ink">+ New Access Token</strong>.</li>
                 <li>For Purpose type “StudyPlan”, leave the expiry date <strong className="text-ink">blank</strong>, then click <strong className="text-ink">Generate Token</strong>.</li>
-                <li>Copy the token (Canvas shows it only once) and paste it below.</li>
+                <li>Copy the code (Canvas shows it only once) and paste it below.</li>
               </ol>
               {tokenPageUrl && (
                 <a
@@ -227,29 +281,39 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   rel="noopener noreferrer"
                   className="btn-primary mt-3 inline-flex"
                 >
-                  Open Canvas to get your token ↗
+                  Open Canvas to get your code ↗
                 </a>
               )}
             </div>
 
+            <div className="rounded-lg border border-line-subtle p-4">
+              <p className="text-sm font-medium text-ink">What this lets us do</p>
+              <ul className="mt-2 space-y-1.5 text-sm text-muted">
+                <li className="flex gap-2"><span aria-hidden className="text-ink">·</span><span><strong className="text-ink">Read-only</strong> — we can&apos;t change your grades or submit anything.</span></li>
+                <li className="flex gap-2"><span aria-hidden className="text-ink">·</span><span>We <strong className="text-ink">can&apos;t see your Canvas password</strong>.</span></li>
+                <li className="flex gap-2"><span aria-hidden className="text-ink">·</span><span>We only read your <strong className="text-ink">courses, assignments, and due dates</strong>.</span></li>
+                <li className="flex gap-2"><span aria-hidden className="text-ink">·</span><span>Your connection code is <strong className="text-ink">encrypted</strong> on our servers.</span></li>
+              </ul>
+            </div>
+
             <div>
-              <label className="label" htmlFor="token">Paste your access token</label>
+              <label className="label" htmlFor="token">Paste your connection code</label>
               <input
                 id="token"
                 type="password"
                 className="field"
-                placeholder={initial.hasToken ? "•••••••• (paste again to update)" : "Paste your Canvas token"}
+                placeholder={initial.hasToken ? "•••••••• (paste again to update)" : "Paste your Canvas code"}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 autoComplete="off"
               />
               <p className="mt-1 text-xs text-muted">
-                Your token is encrypted and only used to read your Canvas coursework.
+                Your connection code is encrypted and only used to read your Canvas coursework.
               </p>
             </div>
 
             <button type="submit" className="btn-primary" disabled={busy}>
-              {busy ? "Validating…" : "Connect Canvas"}
+              {busy ? "Checking your code…" : "Connect Canvas"}
             </button>
           </form>
         )}

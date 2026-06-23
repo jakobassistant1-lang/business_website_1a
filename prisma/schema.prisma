@@ -30,6 +30,22 @@ model User {
   studyDaysQuiz      Int      @default(3) // days ahead to start studying for quizzes
   createdAt          DateTime @default(now())
 
+  // --- Onboarding + activation (additive; null-safe). onboardedAt is a VALUE event
+  // (reached the aha / first real plan), NOT "saw a demo"; no @default, so existing
+  // users stay null and aren't wrongly marked onboarded. ---
+  onboardedAt DateTime?
+  activatedAt DateTime? // set once when the first-win action is taken
+
+  // --- Billing (all inert until Stripe is configured; null = never entered billing).
+  // subscriptionStatus mirrors Stripe's own status strings verbatim (kept a String,
+  // not an enum, so a new Stripe state never forces a migration). ---
+  stripeCustomerId             String?   @unique
+  stripeSubscriptionId         String?   @unique
+  subscriptionStatus           String?
+  trialStartedAt               DateTime?
+  trialEndsAt                  DateTime?
+  subscriptionCurrentPeriodEnd DateTime?
+
   sessions      Session[]
   credential    CanvasCredential?
   courses       Course[]
@@ -40,6 +56,7 @@ model User {
   googleEvents   GoogleCalendarEvent[]
   studyGenerations StudyGeneration[]
   passwordResetTokens PasswordResetToken[]
+  onboardingEvents OnboardingEvent[]
 }
 
 // Single-use, time-limited password-reset tokens (the "forgot password" flow).
@@ -56,6 +73,22 @@ model PasswordResetToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Append-only funnel log for the value-first onboarding (signup → connect →
+// aha_viewed → activated → card_entered → trial_started → …). Additive table; the
+// app mirrors key events here for server-side truth (a product-analytics tool holds
+// the rest). No existing data is touched.
+model OnboardingEvent {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     String
+  metadata  String?  // optional JSON blob
+  createdAt DateTime @default(now())
+
+  @@index([userId, event])
+  @@index([userId, createdAt])
 }
 
 // Cached AI study artifacts (study-plan layer / study guide / practice questions),

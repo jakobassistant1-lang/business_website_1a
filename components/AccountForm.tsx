@@ -9,12 +9,55 @@ interface Initial {
   phone: string;
 }
 
-export function AccountForm({ initial }: { initial: Initial }) {
+// Plain-English label for each Stripe status we might show.
+const STATUS_LABEL: Record<string, string> = {
+  trialing: "Free trial — active",
+  active: "Active",
+  past_due: "Payment failed — please update your card",
+  canceled: "Cancelled",
+  unpaid: "Unpaid",
+  incomplete: "Not finished",
+  incomplete_expired: "Expired",
+};
+
+export function AccountForm({
+  initial,
+  billingEnabled = false,
+  subscriptionStatus = null,
+}: {
+  initial: Initial;
+  billingEnabled?: boolean;
+  subscriptionStatus?: string | null;
+}) {
   const router = useRouter();
   const [form, setForm] = useState({ ...initial, password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [portalError, setPortalError] = useState("");
+
+  // Show the Subscription section ONLY when billing is on AND this user actually
+  // has a subscription. When billing is off, nothing new renders (the account
+  // page looks exactly as it does today).
+  const showSubscription = billingEnabled && Boolean(subscriptionStatus);
+
+  async function openPortal() {
+    setPortalBusy(true);
+    setPortalError("");
+    try {
+      const res = await fetch("/api/billing/portal", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.url) {
+        window.location.href = body.url;
+        return; // leaving the page — keep the button disabled
+      }
+      setPortalError(body.error ?? "Something went wrong. Please try again.");
+    } catch {
+      setPortalError("Something went wrong. Please try again.");
+    }
+    setPortalBusy(false);
+  }
 
   function set(key: keyof typeof form, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -81,6 +124,24 @@ export function AccountForm({ initial }: { initial: Initial }) {
           {saved && <span className="text-sm text-success">Saved.</span>}
         </div>
       </form>
+
+      {showSubscription && (
+        <div className="card mt-6 max-w-xl space-y-4 p-6">
+          <h2 className="text-lg font-semibold text-ink">Subscription</h2>
+          <p className="text-sm text-muted">
+            Status:{" "}
+            <span className="font-medium text-ink">
+              {STATUS_LABEL[subscriptionStatus ?? ""] ?? subscriptionStatus}
+            </span>
+          </p>
+          <div>
+            <button type="button" className="btn-ghost" onClick={openPortal} disabled={portalBusy}>
+              {portalBusy ? "Opening…" : "Manage or cancel"}
+            </button>
+            {portalError && <p className="mt-2 text-sm text-danger">{portalError}</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
