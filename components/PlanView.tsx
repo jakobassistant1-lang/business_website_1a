@@ -404,6 +404,11 @@ function DayCard({ day, today }: { day: PlanDay; today?: boolean }) {
                 {b.htmlUrl ? <a href={b.htmlUrl} target="_blank" rel="noreferrer" className="hover:text-accent">{b.name}</a> : b.name}
               </p>
               <p className="flex items-center gap-1.5 truncate text-xs text-muted">
+                {b.study && b.sessionKind && (
+                  <span className="rounded bg-accent-soft px-1.5 py-0.5 font-medium text-accent">
+                    {b.sessionKind === "review" ? "Review" : "Recall"}
+                  </span>
+                )}
                 <CourseDot name={b.courseName} />{b.courseName} · due {fmtDue(b.dueAt)}
               </p>
               {b.summary && <p className="mt-0.5 truncate text-xs italic text-muted">{b.summary}</p>}

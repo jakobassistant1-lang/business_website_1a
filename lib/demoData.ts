@@ -15,8 +15,8 @@ import type { CalendarData, CalendarItem } from "./calendarData";
 import type { CalendarEvent } from "./calendar/types";
 import { isStudyType, type ItemType } from "./itemType";
 
-const HOURS_PER_DAY = 3;
-const EFFORT_HOURS = 2;
+const HOURS_PER_DAY = 4; // a busy-but-realistic demo budget so the week isn't crammed
+const EFFORT_HOURS = 1.5; // lighter default effort → the spaced study sessions have room to breathe
 const WINDOW_DAYS = 7;
 
 // Course names use the app's "Short · Long" convention; the UI shows the part
