@@ -176,10 +176,29 @@ body {
 .sp-demo-tour .driver-popover-arrow-side-left.driver-popover-arrow { border-left-color: rgb(var(--surface)); }
 .sp-demo-tour .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: rgb(var(--surface)); }
 
+/* Always-present "leave the step-by-step" escape, injected into every coachmark
+   (DemoExperience onPopoverRender) — a full-width link under the buttons. */
+.sp-demo-tour .sp-demo-explore {
+  display: block;
+  width: 100%;
+  margin-top: 0.625rem;
+  padding-top: 0.5rem;
+  border: 0;
+  border-top: 1px solid rgb(var(--ink) / 0.1);
+  background: none;
+  color: rgb(var(--muted));
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+.sp-demo-tour .sp-demo-explore:hover { color: rgb(var(--accent)); }
+
 /* Keyboard focus rings for demo controls — focus-visible only, two-tone halo. */
 .sp-demo-tour .driver-popover-next-btn:focus-visible,
 .sp-demo-tour .driver-popover-prev-btn:focus-visible,
 .sp-demo-tour .driver-popover-close-btn:focus-visible,
+.sp-demo-tour .sp-demo-explore:focus-visible,
 .demo-control:focus-visible {
   outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
