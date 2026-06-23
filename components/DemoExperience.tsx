@@ -212,6 +212,20 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
             popover.previousButton.disabled = false;
             popover.previousButton.classList.remove("driver-popover-btn-disabled");
           }
+          // A clear, always-present escape on EVERY coachmark: leave the guided
+          // steps and explore the demo freely (mirrors the demo-bar button + the ✕,
+          // so the option is obvious right where the student is reading).
+          if (!popover.wrapper.querySelector(".sp-demo-explore")) {
+            const skip = document.createElement("button");
+            skip.type = "button";
+            skip.className = "sp-demo-explore";
+            skip.textContent = "Skip — explore on my own →";
+            skip.addEventListener("click", () => {
+              destroyTour();
+              setPhase("exploring");
+            });
+            popover.wrapper.appendChild(skip);
+          }
         },
         steps,
       });
@@ -312,6 +326,18 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
         )}
 
         <div className="flex shrink-0 items-center gap-1">
+          {phase === "touring" && (
+            <button
+              type="button"
+              onClick={() => {
+                destroyTour();
+                setPhase("exploring");
+              }}
+              className="demo-control rounded-md bg-white/15 px-2.5 py-1 text-xs font-semibold text-accent-on transition-colors hover:bg-white/25"
+            >
+              Explore on my own
+            </button>
+          )}
           {phase !== "welcome" && phase !== "finale" && (
             <button
               type="button"
@@ -450,6 +476,13 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
                 {ending ? "Loading…" : "Connect Canvas →"}
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setPhase("exploring")}
+              className="demo-control mx-auto mt-3 block text-sm font-semibold text-muted underline-offset-2 transition-colors hover:text-accent hover:underline"
+            >
+              Or explore the demo on my own
+            </button>
           </div>
         </div>
       )}
