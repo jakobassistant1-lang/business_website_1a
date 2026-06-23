@@ -22,6 +22,30 @@ export function itemHref(canvasId: number, type: ItemType, status?: "done" | "ov
   return isStudyType(type) ? `/study/${canvasId}` : `/assignment/${canvasId}`;
 }
 
+// Canvas submission_types that mean the student submits something online.
+const ONLINE_SUBMISSION = [
+  "online_quiz",
+  "online_text_entry",
+  "online_upload",
+  "online_url",
+  "media_recording",
+  "student_annotation",
+  "discussion_topic",
+  "basic_lti_launch",
+  "external_tool",
+];
+
+/** Does this assignment require an ONLINE submission? `submission_types` of just
+ *  "none"/"not_graded" — a teacher-entered grade column — returns false.
+ *  ⚠️ A false here means only "no online submission", NOT "nothing to do":
+ *  in-person exams AND assigned readings are also "none". Separating a passive
+ *  participation grade from an in-person exam / reading needs the AI screen
+ *  (see lib/analysis `requiresAction`). */
+export function requiresOnlineSubmission(submissionTypes: string | null | undefined): boolean {
+  const st = (submissionTypes ?? "").toLowerCase();
+  return ONLINE_SUBMISSION.some((t) => st.includes(t));
+}
+
 export function itemType(submissionTypes: string | null | undefined, name: string): ItemType {
   const st = (submissionTypes ?? "").toLowerCase();
   const n = (name ?? "").toLowerCase();

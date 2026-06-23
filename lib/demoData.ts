@@ -6,7 +6,8 @@
 // plan, no type casts). Pure + deterministic given `now`. No DB, no network.
 
 import { generatePlan, type SchedulerAssignment } from "./scheduler";
-import { rankRecommendations, priorityInputsFromPlan, TOP_N } from "./priority";
+import { TOP_N } from "./priority";
+import { rankActiveRows, courseTotalPoints } from "./rankActive";
 import { ymd } from "./calendarDates";
 import type { CalendarData, CalendarItem } from "./calendarData";
 import type { CalendarEvent } from "./calendar/types";
@@ -108,15 +109,30 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
 
   const plan = generatePlan(assignments, HOURS_PER_DAY, WINDOW_DAYS, EFFORT_HOURS, now);
 
-  const submittedIds = new Set(doneRows.map((r) => r.canvasId));
-  const pointsById = new Map<number, number | null>(activeRows.map((r) => [r.canvasId, r.pointsPossible]));
   const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
 
-  const ranked = rankRecommendations(priorityInputsFromPlan(plan, submittedIds, pointsById), {
-    windowDays: WINDOW_DAYS,
-    effortHours: EFFORT_HOURS,
+  // Same v1 marginal ranking as live data (lib/rankActive), so the demo's
+  // "do next" order matches what real students see (points → course-grade share).
+  const totals = courseTotalPoints(
+    activeRows.concat(doneRows).map((r) => ({ courseCanvasId: COURSE_ID[r.courseName] ?? 0, pointsPossible: r.pointsPossible })),
+  );
+  const ranked = rankActiveRows(
+    activeRows.map((r) => ({
+      canvasId: r.canvasId,
+      name: r.name,
+      courseName: r.courseName,
+      courseCanvasId: COURSE_ID[r.courseName] ?? 0,
+      dueAt: dueDate(r.dueOffsetDays, r.dueHour),
+      pointsPossible: r.pointsPossible,
+      htmlUrl: null,
+      submissionType: null,
+      estimatedEffortHours: r.estimatedEffortHours ?? null,
+      type: r.type,
+    })),
+    totals,
+    EFFORT_HOURS,
     now,
-  }).ranked;
+  );
   const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
 
   const toItem = (r: DemoRow, done: boolean): CalendarItem => {

@@ -189,6 +189,11 @@ model Course {
   userId   Int
   canvasId Int
   name     String
+  // v1 prioritizer signals (lib/marginalPriority). All nullable → fail open to
+  // neutral leverage / no-credit when a sync hasn't populated them.
+  currentScore    Float?  // current grade in the course, 0–100 (Canvas enrollment computed_current_score)
+  latePolicyKind  String? // "none" | "flat" | "perday" (Gemini-parsed from the syllabus)
+  latePolicyValue Float?  // fraction of credit lost (flat: one-time; perday: per day)
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments   Assignment[]
@@ -224,6 +229,13 @@ model Assignment {
   effortBucket         String?   // "quick" | "medium" | "long"
   aiImportance         Int?      // 1-5 AI importance/difficulty → weights the planner's time allocation
   aiSummary            String?
+  // v1 prioritizer: false = passive / teacher-graded (participation, attendance,
+  // placeholder column) → excluded from the ordering; null or true = keep (the
+  // default — readings + in-person exams stay). Set by the Gemini analysis.
+  aiRequiresAction     Boolean?
+  // Precomputed share of the course grade (0–1) for weighted-group courses; null
+  // → caller falls back to points / course-total. See lib/gradeWeight.
+  gradeWeight          Float?
   analysisHash         String?   // sha1 of the analyzed inputs (for re-analysis detection)
   analyzedAt           DateTime?
 

@@ -47,7 +47,9 @@ export interface ScoredAssignment {
   htmlUrl: string | null;
   score: number; // 0..100, 1dp
   reason: string; // e.g. "Due in 1 day · 100 pts · 1.5h won't fit"
-  factors: { urgency: number; impact: number; risk: number; effort: number; submittedPenalty: number };
+  // Legacy 4-factor breakdown (old scorer). Optional: the v1 marginal ranker
+  // (lib/rankActive) doesn't emit it, and no UI reads it.
+  factors?: { urgency: number; impact: number; risk: number; effort: number; submittedPenalty: number };
 }
 
 export interface ScoreContext {

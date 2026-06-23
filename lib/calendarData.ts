@@ -8,7 +8,9 @@
 
 import { prisma } from "./prisma";
 import { generatePlan, type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
-import { rankRecommendations, priorityInputsFromPlan, TOP_N, type ScoredAssignment } from "./priority";
+import { TOP_N, type ScoredAssignment } from "./priority";
+import { rankActiveRows, courseTotalPoints } from "./rankActive";
+import { coerceLatePolicy } from "./latePolicy";
 import { loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
 import { itemType, isStudyType, type ItemType } from "./itemType";
@@ -96,18 +98,41 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
 
   const plan = generatePlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, new Date());
 
-  const submittedIds = new Set(submittedRows.map((a) => a.canvasId));
-  const pointsById = new Map<number, number | null>(activeRows.map((a) => [a.canvasId, a.pointsPossible]));
   const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
 
-  // Full importance ranking. `recommendations` is the forward-looking "do next"
-  // slice — overdue work lives in atRisk (the catch-up rail), not the queue — so
-  // the Dashboard, Calendar, and Timeline all agree on what's #1. The Dashboard's
-  // Today sort needs every item's rank, so we expose the full `ranked` list too.
-  const ranked = rankRecommendations(priorityInputsFromPlan(plan, submittedIds, pointsById), {
-    windowDays: PLAN_WINDOW_DAYS,
-    effortHours: user.defaultEffortHours,
-  }).ranked;
+  // v1 prioritizer (docs/navo-priority-v1-spec.md): rank active work by the
+  // MARGINAL expected grade-% at stake. Each item's raw points are converted to
+  // its share of ITS course grade first (course totals differ, so raw points
+  // aren't comparable across classes); current-grade (leverage) + late-policy fail
+  // open to neutral/no-credit until synced. `recommendations` is the forward "do
+  // next" slice — overdue lives in atRisk (the catch-up rail) — so Dashboard,
+  // Calendar, and Timeline agree on #1; the full `ranked` list powers Today's sort.
+  const now = new Date();
+  const totals = courseTotalPoints(rows.map((a) => ({ courseCanvasId: a.courseCanvasId, pointsPossible: a.pointsPossible })));
+  const ranked = rankActiveRows(
+    activeRows.map((a) => ({
+      canvasId: a.canvasId,
+      name: a.name,
+      courseName: a.course.name,
+      courseCanvasId: a.courseCanvasId,
+      dueAt: a.dueAt,
+      pointsPossible: a.pointsPossible,
+      htmlUrl: a.htmlUrl,
+      submissionType: a.submissionType,
+      estimatedEffortHours: a.estimatedEffortHours ?? null,
+      // v1 signals (null/absent ⇒ fail open): current grade (0–100 → fraction),
+      // weighted-group share, parsed late policy, and the AI actionable screen.
+      courseGrade: a.course.currentScore != null ? a.course.currentScore / 100 : null,
+      gradeWeight: a.gradeWeight,
+      latePolicy: a.course.latePolicyKind
+        ? coerceLatePolicy({ kind: a.course.latePolicyKind, value: a.course.latePolicyValue })
+        : undefined,
+      requiresAction: a.aiRequiresAction,
+    })),
+    totals,
+    user.defaultEffortHours,
+    now,
+  );
   const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
 
   const toItem = (a: AssignmentRow, done: boolean): CalendarItem => ({

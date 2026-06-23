@@ -4,8 +4,14 @@ import {
   fetchCourses,
   fetchAssignments,
   fetchAnnouncements,
+  fetchAssignmentGroups,
+  fetchSyllabus,
+  currentScoreOf,
   CanvasError,
+  type CanvasAssignmentGroup,
 } from "./canvas";
+import { computeGradeWeights } from "./gradeWeight";
+import { analyzeLatePolicies, type LatePolicyInput } from "./latePolicy";
 import { CanvasStatus, messageFor } from "./messages";
 import { decryptSecret } from "./crypto";
 
@@ -69,18 +75,37 @@ export async function runSync(userId: number): Promise<SyncResult> {
   const failedCourses: string[] = [];
   let credentialError: CanvasStatus | null = null; // token-level problem (FR-5) seen on a data call
   let lastCourseError: CanvasStatus | null = null; // representative status if courses fail
+  const syllabiToParse: LatePolicyInput[] = []; // collected across courses → one batched late-policy read
+  const courseDbIdByCanvasId = new Map<number, number>(); // map late-policy results back to course rows
   for (const c of courses) {
+    const courseName = c.name ?? `Course ${c.id}`;
     const course = await prisma.course.upsert({
       where: { userId_canvasId: { userId, canvasId: c.id } },
-      create: { canvasId: c.id, userId, name: c.name ?? `Course ${c.id}` },
-      update: { name: c.name ?? `Course ${c.id}` },
+      create: { canvasId: c.id, userId, name: courseName, currentScore: currentScoreOf(c) },
+      update: { name: courseName, currentScore: currentScoreOf(c) },
     });
+    courseDbIdByCanvasId.set(c.id, course.id);
 
     try {
-      const [assignments, announcements] = await Promise.all([
+      // assignment_groups + syllabus fail OPEN (a missing group/syllabus must not
+      // fail the whole course); they only enrich the prioritizer's signals.
+      const [assignments, announcements, groups, syllabus] = await Promise.all([
         fetchAssignments(cred.host, token, c.id),
         fetchAnnouncements(cred.host, token, c.id),
+        fetchAssignmentGroups(cred.host, token, c.id).catch(() => [] as CanvasAssignmentGroup[]),
+        fetchSyllabus(cred.host, token, c.id).catch(() => null),
       ]);
+
+      if (syllabus) syllabiToParse.push({ courseId: c.id, courseName, syllabus });
+      const weightById = new Map(
+        computeGradeWeights(
+          groups.map((g) => ({
+            id: g.id,
+            groupWeight: g.group_weight,
+            assignments: (g.assignments ?? []).map((a) => ({ canvasId: a.id, pointsPossible: a.points_possible })),
+          })),
+        ).map((w) => [w.canvasId, w.gradeWeight]),
+      );
 
       for (const a of assignments) {
         const data = {
@@ -97,6 +122,9 @@ export async function runSync(userId: number): Promise<SyncResult> {
           submittedAt: toDate(a.submission?.submitted_at),
           submissionScore: a.submission?.score ?? null,
           submissionState: a.submission?.workflow_state ?? null,
+          // Share of the course grade (weighted-group courses); null → caller uses
+          // points / course-total. A failed groups fetch leaves it null (safe).
+          gradeWeight: weightById.get(a.id) ?? null,
         };
         await prisma.assignment.upsert({
           where: { userId_canvasId: { userId, canvasId: a.id } },
@@ -127,6 +155,26 @@ export async function runSync(userId: number): Promise<SyncResult> {
       lastCourseError = status;
       // A 401/403 on a data call is a token problem, not a one-off course glitch (FR-5).
       if (status === "invalid_token" || status === "insufficient_scope") credentialError = status;
+    }
+  }
+
+  // Late policy: ONE batched Gemini read over the collected syllabi (fail-open —
+  // no key / error leaves each course at the no-credit default). Best-effort: a
+  // failure here never fails the sync.
+  if (syllabiToParse.length > 0) {
+    try {
+      const lp = await analyzeLatePolicies(syllabiToParse);
+      if (lp.ok) {
+        for (const r of lp.items) {
+          const courseDbId = courseDbIdByCanvasId.get(r.courseId);
+          if (courseDbId == null) continue;
+          await prisma.course
+            .update({ where: { id: courseDbId }, data: { latePolicyKind: r.policy.kind, latePolicyValue: r.policy.value } })
+            .catch(() => {});
+        }
+      }
+    } catch {
+      /* late policy is best-effort; ignore */
     }
   }
 

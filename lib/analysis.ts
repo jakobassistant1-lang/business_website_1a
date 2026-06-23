@@ -17,7 +17,11 @@ export const DEFAULT_ANALYSIS_INSTRUCTION =
   "importance 1-5 (how high-stakes / weighty / cumulative it is for the grade: a final exam, midterm, " +
   "or major project ≈ 5; a routine low-point homework ≈ 2; use 3 if unsure). " +
   "hours is your best numeric estimate (0.25–20); if unsure, still give your best number and set the " +
-  "bucket as the coarse fallback (quick≈1h, medium≈3h, long≈6h). Keep summaries under 1 sentence.";
+  "bucket as the coarse fallback (quick≈1h, medium≈3h, long≈6h). Keep summaries under 1 sentence. " +
+  "ALSO set requiresAction=false ONLY when the student has NO task to do — a passive grade the " +
+  "instructor assigns (class participation, engagement, attendance, or a placeholder / teacher-entered " +
+  "grade column). Set requiresAction=true for anything the student must actually do, INCLUDING " +
+  "in-person exams and assigned readings that have no online submission. When unsure, use true.";
 
 export type EffortBucket = "quick" | "medium" | "long";
 
@@ -36,6 +40,7 @@ export interface AnalysisItemResult {
   bucket: EffortBucket | null;
   summary: string | null;
   importance: number | null; // 1-5: how high-stakes; feeds the planner's time allocation
+  requiresAction: boolean | null; // false = passive grade (participation/attendance) → excluded from ordering; null/true = keep
 }
 
 export type AnalysisResult =
@@ -77,7 +82,7 @@ export function cleanDescription(html: string | null | undefined, maxLen = 500):
  *  the due date, so a deadline change doesn't burn a re-analysis. The version tag
  *  is bumped when the analysis output shape changes (e.g. adding `importance`), so
  *  previously-analyzed rows re-run once to pick up the new field. */
-const ANALYSIS_VERSION = 2;
+const ANALYSIS_VERSION = 3;
 export function analysisInputHash(i: AnalysisItemInput): string {
   const basis = JSON.stringify({ v: ANALYSIS_VERSION, n: i.name, c: i.courseName, p: i.pointsPossible, d: cleanDescription(i.description) });
   return createHash("sha1").update(basis).digest("hex");
@@ -113,7 +118,7 @@ export function buildAnalysisPrompt(items: AnalysisItemInput[]): string {
     "Assignments (estimate each, SAME ORDER):",
     ...lines,
     'Return ONLY a JSON array, one object per assignment: ' +
-      '{"id":<number>,"hours":<number>,"bucket":"quick|medium|long","summary":"<one sentence>","importance":<1-5>}.',
+      '{"id":<number>,"hours":<number>,"bucket":"quick|medium|long","summary":"<one sentence>","importance":<1-5>,"requiresAction":<true|false>}.',
   ].join("\n");
 }
 
@@ -157,7 +162,9 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
     if (!el || typeof el !== "object") continue;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const e = el as any;
-    const id = Number(e.id);
+    // Tolerate models that echo the whole prompt line ("#86 | Name | …") instead
+    // of the bare number — pull the leading id digits (after an optional '#').
+    const id = Number(String(e.id ?? "").match(/^#?\s*(\d+)/)?.[1]);
     if (!Number.isFinite(id) || !byId.has(id)) continue;
 
     let hours: number | null = Number.isFinite(Number(e.hours)) ? clampHours(Number(e.hours)) : null;
@@ -169,8 +176,16 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
     const importance = Number.isFinite(Number(e.importance))
       ? Math.max(1, Math.min(5, Math.round(Number(e.importance))))
       : null;
-    if (hours === null && summary === null && importance === null) continue; // nothing usable
-    out.push({ canvasId: id, estimatedEffortHours: hours, bucket, summary, importance });
+    const requiresAction =
+      typeof e.requiresAction === "boolean"
+        ? e.requiresAction
+        : e.requiresAction === "true"
+          ? true
+          : e.requiresAction === "false"
+            ? false
+            : null;
+    if (hours === null && summary === null && importance === null && requiresAction === null) continue; // nothing usable
+    out.push({ canvasId: id, estimatedEffortHours: hours, bucket, summary, importance, requiresAction });
   }
   return out;
 }
@@ -193,7 +208,7 @@ export async function analyzeAssignments(
     contents: [{ role: "user", parts: [{ text: `${instruction}\n\n${buildAnalysisPrompt(items)}` }] }],
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: Math.min(4000, 256 + items.length * 80),
+      maxOutputTokens: Math.min(6000, 256 + items.length * 110),
       responseMimeType: "application/json",
     },
   };

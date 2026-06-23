@@ -108,6 +108,15 @@ async function fetchAll<T>(host: string, token: string, path: string): Promise<T
 export interface CanvasCourse {
   id: number;
   name: string;
+  // Present with include[]=total_scores — the caller's own enrollment carries the
+  // current grade. There's one enrollment per course for the requesting user.
+  enrollments?: { type?: string; computed_current_score?: number | null }[];
+}
+
+export interface CanvasAssignmentGroup {
+  id: number;
+  group_weight: number | null; // percent (e.g. 25); 0/absent in points-based courses
+  assignments?: { id: number; points_possible: number | null }[];
 }
 export interface CanvasAssignment {
   id: number;
@@ -134,7 +143,22 @@ export interface CanvasAnnouncement {
 }
 
 export function fetchCourses(host: string, token: string): Promise<CanvasCourse[]> {
-  return fetchAll<CanvasCourse>(host, token, "/courses?enrollment_state=active");
+  // include[]=total_scores attaches the user's current grade to each course.
+  return fetchAll<CanvasCourse>(host, token, "/courses?enrollment_state=active&include[]=total_scores");
+}
+
+/** The student's current grade (0–100) in a course, from its enrollments. Null
+ *  when Canvas didn't return a score (e.g. ungraded course). Fails safe. */
+export function currentScoreOf(course: CanvasCourse): number | null {
+  const enr = (course.enrollments ?? []).find((e) => typeof e?.computed_current_score === "number");
+  const s = enr?.computed_current_score;
+  return typeof s === "number" && Number.isFinite(s) ? s : null;
+}
+
+/** A course's assignment groups (with their assignments) — carries group_weight
+ *  for weighted courses, used to convert points → share of the course grade. */
+export function fetchAssignmentGroups(host: string, token: string, courseId: number): Promise<CanvasAssignmentGroup[]> {
+  return fetchAll<CanvasAssignmentGroup>(host, token, `/courses/${courseId}/assignment_groups?include[]=assignments`);
 }
 
 export function fetchAssignments(host: string, token: string, courseId: number): Promise<CanvasAssignment[]> {

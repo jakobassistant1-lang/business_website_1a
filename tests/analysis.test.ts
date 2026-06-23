@@ -123,6 +123,22 @@ describe("parseAnalysis", () => {
     expect(r.map((x) => x.canvasId)).toEqual([1]);
   });
 
+  it("parses requiresAction (bool or stringy) and the id even when echoed as a whole line", () => {
+    const r = parseAnalysis({ candidates: [{ content: { parts: [{ text: JSON.stringify([
+      { id: "#1 | Participation | Bio", hours: 0.5, summary: "Participation grade.", requiresAction: false },
+      { id: 2, hours: 2, summary: "Read chapter.", requiresAction: "true" },
+    ]) }] } }] }, inputs);
+    expect(r.find((x) => x.canvasId === 1)?.requiresAction).toBe(false); // id pulled from "#1 | …"
+    expect(r.find((x) => x.canvasId === 2)?.requiresAction).toBe(true);
+  });
+
+  it("leaves requiresAction null when the model omits it (→ keep)", () => {
+    const r = parseAnalysis({ candidates: [{ content: { parts: [{ text: JSON.stringify([
+      { id: 1, hours: 1, summary: "No flag given." },
+    ]) }] } }] }, inputs);
+    expect(r.find((x) => x.canvasId === 1)?.requiresAction).toBeNull();
+  });
+
   it("handles code fences and returns [] for junk (no throw)", () => {
     const fenced = "```json\n" + JSON.stringify([{ id: 1, hours: 2, summary: "ok" }]) + "\n```";
     expect(parseAnalysis({ candidates: [{ content: { parts: [{ text: fenced }] } }] }, inputs)).toHaveLength(1);

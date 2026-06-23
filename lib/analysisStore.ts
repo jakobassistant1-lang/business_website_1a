@@ -51,6 +51,8 @@ export async function runAnalysis(userId: number): Promise<{ analyzed: number; s
           effortBucket: item.bucket ?? undefined,
           aiImportance: item.importance ?? undefined,
           aiSummary: item.summary ?? undefined,
+          // false (passive grade) must persist; only null means "leave unchanged".
+          aiRequiresAction: item.requiresAction ?? undefined,
           analysisHash: analysisInputHash(input),
           analyzedAt: new Date(),
         },

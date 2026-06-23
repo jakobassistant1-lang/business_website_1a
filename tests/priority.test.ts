@@ -48,7 +48,7 @@ describe("scoreAssignments", () => {
       [mk({ canvasId: 1, dueAt: iso(-2) }), mk({ canvasId: 2, dueAt: iso(1) })],
       CTX,
     );
-    expect(overdue.factors.urgency).toBe(1);
+    expect(overdue.factors!.urgency).toBe(1);
     expect(overdue.score).toBeGreaterThan(soon.score);
     expect(overdue.reason).toContain("Overdue");
   });
@@ -64,7 +64,7 @@ describe("scoreAssignments", () => {
     );
     expect(hi.score).toBeGreaterThan(lo.score);
     expect(lo.score).toBeGreaterThan(none.score);
-    expect(none.factors.impact).toBe(0);
+    expect(none.factors!.impact).toBe(0);
   });
 
   it("surfaces at-risk (insufficient_time) work above equal non-risk work", () => {
@@ -75,7 +75,7 @@ describe("scoreAssignments", () => {
       ],
       CTX,
     );
-    expect(risky.factors.risk).toBeGreaterThan(0);
+    expect(risky.factors!.risk).toBeGreaterThan(0);
     expect(risky.score).toBeGreaterThan(safe.score);
     expect(risky.reason).toContain("won't fit");
   });
