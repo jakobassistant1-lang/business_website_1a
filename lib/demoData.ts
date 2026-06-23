@@ -5,13 +5,15 @@
 // consistent and always conforms to the current CalendarData shape (no hand-faked
 // plan, no type casts). Pure + deterministic given `now`. No DB, no network.
 
-import { generatePlan, type SchedulerAssignment } from "./scheduler";
+import { type SchedulerAssignment } from "./scheduler";
+import { generateWeekPlan } from "./weekPlan";
+import { assessmentTier } from "./studyPlan";
 import { TOP_N } from "./priority";
 import { rankActiveRows, courseTotalPoints } from "./rankActive";
 import { ymd } from "./calendarDates";
 import type { CalendarData, CalendarItem } from "./calendarData";
 import type { CalendarEvent } from "./calendar/types";
-import type { ItemType } from "./itemType";
+import { isStudyType, type ItemType } from "./itemType";
 
 const HOURS_PER_DAY = 3;
 const EFFORT_HOURS = 2;
@@ -94,23 +96,6 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
 
   // Run the demo coursework through the real planner + ranker (same calls as
   // loadCalendarData) so plan / ranked / atRisk / overloadHours are all genuine.
-  const assignments: SchedulerAssignment[] = activeRows.map((r) => ({
-    canvasId: r.canvasId,
-    name: r.name,
-    courseName: r.courseName,
-    dueAt: dueDate(r.dueOffsetDays, r.dueHour),
-    pointsPossible: r.pointsPossible,
-    htmlUrl: null,
-    estimatedEffortHours: r.estimatedEffortHours ?? null,
-    summary: r.summary ?? null,
-    studyLeadDays: r.studyLeadDays ?? null,
-    aiImportance: null,
-  }));
-
-  const plan = generatePlan(assignments, HOURS_PER_DAY, WINDOW_DAYS, EFFORT_HOURS, now);
-
-  const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
-
   // Same v1 marginal ranking as live data (lib/rankActive), so the demo's
   // "do next" order matches what real students see (points → course-grade share).
   const totals = courseTotalPoints(
@@ -133,6 +118,27 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
     EFFORT_HOURS,
     now,
   );
+  const valueOf = new Map(ranked.map((r) => [r.canvasId, r.score]));
+
+  // Same v1 week scheduler as live data (lib/weekPlan): spaced study sessions + ≤1h chunks.
+  const assignments: SchedulerAssignment[] = activeRows.map((r) => ({
+    canvasId: r.canvasId,
+    name: r.name,
+    courseName: r.courseName,
+    dueAt: dueDate(r.dueOffsetDays, r.dueHour),
+    pointsPossible: r.pointsPossible,
+    htmlUrl: null,
+    estimatedEffortHours: r.estimatedEffortHours ?? null,
+    summary: r.summary ?? null,
+    studyLeadDays: r.studyLeadDays ?? null,
+    aiImportance: null,
+    assessmentTier: isStudyType(r.type) ? assessmentTier(r.type, r.name) : null,
+    value: valueOf.get(r.canvasId) ?? null,
+  }));
+
+  const plan = generateWeekPlan(assignments, HOURS_PER_DAY, WINDOW_DAYS, EFFORT_HOURS, now);
+
+  const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
   const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
 
   const toItem = (r: DemoRow, done: boolean): CalendarItem => {

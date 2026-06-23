@@ -23,6 +23,10 @@ export interface SchedulerAssignment {
   // this many days before the due date (exams get a longer lead than quizzes).
   studyLeadDays?: number | null;
   aiImportance?: number | null; // 1-5 AI importance/difficulty; with points, weights time allocation
+  // Used by the v1 week scheduler (lib/weekPlan): the assessment tier drives the
+  // spaced study sessions; value is the prioritizer's marginal value, for contention.
+  assessmentTier?: "quiz" | "exam" | "final" | null;
+  value?: number | null;
 }
 
 export interface DayBlock {
@@ -34,6 +38,7 @@ export interface DayBlock {
   dueAt: string; // ISO
   summary?: string | null;
   study?: boolean; // true = a study session ahead of an exam/quiz (not the work itself)
+  sessionKind?: "review" | "relearn"; // v1 week scheduler: review/re-read vs successive relearning
 }
 
 export interface PlanDay {

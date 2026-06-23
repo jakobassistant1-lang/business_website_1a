@@ -28,6 +28,7 @@ model User {
   defaultEffortHours Float    @default(2) // internal fallback when Gemini hasn't estimated effort
   studyDaysTest      Int      @default(7) // days ahead to start studying for exams/tests
   studyDaysQuiz      Int      @default(3) // days ahead to start studying for quizzes
+  studyDaysFinal     Int      @default(14) // days ahead to start studying for midterms/finals (cumulative)
   createdAt          DateTime @default(now())
   // When the student finished (or skipped) the first-run demo. Defaults to now()
   // so EXISTING users (backfilled when this column is added) and seeded/admin

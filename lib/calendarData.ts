@@ -7,13 +7,15 @@
 // calendar problem can never break the page.
 
 import { prisma } from "./prisma";
-import { generatePlan, type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
+import { type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
+import { generateWeekPlan } from "./weekPlan";
 import { TOP_N, type ScoredAssignment } from "./priority";
 import { rankActiveRows, courseTotalPoints } from "./rankActive";
 import { coerceLatePolicy } from "./latePolicy";
 import { loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
 import { itemType, isStudyType, type ItemType } from "./itemType";
+import { assessmentTier } from "./studyPlan";
 
 // The planning window is fixed at 7 days (a week), not user-configurable.
 export const PLAN_WINDOW_DAYS = 7;
@@ -80,25 +82,10 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     const t = itemType(a.submissionType, a.name);
     if (!isStudyType(t)) return null;
     if (a.studyLeadDays != null) return a.studyLeadDays;
-    return t === "exam" ? user.studyDaysTest : user.studyDaysQuiz;
+    // Lead window by tier (spec §3): midterm/final 14d, other exam 7d, quiz 3d.
+    const tier = assessmentTier(t, a.name);
+    return tier === "final" ? user.studyDaysFinal : tier === "exam" ? user.studyDaysTest : user.studyDaysQuiz;
   };
-
-  const assignments: SchedulerAssignment[] = activeRows.map((a) => ({
-    canvasId: a.canvasId,
-    name: a.name,
-    courseName: a.course.name,
-    dueAt: a.dueAt,
-    pointsPossible: a.pointsPossible,
-    htmlUrl: a.htmlUrl,
-    estimatedEffortHours: a.estimatedEffortHours ?? null,
-    summary: a.aiSummary ?? null,
-    studyLeadDays: leadDaysFor(a),
-    aiImportance: a.aiImportance ?? null,
-  }));
-
-  const plan = generatePlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, new Date());
-
-  const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
 
   // v1 prioritizer (docs/navo-priority-v1-spec.md): rank active work by the
   // MARGINAL expected grade-% at stake. Each item's raw points are converted to
@@ -133,6 +120,33 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     user.defaultEffortHours,
     now,
   );
+  // Marginal value per item → the scheduler's contention currency (spec §8).
+  const valueOf = new Map(ranked.map((r) => [r.canvasId, r.score]));
+
+  // v1 week scheduler (docs/navo-scheduling-v1-spec.md): assessments expand into
+  // spaced ≤1h study sessions, deliverables into ≤1h chunks, placed under 90% of
+  // the daily budget with EDF feasibility → priority(value) → spacing.
+  const assignments: SchedulerAssignment[] = activeRows.map((a) => {
+    const t = itemType(a.submissionType, a.name);
+    return {
+      canvasId: a.canvasId,
+      name: a.name,
+      courseName: a.course.name,
+      dueAt: a.dueAt,
+      pointsPossible: a.pointsPossible,
+      htmlUrl: a.htmlUrl,
+      estimatedEffortHours: a.estimatedEffortHours ?? null,
+      summary: a.aiSummary ?? null,
+      studyLeadDays: leadDaysFor(a),
+      aiImportance: a.aiImportance ?? null,
+      assessmentTier: isStudyType(t) ? assessmentTier(t, a.name) : null,
+      value: valueOf.get(a.canvasId) ?? null,
+    };
+  });
+
+  const plan = generateWeekPlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, now);
+
+  const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
   const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
 
   const toItem = (a: AssignmentRow, done: boolean): CalendarItem => ({
