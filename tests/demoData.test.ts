@@ -31,11 +31,22 @@ describe("buildDemoCalendarData", () => {
     expect(data.ranked.length).toBeGreaterThan(0);
     expect(data.recommendations.length).toBeGreaterThan(0);
     expect(data.recommendations.length).toBeLessThanOrEqual(3);
-    // The History "Reading Response" is due in the past → overdue, in atRisk only.
+    // Biology "Lab Report 2" is due in the past → overdue, in atRisk only (not recommendations).
     expect(data.atRisk.length).toBeGreaterThanOrEqual(1);
     expect(data.atRisk.every((r) => r.kind === "overdue")).toBe(true);
     const overdueIds = new Set(data.atRisk.map((r) => r.canvasId));
     expect(data.recommendations.every((r) => !overdueIds.has(r.canvasId))).toBe(true);
+  });
+
+  it("orders the demo do-next list by the value-first prioritizer (same as live, not a demo-only deadline sort)", () => {
+    // The demo runs through rankActiveRows (marginal value), exactly like live data,
+    // so `ranked` is non-increasing by score and recommendations are the top
+    // non-overdue items in that same order — NOT a separate deadline sort.
+    const scores = data.ranked.map((r) => r.score);
+    for (let i = 1; i < scores.length; i++) expect(scores[i]).toBeLessThanOrEqual(scores[i - 1]);
+    const overdueIds = new Set(data.atRisk.map((r) => r.canvasId));
+    const topNonOverdue = data.ranked.filter((r) => !overdueIds.has(r.canvasId)).slice(0, data.recommendations.length);
+    expect(data.recommendations.map((r) => r.canvasId)).toEqual(topNonOverdue.map((r) => r.canvasId));
   });
 
   it("gives every item the fields the views read", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterSchools, type School } from "@/lib/schools";
+import { filterSchools, SCHOOLS, type School } from "@/lib/schools";
 
 const fixture: School[] = [
   { name: "Florida State University", host: "fsu.instructure.com", aliases: ["FSU"] },
@@ -43,5 +43,20 @@ describe("filterSchools", () => {
 
   it("respects the limit", () => {
     expect(filterSchools("instructure", 1, fixture)).toHaveLength(1);
+  });
+});
+
+// Guards the real data file (lib/schools.data.json) so a future addition can't
+// slip in a duplicate or a malformed host (which would break the token deep link).
+describe("schools.data integrity", () => {
+  it("has unique school names", () => {
+    const names = SCHOOLS.map((s) => s.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("every host is a normalized bare domain (no scheme/space/uppercase)", () => {
+    for (const s of SCHOOLS) {
+      expect(s.host, `${s.name} host "${s.host}"`).toMatch(/^[a-z0-9.-]+\.[a-z]{2,}$/);
+    }
   });
 });

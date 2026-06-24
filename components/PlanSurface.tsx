@@ -85,7 +85,10 @@ function PlanList({ data, todayYmd }: { data: CalendarData; todayYmd: string }) 
 
   return (
     <>
-      <p className="mb-3 text-[14px] text-muted">
+      {/* Tour anchor on this short intro line (not the full list card, which can
+          exceed viewport height — that oversized cutout pushed the popover off-screen
+          on Back). The popover (side:"bottom") points down at the list. */}
+      <p data-tour="plan-list" className="mb-3 text-[14px] text-muted">
         {items.length} to do
         {overdue > 0 && (
           <>
@@ -95,7 +98,7 @@ function PlanList({ data, todayYmd }: { data: CalendarData; todayYmd: string }) 
         )}{" "}
         · in the order to tackle them
       </p>
-      <div data-tour="plan-list" className="card divide-y divide-line-subtle p-2">
+      <div className="card divide-y divide-line-subtle p-2">
         {items.map((it, i) => (
           <PlanRow key={it.canvasId} item={it} n={i + 1} todayYmd={todayYmd} />
         ))}

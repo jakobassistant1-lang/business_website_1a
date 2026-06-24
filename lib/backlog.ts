@@ -26,9 +26,12 @@ export const GOAL_CLARITY = "AHA #1 — Clarity";
 export const GOAL_DAILY = "AHA #2 — Daily Plan";
 export const GOAL_TRUST = "AHA #3 — Trust";
 export const GOAL_SHIP = "Ship — Get it to the 5";
+// The value-first onboarding revamp (added 2026-06). Its backlog lives in
+// lib/onboardingBacklog.ts and is topped up onto the build board by lib/onboardingSeed.ts.
+export const GOAL_ONBOARDING = "Onboarding — value-first revamp";
 
 // Order goals appear in the hierarchy/burndown.
-export const GOAL_ORDER = [GOAL_CLARITY, GOAL_DAILY, GOAL_TRUST, GOAL_SHIP];
+export const GOAL_ORDER = [GOAL_CLARITY, GOAL_DAILY, GOAL_TRUST, GOAL_SHIP, GOAL_ONBOARDING];
 
 export const BACKLOG: BacklogTicket[] = [
   // ── AHA #1 — Clarity ──────────────────────────────────────────────────────

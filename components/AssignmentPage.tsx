@@ -60,8 +60,12 @@ export function AssignmentPage(props: {
   submissionScore: number | null;
   summary: string | null;
   todayYmd: string;
+  // Demo wiring (optional, additive): `demo` skips the live AI/rubric fetches so the
+  // page renders purely from props; `onBack` overrides the router for in-demo back.
+  demo?: boolean;
+  onBack?: () => void;
 }) {
-  const { canvasId, name, courseName, type, dueAt, points, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, todayYmd } = props;
+  const { canvasId, name, courseName, type, dueAt, points, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, todayYmd, demo, onBack } = props;
   const router = useRouter();
 
   // AI approach + steps, lazy-fetched. Seed the approach with the stored one-liner
@@ -70,10 +74,11 @@ export function AssignmentPage(props: {
   // it — state never leaks between assignments.
   const [approach, setApproach] = useState<string | null>(summary);
   const [steps, setSteps] = useState<string[]>([]);
-  const [loadingPlan, setLoadingPlan] = useState(true);
+  const [loadingPlan, setLoadingPlan] = useState(!demo);
   const [rubric, setRubric] = useState<CanvasRubricCriterion[] | null>(null);
 
   useEffect(() => {
+    if (demo) return; // demo: render from the seeded summary; no live fetch
     let cancelled = false;
     setLoadingPlan(true);
     fetch(`/api/assignment/approach?id=${canvasId}`)
@@ -90,10 +95,11 @@ export function AssignmentPage(props: {
     return () => {
       cancelled = true;
     };
-  }, [canvasId]);
+  }, [canvasId, demo]);
 
   // Rubric — live Canvas call, fetched here (not in SSR) so it never blocks render.
   useEffect(() => {
+    if (demo) return; // demo: no live rubric fetch
     let cancelled = false;
     fetch(`/api/assignment/rubric?id=${canvasId}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -104,14 +110,17 @@ export function AssignmentPage(props: {
     return () => {
       cancelled = true;
     };
-  }, [canvasId]);
+  }, [canvasId, demo]);
 
   const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, dueAt, todayYmd);
   const hasPlan = Boolean(approach) || steps.length > 0;
 
   // "← Back" returns within the app when there's history, else falls back to the
   // dashboard (so a bookmarked / shared / refreshed deep link never dead-ends out).
-  const goBack = () => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/dashboard"));
+  const goBack = () => {
+    if (onBack) return onBack(); // demo: stay inside the demo shell
+    return typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/dashboard");
+  };
 
   return (
     <div className="mx-auto max-w-3xl">
