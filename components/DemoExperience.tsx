@@ -17,6 +17,10 @@ import { PlanSurface } from "@/components/PlanSurface";
 import { StudyView } from "@/components/StudyView";
 import { CourseGrid } from "@/components/CourseGrid";
 import { DemoStudyTools } from "@/components/DemoStudyTools";
+import { AssignmentPage } from "@/components/AssignmentPage";
+import { CoursePage } from "@/components/CoursePage";
+import { cleanCourse } from "@/lib/courseName";
+import { TYPE_LABEL } from "@/lib/itemType";
 import {
   DEMO_STEPS,
   DEMO_VIEW_ORDER,
@@ -58,6 +62,9 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
   const [view, setView] = useState<DemoView>("dashboard");
   const [phase, setPhase] = useState<Phase>("welcome");
   const [ending, setEnding] = useState(false);
+  // Explore-mode deep view (assignment / per-test study / course detail) opened by
+  // clicking an in-app link; null = show the current surface. See the demo router.
+  const [detail, setDetail] = useState<{ kind: "assignment" | "study" | "course"; id: number } | null>(null);
   const driverRef = useRef<Driver | null>(null);
   // When jumping back a page, start that page's driver at its LAST step.
   const startAtLastRef = useRef(false);
@@ -96,12 +103,14 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
   }, [ending, destroyTour]);
 
   const startTour = useCallback(() => {
+    setDetail(null);
     setView("dashboard");
     setPhase("touring");
   }, []);
 
   const restartDemo = useCallback(() => {
     destroyTour();
+    setDetail(null);
     setView("dashboard");
     setPhase("touring");
   }, [destroyTour]);
@@ -283,14 +292,32 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
   // Tear the tour down if the component unmounts mid-demo.
   useEffect(() => () => destroyTour(), [destroyTour]);
 
-  // Block any in-view navigation so a link can't bounce the student out of the demo.
-  const neutralizeNav = (e: React.MouseEvent) => {
-    const anchor = (e.target as HTMLElement).closest("a");
-    if (anchor) {
+  // Demo router: every in-view link is intercepted (so nothing ever navigates the
+  // browser out of the demo). In EXPLORE mode, known in-app routes open the matching
+  // deep view inline, rendered from the dummy data — clicking an assignment, a quiz/
+  // exam, or a course "just works". During the guided tour (and welcome/finale) the
+  // links stay inert, so the walkthrough flow is unchanged.
+  const onMainClick = useCallback(
+    (e: React.MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest("a");
+      if (!anchor) return; // let buttons (e.g. the practice question) work normally
       e.preventDefault();
       e.stopPropagation();
-    }
-  };
+      if (phase !== "exploring") return;
+      const href = anchor.getAttribute("href") ?? "";
+      let m: RegExpMatchArray | null;
+      if ((m = href.match(/^\/assignment\/(\d+)/))) setDetail({ kind: "assignment", id: Number(m[1]) });
+      else if ((m = href.match(/^\/study\/(\d+)/))) setDetail({ kind: "study", id: Number(m[1]) });
+      else if ((m = href.match(/^\/class\/(\d+)/))) setDetail({ kind: "course", id: Number(m[1]) });
+      else if (href.startsWith("/dashboard")) {
+        setDetail(null);
+        setView("dashboard");
+      }
+      // Any other internal route (a surface-level link) → use the sidebar to switch;
+      // external links are simply blocked (already prevented above).
+    },
+    [phase]
+  );
 
   const navClass = (active: boolean) =>
     `flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
@@ -378,7 +405,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
                 const active = sectionOf(view) === item.section;
                 const done = phase === "touring" && i < sectionIdx;
                 return (
-                  <button key={item.section} type="button" onClick={() => setView(item.first)} className={navClass(active)}>
+                  <button key={item.section} type="button" onClick={() => { setDetail(null); setView(item.first); }} className={navClass(active)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
                       {done ? (
                         <path d={CHECK} stroke="rgb(var(--success))" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -397,25 +424,31 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
           {/* The real surfaces, mock-fed; in-view links neutralized. Plan's three
               sub-views are separate tour pages (remounted via key so the right one
               shows). */}
-          <main ref={mainRef} onClickCapture={neutralizeNav} className="min-w-0 flex-1 overflow-auto px-6 py-8 lg:px-10 lg:py-10">
-            {view === "dashboard" && <DashboardView data={data} todayYmd={todayYmd} firstName={firstName} demo />}
-            {view === "plan-list" && <PlanSurface key="pl" data={data} todayYmd={todayYmd} demo initialView="list" />}
-            {view === "plan-calendar" && <PlanSurface key="pc" data={data} todayYmd={todayYmd} demo initialView="calendar" />}
-            {view === "plan-timeline" && <PlanSurface key="pt" data={data} todayYmd={todayYmd} demo initialView="timeline" />}
-            {view === "study" && (
+          <main ref={mainRef} onClickCapture={onMainClick} className="min-w-0 flex-1 overflow-auto px-6 py-8 lg:px-10 lg:py-10">
+            {detail ? (
+              <DemoDetail detail={detail} data={data} todayYmd={todayYmd} onBack={() => setDetail(null)} />
+            ) : (
               <>
-                <StudyView connected assessments={studyAssessments} sessions={studySessions} />
-                <DemoStudyTools />
+                {view === "dashboard" && <DashboardView data={data} todayYmd={todayYmd} firstName={firstName} demo />}
+                {view === "plan-list" && <PlanSurface key="pl" data={data} todayYmd={todayYmd} demo initialView="list" />}
+                {view === "plan-calendar" && <PlanSurface key="pc" data={data} todayYmd={todayYmd} demo initialView="calendar" />}
+                {view === "plan-timeline" && <PlanSurface key="pt" data={data} todayYmd={todayYmd} demo initialView="timeline" />}
+                {view === "study" && (
+                  <>
+                    <StudyView connected assessments={studyAssessments} sessions={studySessions} />
+                    <DemoStudyTools />
+                  </>
+                )}
+                {view === "courses" && (
+                  <div className="mx-auto max-w-7xl">
+                    <h1 className="text-[28px] font-bold tracking-tight text-ink">Courses</h1>
+                    <p className="mt-1 text-[15px] text-muted">Your classes at a glance — open one for its full assignment list.</p>
+                    <div className="mt-7">
+                      <CourseGrid data={data} todayYmd={todayYmd} />
+                    </div>
+                  </div>
+                )}
               </>
-            )}
-            {view === "courses" && (
-              <div className="mx-auto max-w-7xl">
-                <h1 className="text-[28px] font-bold tracking-tight text-ink">Courses</h1>
-                <p className="mt-1 text-[15px] text-muted">Your classes at a glance — open one for its full assignment list.</p>
-                <div className="mt-7">
-                  <CourseGrid data={data} todayYmd={todayYmd} />
-                </div>
-              </div>
             )}
           </main>
         </div>
@@ -447,7 +480,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
       {phase === "exploring" && (
         <div className="fixed bottom-5 left-1/2 z-[100001] flex -translate-x-1/2 items-center gap-4 rounded-full bg-ink px-5 py-2.5 text-sm text-white shadow-[var(--shadow-demo)]">
           <span className="font-medium">Exploring the demo — click around any page.</span>
-          <button type="button" onClick={() => setPhase("touring")} className="demo-control font-semibold underline">
+          <button type="button" onClick={() => { setDetail(null); setPhase("touring"); }} className="demo-control font-semibold underline">
             Take the tour
           </button>
         </div>
@@ -487,5 +520,84 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
         </div>
       )}
     </>
+  );
+}
+
+// ── Explore-mode deep views (rendered inline from the dummy data) ───────────────
+// The demo router (onMainClick) sets `detail`; these render the matching real leaf
+// with mock props so "click an assignment / quiz / course" works without a backend.
+function DemoDetail({
+  detail,
+  data,
+  todayYmd,
+  onBack,
+}: {
+  detail: { kind: "assignment" | "study" | "course"; id: number };
+  data: CalendarData;
+  todayYmd: string;
+  onBack: () => void;
+}) {
+  if (detail.kind === "course") {
+    const active = data.items.filter((it) => it.courseCanvasId === detail.id);
+    const completed = data.completed.filter((it) => it.courseCanvasId === detail.id);
+    const courseName = [...active, ...completed][0]?.courseName ?? "Course";
+    return (
+      <CoursePage
+        courseName={courseName}
+        active={active}
+        completed={completed}
+        rankedIds={data.ranked.map((r) => r.canvasId)}
+        todayYmd={todayYmd}
+      />
+    );
+  }
+
+  const item = [...data.items, ...data.completed].find((it) => it.canvasId === detail.id);
+  if (!item) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <button onClick={onBack} className="text-[14px] font-medium text-muted transition-colors hover:text-ink">← Back</button>
+        <p className="mt-6 text-[15px] text-muted">That item isn&rsquo;t part of the demo data.</p>
+      </div>
+    );
+  }
+
+  if (detail.kind === "study") return <DemoStudyDetail item={item} onBack={onBack} />;
+
+  return (
+    <AssignmentPage
+      demo
+      onBack={onBack}
+      canvasId={item.canvasId}
+      name={item.name}
+      courseName={item.courseName}
+      type={item.type}
+      dueAt={item.dueAt}
+      points={item.pointsPossible}
+      htmlUrl={null}
+      description={null}
+      submissionState={item.status === "done" ? "submitted" : null}
+      submittedAt={null}
+      submissionScore={null}
+      summary={item.summary}
+      todayYmd={todayYmd}
+    />
+  );
+}
+
+// The per-test study page (exam/quiz) for the demo — the test header + the static
+// DemoStudyTools preview (guide + practice question). The real per-test tools need
+// an AI/Canvas round-trip, so the demo shows this faithful sample instead.
+function DemoStudyDetail({ item, onBack }: { item: CalendarItem; onBack: () => void }) {
+  return (
+    <div className="mx-auto max-w-3xl">
+      <button onClick={onBack} className="text-[14px] font-medium text-muted transition-colors hover:text-ink">← Back</button>
+      <p className="mt-4 text-[13px] font-semibold uppercase tracking-wider text-muted">
+        {TYPE_LABEL[item.type]} · {cleanCourse(item.courseName)}
+      </p>
+      <h1 className="mt-1 text-[28px] font-bold tracking-tight text-ink">{item.name}</h1>
+      <p className="mt-2 text-[15px] text-muted">The study guide and practice questions Navo builds from this test&rsquo;s Canvas notes &amp; readings.</p>
+      <DemoStudyTools />
+    </div>
   );
 }
