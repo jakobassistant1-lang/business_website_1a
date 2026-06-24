@@ -95,6 +95,16 @@ describe("overdue is marginal, not auto-top (Q9 + Scenario A/e)", () => {
   it("a truly no-late-credit overdue item is dead → dropped to zero value", () => {
     expect(val(mk({ canvasId: 1, weight: 100, dueInDays: -1, latePolicy: NONE }))).toBe(0);
   });
+  it("a dead (no-credit) overdue item sinks to the very bottom — below upcoming AND undated work", () => {
+    const deadOverdue = mk({ canvasId: 1, name: "dead overdue", weight: 0.8, dueInDays: -3, latePolicy: NONE });
+    const undated = mk({ canvasId: 2, name: "undated", weight: 0.05, dueInDays: null });
+    const upcoming = mk({ canvasId: 3, name: "upcoming", weight: 0.05, dueInDays: 12 });
+    const order = rankItems([deadOverdue, undated, upcoming]).map((r) => r.canvasId);
+    expect(order[order.length - 1]).toBe(1); // dead last, not floated up by its past date
+    // a still-recoverable overdue (perday with credit left) is NOT dead → not sunk
+    const recoverable = mk({ canvasId: 4, name: "recoverable", weight: 0.2, dueInDays: -1, latePolicy: PERDAY10 });
+    expect(rankItems([recoverable, undated]).map((r) => r.canvasId)).toEqual([4, 2]);
+  });
 });
 
 describe("late policy shifts urgency (Q11, Scenario B)", () => {

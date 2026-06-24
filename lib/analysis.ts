@@ -4,6 +4,7 @@
 // to the flat effort and no summary). Server-only key. Mirrors lib/briefing.ts.
 
 import { createHash } from "crypto";
+import { geminiPost } from "./geminiFetch";
 
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
@@ -18,10 +19,31 @@ export const DEFAULT_ANALYSIS_INSTRUCTION =
   "or major project ≈ 5; a routine low-point homework ≈ 2; use 3 if unsure). " +
   "hours is your best numeric estimate (0.25–20); if unsure, still give your best number and set the " +
   "bucket as the coarse fallback (quick≈1h, medium≈3h, long≈6h). Keep summaries under 1 sentence. " +
-  "ALSO set requiresAction=false ONLY when the student has NO task to do — a passive grade the " +
-  "instructor assigns (class participation, engagement, attendance, or a placeholder / teacher-entered " +
-  "grade column). Set requiresAction=true for anything the student must actually do, INCLUDING " +
-  "in-person exams and assigned readings that have no online submission. When unsure, use true.";
+  "requiresAction=false is RARE — set it ONLY for an explicitly PASSIVE grade with nothing for the " +
+  "student to do: class participation, engagement, attendance, or a column the description calls a " +
+  "placeholder the teaching team fills in. EVERYTHING the student studies for, practices, reads, " +
+  "writes, or submits is requiresAction=true — INCLUDING every exam, midterm, final, test, quiz, " +
+  "practice assessment, and reading, even with no online submission. When in ANY doubt, use true.";
+
+// Structured-output schema (Gemini `responseSchema`): forces EVERY field to be
+// present on every item — critically `requiresAction`, which the model was silently
+// omitting for some items in a batch (returning a summary but no boolean), leaving
+// passive placeholders un-screened. The schema makes it commit to true/false.
+const ANALYSIS_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+      hours: { type: "number" },
+      bucket: { type: "string", enum: ["quick", "medium", "long"] },
+      summary: { type: "string" },
+      importance: { type: "integer" },
+      requiresAction: { type: "boolean" },
+    },
+    required: ["id", "hours", "bucket", "summary", "importance", "requiresAction"],
+  },
+} as const;
 
 export type EffortBucket = "quick" | "medium" | "long";
 
@@ -82,7 +104,7 @@ export function cleanDescription(html: string | null | undefined, maxLen = 500):
  *  the due date, so a deadline change doesn't burn a re-analysis. The version tag
  *  is bumped when the analysis output shape changes (e.g. adding `importance`), so
  *  previously-analyzed rows re-run once to pick up the new field. */
-const ANALYSIS_VERSION = 3;
+const ANALYSIS_VERSION = 5; // bumped: structured-output schema + conservative screen prompt → re-run
 export function analysisInputHash(i: AnalysisItemInput): string {
   const basis = JSON.stringify({ v: ANALYSIS_VERSION, n: i.name, c: i.courseName, p: i.pointsPossible, d: cleanDescription(i.description) });
   return createHash("sha1").update(basis).digest("hex");
@@ -210,31 +232,21 @@ export async function analyzeAssignments(
       temperature: 0.2,
       maxOutputTokens: Math.min(6000, 256 + items.length * 110),
       responseMimeType: "application/json",
+      responseSchema: ANALYSIS_SCHEMA, // force requiresAction (+ all fields) to always be returned
     },
   };
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) return { ok: false, reason: "http_error" };
-    const json = await res.json().catch(() => null);
-    if (json === null) return { ok: false, reason: "bad_response" };
-    const parsed = parseAnalysis(json, items);
-    if (parsed.length === 0) {
-      // eslint-disable-next-line no-console
-      console.warn("[analysis] 0 parsed from", items.length, "items; raw:", extractGeminiText(json)?.slice(0, 300));
-    }
-    return { ok: true, items: parsed, source: "gemini" };
-  } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") return { ok: false, reason: "timeout" };
-    return { ok: false, reason: "http_error" };
-  } finally {
-    clearTimeout(timer);
+  // Retries transient 429/503 with backoff (Gemini "high demand" spikes) so the
+  // screen reliably populates instead of silently no-opping on a blip.
+  const { res, timedOut } = await geminiPost(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, body, { timeoutMs: TIMEOUT_MS });
+  if (timedOut) return { ok: false, reason: "timeout" };
+  if (!res || !res.ok) return { ok: false, reason: "http_error" };
+  const json = await res.json().catch(() => null);
+  if (json === null) return { ok: false, reason: "bad_response" };
+  const parsed = parseAnalysis(json, items);
+  if (parsed.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn("[analysis] 0 parsed from", items.length, "items; raw:", extractGeminiText(json)?.slice(0, 300));
   }
+  return { ok: true, items: parsed, source: "gemini" };
 }

@@ -76,10 +76,14 @@ export function rankActiveRows(
   now: Date,
 ): ScoredAssignment[] {
   // AI screen: drop passive / non-actionable items (participation, attendance,
-  // placeholder columns) the AI flagged — but NEVER drop one with an online
-  // submission (guardrail), so readings + in-person exams (both no-submission)
-  // stay in via the AI's requiresAction=true.
-  const actionable = active.filter((a) => !(a.requiresAction === false && !requiresOnlineSubmission(a.submissionType)));
+  // placeholder columns) the AI flagged. Two guardrails so we never drop real work:
+  //   • NEVER drop an item with an online submission, and
+  //   • NEVER drop an assessment (exam/quiz) — a no-submission in-person exam looks
+  //     like a teacher-entered placeholder to the model, but you always study for it.
+  // Readings (no submission, non-study) stay in via the AI's own requiresAction=true.
+  const actionable = active.filter(
+    (a) => !(a.requiresAction === false && !requiresOnlineSubmission(a.submissionType) && !isStudyType(typeOf(a))),
+  );
   const inputs: MarginalInput[] = actionable.map((a) => {
     const type = typeOf(a);
     const isStudy = isStudyType(type);

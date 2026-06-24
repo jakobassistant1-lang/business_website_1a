@@ -7,6 +7,7 @@
 // never throws).
 
 import { geminiKey } from "./analysis";
+import { geminiPost } from "./geminiFetch";
 
 export type LateKind = "none" | "flat" | "perday";
 
@@ -167,23 +168,11 @@ export async function analyzeLatePolicies(
     },
   };
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) return { ok: false, reason: "http_error" };
-    const json = await res.json().catch(() => null);
-    if (json === null) return { ok: false, reason: "bad_response" };
-    return { ok: true, items: parseLatePolicies(json, items), source: "gemini" };
-  } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") return { ok: false, reason: "timeout" };
-    return { ok: false, reason: "http_error" };
-  } finally {
-    clearTimeout(timer);
-  }
+  // Same transient-failure backoff as the assignment analysis (see lib/geminiFetch).
+  const { res, timedOut } = await geminiPost(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, body, { timeoutMs: TIMEOUT_MS });
+  if (timedOut) return { ok: false, reason: "timeout" };
+  if (!res || !res.ok) return { ok: false, reason: "http_error" };
+  const json = await res.json().catch(() => null);
+  if (json === null) return { ok: false, reason: "bad_response" };
+  return { ok: true, items: parseLatePolicies(json, items), source: "gemini" };
 }

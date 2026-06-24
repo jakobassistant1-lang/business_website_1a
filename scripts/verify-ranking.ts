@@ -45,7 +45,9 @@ async function main() {
     requiresAction: a.aiRequiresAction,
   });
 
-  const excluded = active.filter((a) => a.aiRequiresAction === false && !requiresOnlineSubmission(a.submissionType));
+  const excluded = active.filter(
+    (a) => a.aiRequiresAction === false && !requiresOnlineSubmission(a.submissionType) && !isStudyType(itemType(a.submissionType, a.name)),
+  );
   console.log(`\nDropped by the AI actionable-screen (${excluded.length}): ${excluded.map((a) => a.name).join(", ") || "(none yet — AI not run)"}`);
 
   // Per-item inputs, to read alongside the rank.

@@ -127,16 +127,28 @@ export function scoreItem(i: MarginalInput): MarginalScore {
 }
 
 /** Rank items by IMPORTANCE — the marginal grade-% at stake (`value`), highest
- *  first. **Dated work always comes first** (Calvin): an item with a due date
- *  outranks any undated item regardless of weight — undated work is backfill, even
- *  when it's a big slice of the grade. Within the dated and undated groups, order
- *  by `value`, then name for determinism. (Per-hour ROI — `score` — is for the
- *  scheduler's slack split, not the importance rank: a 5-minute discussion is a
- *  quick win, not a high-importance item.) */
+ *  first. **Dated work comes first** (Calvin): an item with a due date outranks any
+ *  undated item regardless of weight — undated work is backfill, even when it's a
+ *  big slice of the grade. The ONE exception: a past-due item with no recoverable
+ *  credit (salvage 0 → value 0) is DEAD — there's nothing left to earn — so it sinks
+ *  to the very bottom, below even undated work, instead of floating up with the
+ *  dated group just because its date is in the past. A still-recoverable overdue
+ *  item (per-day policy with credit left → value > 0) is NOT dead and still catches
+ *  up (Q9). Within each group, order by `value`, then name for determinism.
+ *  (Per-hour ROI — `score` — is for the scheduler's slack split, not the importance
+ *  rank: a 5-minute discussion is a quick win, not a high-importance item.) */
 export function rankItems(items: MarginalInput[]): MarginalScore[] {
-  const scored = items.map((i) => ({ s: scoreItem(i), undated: i.dueInDays === null }));
+  const scored = items.map((i) => {
+    const s = scoreItem(i);
+    const dead = i.dueInDays !== null && i.dueInDays < 0 && s.value <= 1e-9; // overdue, no credit recoverable
+    return { s, undated: i.dueInDays === null, dead };
+  });
   scored.sort(
-    (a, b) => Number(a.undated) - Number(b.undated) || b.s.value - a.s.value || a.s.name.localeCompare(b.s.name),
+    (a, b) =>
+      Number(a.dead) - Number(b.dead) || // dead (unrecoverable overdue) to the very bottom
+      Number(a.undated) - Number(b.undated) || // then dated-first; undated is backfill
+      b.s.value - a.s.value ||
+      a.s.name.localeCompare(b.s.name),
   );
   return scored.map((x) => x.s);
 }
