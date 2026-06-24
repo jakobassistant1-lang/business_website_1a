@@ -34,9 +34,12 @@ export function assessmentTier(type: ItemType, name: string): AssessmentTier {
   return "exam"; // type === "exam"
 }
 
-/** Days available to study before the assessment: capped by tier, ≥1. */
-export function effectiveWindow(daysUntil: number, tier: AssessmentTier): number {
-  return Math.max(1, Math.min(Math.floor(daysUntil), LEAD_CAP[tier]));
+/** Days available to study before the assessment: ≥1, and no more than the lead
+ *  window. The lead window is the user's `leadDays` when set (per-assignment override
+ *  or their studyDaysQuiz/Test/Final setting), otherwise the tier default LEAD_CAP. */
+export function effectiveWindow(daysUntil: number, tier: AssessmentTier, leadDays?: number | null): number {
+  const cap = leadDays != null && leadDays > 0 ? Math.floor(leadDays) : LEAD_CAP[tier];
+  return Math.max(1, Math.min(Math.floor(daysUntil), cap));
 }
 
 /** How many ≤1h sessions to cover H hours: ~0.85h each, at least the type
@@ -105,21 +108,28 @@ export interface AssessmentPlan {
   overflowHours: number; // study time that couldn't fit ≤1h sessions in the window (>0 ⇒ over capacity)
 }
 
-/** Expand an assessment into its ideal spaced study sessions (spec §4). */
-export function expandAssessment(input: { daysUntil: number; studyHours: number; tier: AssessmentTier }): AssessmentPlan {
+/** Expand an assessment into its ideal spaced study sessions (spec §4). `leadDays`
+ *  (optional) is the user's study-lead override/setting; it sets the window. */
+export function expandAssessment(input: {
+  daysUntil: number;
+  studyHours: number;
+  tier: AssessmentTier;
+  leadDays?: number | null;
+}): AssessmentPlan {
   const { tier } = input;
-  const L = effectiveWindow(input.daysUntil, tier);
+  const L = effectiveWindow(input.daysUntil, tier, input.leadDays);
   const H = inflate(input.studyHours);
   const n = sessionCount(H, tier, L);
   const weights = bellWeights(n);
   const offsets = sessionDayOffsets(n, L);
   const sizes = distribute(H, weights);
-  const sessions: StudySession[] = offsets.map((dayOffset, i) => ({
-    index: i + 1,
-    dayOffset,
-    hours: round1(sizes[i]),
-    kind: i === 0 ? "review" : "relearn",
-  }));
+  // Drop sessions that round to 0h: a 0h session is negligible time, and if it
+  // reached the placer it would be "placed" but emit no block — silently erasing
+  // the item. Re-index the survivors; the earliest survivor is the review.
+  const sessions: StudySession[] = offsets
+    .map((dayOffset, i) => ({ dayOffset, hours: round1(sizes[i]) }))
+    .filter((s) => s.hours > 0)
+    .map((s, i) => ({ index: i + 1, dayOffset: s.dayOffset, hours: s.hours, kind: i === 0 ? "review" : "relearn" }));
   const placed = sessions.reduce((s, x) => s + x.hours, 0);
   return { tier, window: L, sessions, overflowHours: round1(Math.max(0, round1(H) - placed)) };
 }
@@ -135,6 +145,7 @@ export interface DeliverableBlock {
  *  merges + adds a break reminder — that's a scheduler concern, not here.) */
 export function chunkDeliverable(input: { effortHours: number }): DeliverableBlock[] {
   const H = inflate(input.effortHours);
+  if (round1(H) <= 0) return []; // ~0 effort → no block (the item still gets its G1 marker)
   if (H <= MAX_BLOCK) return [{ hours: round1(H), index: 1, count: 1 }];
   const n = Math.ceil(H / MAX_BLOCK);
   const each = round1(H / n);

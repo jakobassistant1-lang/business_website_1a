@@ -6,13 +6,9 @@
 
 import type { ScoredAssignment } from "./priority";
 import { deterministicIntensity, type Intensity, type WeekLoad } from "./intensity";
+import { geminiPost, GEMINI_URL, geminiKey } from "./geminiFetch";
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const TIMEOUT_MS = 6000;
-const MAX_ATTEMPTS = 3; // Flash-Lite free-tier 429 (rate limit) / 503 (demand) are usually transient.
-const RETRYABLE = new Set([429, 503]);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Editable from /admin/ai (stored in the Setting table). This is the fallback
 // when no custom prompt has been saved.
@@ -64,16 +60,9 @@ export function parseGeminiText(json: unknown): string | null {
   return text.length ? text : null;
 }
 
-// Env var names are case-sensitive; tolerate a mis-cased key (e.g. a dashboard
-// typo like "Gemini_API_Key") so the feature isn't silently disabled.
-function geminiKey(): string | undefined {
-  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
-  const hit = Object.entries(process.env).find(([k]) => k.toLowerCase() === "gemini_api_key");
-  return hit?.[1] || undefined;
-}
-
 /** Shared Gemini call. `fullPrompt` already includes the instruction + data.
- *  Fails open: every path returns a typed BriefingResult, never throws. */
+ *  Fails open: every path returns a typed BriefingResult, never throws. The shared
+ *  geminiPost backs off through transient 429/503/network blips. */
 async function runGemini(fullPrompt: string, maxOutputTokens: number, json = false): Promise<BriefingResult> {
   const key = geminiKey();
   if (!key) return { ok: false, reason: "no_key" }; // zero network, zero cost
@@ -83,39 +72,14 @@ async function runGemini(fullPrompt: string, maxOutputTokens: number, json = fal
     generationConfig: { temperature: 0.4, maxOutputTokens, ...(json ? { responseMimeType: "application/json" } : {}) },
   };
 
-  // Retry transient rate-limit (429) / high-demand (503) / timeouts with a short
-  // exponential backoff. A hard quota or a non-retryable error still falls open.
-  let reason: "timeout" | "http_error" | "bad_response" | "empty" = "http_error";
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) await sleep(600 * 2 ** (attempt - 1)); // 600ms, then 1200ms
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const res = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        reason = "http_error";
-        if (RETRYABLE.has(res.status) && attempt < MAX_ATTEMPTS - 1) continue;
-        return { ok: false, reason };
-      }
-      const data = await res.json().catch(() => null);
-      const text = parseGeminiText(data);
-      if (text === null) return { ok: false, reason: "bad_response" };
-      if (!text.trim()) return { ok: false, reason: "empty" };
-      return { ok: true, text: text.trim(), source: "gemini" };
-    } catch (e) {
-      reason = e instanceof Error && e.name === "AbortError" ? "timeout" : "http_error";
-      if (attempt < MAX_ATTEMPTS - 1) continue; // retry timeouts / network blips
-      return { ok: false, reason };
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  return { ok: false, reason };
+  const { res, timedOut } = await geminiPost(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, body, { timeoutMs: TIMEOUT_MS });
+  if (timedOut) return { ok: false, reason: "timeout" };
+  if (!res || !res.ok) return { ok: false, reason: "http_error" };
+  const data = await res.json().catch(() => null);
+  const text = parseGeminiText(data);
+  if (text === null) return { ok: false, reason: "bad_response" };
+  if (!text.trim()) return { ok: false, reason: "empty" };
+  return { ok: true, text: text.trim(), source: "gemini" };
 }
 
 export async function generateBriefing(

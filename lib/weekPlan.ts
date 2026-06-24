@@ -2,9 +2,11 @@
 // shape as generatePlan, but the work is laid out per the spec:
 //  • assessments → spaced ≤1h bell sessions (review then relearn), via lib/studyPlan
 //  • deliverables → ≤1h chunks across the days before they're due
-//  • placement: greedy EDF (no missed deadlines) → priority/value (contention) →
-//    target day (spacing), under 90% of the daily budget; anything that can't fit
-//    surfaces as overload rather than cramming
+//  • placement: VALUE-FIRST — highest marginal value first (contention), each on its
+//    target day for spacing, under 90% of the daily budget. Deadlines are a HARD
+//    CONSTRAINT (nothing is placed past its due/exam day) but NOT a guarantee — this
+//    is not EDF, so under genuine over-capacity a lower-value item may be left
+//    unplaced and surfaces as overload rather than getting crammed in.
 // Pure + deterministic given `now`. The legacy generatePlan stays for back-compat.
 
 import { round1 } from "./round";
@@ -79,6 +81,7 @@ export function generateWeekPlan(
   const units: Unit[] = [];
   const inWindowDue = new Set<number>(); // items whose deadline lands in the window (the G1 set)
   let beyondWindowCount = 0;
+  let studyOverflowHours = 0; // prep that can't fit into ≤1h spaced sessions (folded into overload)
 
   for (const a of assignments) {
     if (!a.dueAt) {
@@ -94,8 +97,9 @@ export function generateWeekPlan(
     const isStudy = a.assessmentTier != null;
 
     if (isStudy) {
-      // Expand into spaced sessions; place only those whose target day is in-window.
-      const plan = expandAssessment({ daysUntil: due, studyHours: effort, tier: a.assessmentTier as AssessmentTier });
+      // Expand into spaced sessions (honoring the user's study-lead window); place
+      // only those whose target day is in-window.
+      const plan = expandAssessment({ daysUntil: due, studyHours: effort, tier: a.assessmentTier as AssessmentTier, leadDays: a.studyLeadDays });
       for (const s of plan.sessions) {
         const target = due - s.dayOffset;
         if (target < 0 || target >= days) continue; // session falls outside this week's window
@@ -104,7 +108,10 @@ export function generateWeekPlan(
         const isFloor = s.index === 1 || s.index === plan.sessions.length;
         units.push({ a, hours: s.hours, targetDay: target, deadlineDay: due, isStudy: true, isFloor, sessionKind: s.kind });
       }
-      if (due < days) inWindowDue.add(a.canvasId); // the exam itself is in-window
+      if (due < days) {
+        inWindowDue.add(a.canvasId); // the exam itself is in-window
+        studyOverflowHours += plan.overflowHours; // prep that can't fit ≤1h sessions → counted as overload
+      }
     } else {
       if (due >= days) {
         beyondWindowCount++;
@@ -140,7 +147,10 @@ export function generateWeekPlan(
   // only a hard placement constraint (findDay never lands past one). Within a single
   // item, floor sessions (the review + day-before endpoints) sort ahead of its
   // interior sessions, so an exam's spacing survives compression. Deterministic.
-  const valueOf = (u: Unit) => u.a.value ?? u.a.pointsPossible ?? 0;
+  // Contention currency = the prioritizer's raw marginal value. NO fall back to
+  // pointsPossible (a different, much larger scale that would let an un-valued item
+  // dominate); an item with no value sorts last at 0.
+  const valueOf = (u: Unit) => u.a.value ?? 0;
   units.sort(
     (x, y) =>
       valueOf(y) - valueOf(x) ||
@@ -161,8 +171,8 @@ export function generateWeekPlan(
     const cur = merged.get(key);
     if (cur) cur.hours += u.hours;
     else merged.set(key, { unit: u, hours: u.hours });
-    represented.add(u.a.canvasId);
   }
+  overloadHours += studyOverflowHours; // fold in prep that couldn't be packed into sessions
 
   for (const [key, { unit, hours }] of merged) {
     const d = Number(key.slice(key.indexOf(":") + 1, key.lastIndexOf(":")));
@@ -178,6 +188,7 @@ export function generateWeekPlan(
       study: unit.isStudy,
       sessionKind: unit.sessionKind,
     });
+    represented.add(unit.a.canvasId); // only an item with a real (>0h) emitted block counts as represented
   }
 
   // G1: every in-window-due item must appear. Emit a 0h marker on its deadline

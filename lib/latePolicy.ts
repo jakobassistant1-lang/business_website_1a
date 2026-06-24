@@ -6,8 +6,7 @@
 // assume a forgiving policy). Mirrors lib/analysis.ts (batched, server-only key,
 // never throws).
 
-import { geminiKey } from "./analysis";
-import { geminiPost } from "./geminiFetch";
+import { geminiPost, salvageJsonObjects, GEMINI_URL, geminiKey } from "./geminiFetch";
 
 export type LateKind = "none" | "flat" | "perday";
 
@@ -69,8 +68,6 @@ export function coerceLatePolicy(raw: unknown): LatePolicy {
 
 // --- Gemini: read the late policy out of a syllabus -------------------------
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const TIMEOUT_MS = 12000;
 export const MAX_SYLLABUS_CHARS = 4000;
 
@@ -127,17 +124,17 @@ export function parseLatePolicies(json: unknown, inputs: LatePolicyInput[]): Lat
   const text = parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("").trim();
   if (!text) return [];
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  let arr: unknown;
+  let list: unknown[];
   try {
-    arr = JSON.parse(cleaned);
+    const arr: unknown = JSON.parse(cleaned);
+    list = Array.isArray(arr)
+      ? arr
+      : arr && typeof arr === "object"
+        ? ((Object.values(arr as Record<string, unknown>).find((v) => Array.isArray(v)) as unknown[]) ?? [])
+        : [];
   } catch {
-    return [];
+    list = salvageJsonObjects(cleaned); // keep complete objects from truncated/garbled JSON
   }
-  const list: unknown[] = Array.isArray(arr)
-    ? arr
-    : arr && typeof arr === "object"
-      ? (Object.values(arr as Record<string, unknown>).find((v) => Array.isArray(v)) as unknown[]) ?? []
-      : [];
   const known = new Set(inputs.map((i) => i.courseId));
   const out: LatePolicyResult[] = [];
   for (const el of list) {

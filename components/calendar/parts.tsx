@@ -584,10 +584,15 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
       {open && (
         <div className="absolute right-0 z-30 mt-1.5 w-64 rounded-lg border border-warning/30 bg-warning-soft/40 px-3 py-2 text-xs shadow-md">
           <p className="font-medium text-ink">This week needs ~{n}h more than you&apos;ve set aside.</p>
-          <p className="mt-0.5 text-muted">Add study time in Settings, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
-          <button onClick={dismiss} className="btn-ghost mt-1.5 text-xs">
-            Got it
-          </button>
+          <p className="mt-0.5 text-muted">Raise your daily study time, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <Link href="/settings" className="font-medium text-accent hover:underline" onClick={() => setOpen(false)}>
+              Adjust daily hours →
+            </Link>
+            <button onClick={dismiss} className="btn-ghost text-xs">
+              Got it
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -63,9 +63,14 @@ describe("resolveWeight — fallback to the type proxy", () => {
   it("uses the computed share when present", () => {
     expect(resolveWeight(0.25, "assignment")).toBe(0.25);
   });
-  it("falls back to the type proxy when the share is null/0", () => {
+  it("falls back to the type proxy only for an indeterminate share (null/undefined/negative)", () => {
     expect(resolveWeight(null, "exam")).toBe(TYPE_PROXY_WEIGHT.exam);
-    expect(resolveWeight(0, "quiz")).toBe(TYPE_PROXY_WEIGHT.quiz);
+    expect(resolveWeight(undefined, "exam")).toBe(TYPE_PROXY_WEIGHT.exam);
+    expect(resolveWeight(-1, "quiz")).toBe(TYPE_PROXY_WEIGHT.quiz);
+  });
+  it("honors an explicit 0 (a group/item that genuinely doesn't count → low priority, NOT the proxy)", () => {
+    expect(resolveWeight(0, "quiz")).toBe(0);
+    expect(resolveWeight(0, "assignment")).toBe(0);
   });
   it("exam proxy outweighs quiz outweighs discussion (Q25: exam > quiz beyond points)", () => {
     expect(TYPE_PROXY_WEIGHT.exam).toBeGreaterThan(TYPE_PROXY_WEIGHT.quiz);

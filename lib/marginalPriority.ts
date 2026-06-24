@@ -152,10 +152,3 @@ export function rankItems(items: MarginalInput[]): MarginalScore[] {
   );
   return scored.map((x) => x.s);
 }
-
-/** The weight the scheduler should use to split slack time: marginal grade-% at
- *  stake (not per-hour), floored so nothing is zero-weight and the split never
- *  divides by zero. */
-export function schedulerWeight(i: MarginalInput): number {
-  return Math.max(1e-3, scoreItem(i).value);
-}

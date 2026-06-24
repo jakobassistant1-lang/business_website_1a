@@ -19,7 +19,8 @@
 // thrown.
 
 import { createHash } from "crypto";
-import { geminiKey, extractGeminiText } from "./analysis";
+import { extractGeminiText } from "./analysis";
+import { geminiPost, GEMINI_URL, geminiKey } from "./geminiFetch";
 import {
   fetchModules,
   fetchPageBody,
@@ -32,8 +33,6 @@ import {
 import type { Plan } from "./scheduler";
 import { ymd } from "./calendarDates";
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const TIMEOUT_MS = 25000; // study artifacts are bigger than one-liners
 export const STUDY_PROMPT_VERSION = 2; // bump → all cached generations revalidate (v2: relevance filter)
 
@@ -451,24 +450,14 @@ async function callGemini(
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: { temperature, maxOutputTokens, responseMimeType: "application/json" },
   };
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) return { ok: false, reason: "http_error" };
-    const json = await res.json().catch(() => null);
-    if (json === null) return { ok: false, reason: "bad_response" };
-    return { ok: true, json };
-  } catch (e) {
-    return { ok: false, reason: e instanceof DOMException && e.name === "AbortError" ? "timeout" : "http_error" };
-  } finally {
-    clearTimeout(timer);
-  }
+  // Shared retry helper: backs off through transient 429/503/network blips (study
+  // generation previously gave up on the first failure).
+  const { res, timedOut } = await geminiPost(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, body, { timeoutMs: TIMEOUT_MS });
+  if (timedOut) return { ok: false, reason: "timeout" };
+  if (!res || !res.ok) return { ok: false, reason: "http_error" };
+  const json = await res.json().catch(() => null);
+  if (json === null) return { ok: false, reason: "bad_response" };
+  return { ok: true, json };
 }
 
 function parseJsonText(json: unknown): unknown {

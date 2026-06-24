@@ -45,7 +45,8 @@ export interface ScoredAssignment {
   name: string;
   courseName: string;
   htmlUrl: string | null;
-  score: number; // 0..100, 1dp
+  score: number; // 0..100, 1dp — the DISPLAY value (rounded, monotonically capped)
+  value?: number; // raw marginal grade-% at stake (uncapped) — the scheduler's contention currency (set by lib/rankActive)
   reason: string; // e.g. "Due in 1 day · 100 pts · 1.5h won't fit"
   // Legacy 4-factor breakdown (old scorer). Optional: the v1 marginal ranker
   // (lib/rankActive) doesn't emit it, and no UI reads it.

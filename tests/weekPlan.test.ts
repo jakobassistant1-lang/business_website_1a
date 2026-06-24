@@ -113,3 +113,33 @@ describe("generateWeekPlan — contention (value wins scarce slots)", () => {
     expect(p.overloadHours).toBeGreaterThan(0);
   });
 });
+
+describe("generateWeekPlan — review-fix behaviors", () => {
+  it("a near-zero-effort exam still appears (0h marker) and is honestly counted, never silently vanishes", () => {
+    const p = generateWeekPlan([study(1, due(3), { estimatedEffortHours: 0 })], 4, 7, 2, NOW);
+    expect(new Set(blocks(p).map((b) => b.canvasId)).has(1)).toBe(true); // present, not dropped
+    expect(p.representedCount).toBe(p.inWindowDueCount); // G1 count is honest
+  });
+
+  it("study that can't fit into ≤1h sessions is surfaced as overload, not silently dropped", () => {
+    // A huge exam load: more than MAX_SESSIONS×1h can hold → overflow must surface.
+    const p = generateWeekPlan([study(1, due(13), { estimatedEffortHours: 30 })], 8, 14, 2, NOW);
+    expect(p.overloadHours).toBeGreaterThan(0);
+  });
+
+  it("honors a custom studyLeadDays — a wider lead spreads sessions across more days", () => {
+    const distinctStudyDays = (lead: number) => {
+      const p = generateWeekPlan([study(1, due(6), { estimatedEffortHours: 5, studyLeadDays: lead })], 4, 7, 2, NOW);
+      return new Set(blocks(p).filter((b) => b.canvasId === 1).map((b) => b.day)).size;
+    };
+    expect(distinctStudyDays(6)).toBeGreaterThan(distinctStudyDays(2));
+  });
+
+  it("a screened item handed in with no value sorts last, never dominating via raw points", () => {
+    // value=0 (e.g. an item that didn't survive the AI screen) must not outrank real work.
+    const real = mk(1, due(2), { estimatedEffortHours: 1, value: 50 });
+    const valueless = mk(2, due(2), { estimatedEffortHours: 1, pointsPossible: 1500, value: 0 });
+    const p = generateWeekPlan([valueless, real], 1, 7, 2, NOW); // tight: ~0.9h/day
+    expect(totalFor(p, 1)).toBeGreaterThanOrEqual(totalFor(p, 2)); // real work wins the scarce slot
+  });
+});

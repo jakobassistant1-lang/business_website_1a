@@ -84,9 +84,11 @@ export const TYPE_PROXY_WEIGHT: Record<ItemType, number> = {
   other: 0.03,
 };
 
-/** Resolve the weight to feed the prioritizer: the computed share if known, else
- *  the type proxy. Always returns a usable 0..1 fraction. */
+/** Resolve the weight to feed the prioritizer: the computed share when it's KNOWN —
+ *  including an explicit 0, which means the group/item genuinely doesn't count toward
+ *  the grade (→ correctly low priority, NOT the proxy). Falls back to the type proxy
+ *  only for a missing/indeterminate (null/undefined/NaN/negative) share. Always 0..1. */
 export function resolveWeight(computed: number | null | undefined, type: ItemType): number {
-  if (computed != null && Number.isFinite(computed) && computed > 0) return computed;
+  if (computed != null && Number.isFinite(computed) && computed >= 0) return Math.min(1, computed);
   return TYPE_PROXY_WEIGHT[type];
 }

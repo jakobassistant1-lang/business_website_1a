@@ -124,6 +124,7 @@ export function rankActiveRows(
       courseName: m.courseName,
       htmlUrl: a.htmlUrl,
       score,
+      value: m.value, // raw marginal value (uncapped) for the scheduler's contention
       reason: reasonFor(isStudy, d, a.pointsPossible),
     };
   });

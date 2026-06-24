@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { geminiPost } from "@/lib/geminiFetch";
+import { geminiPost, salvageJsonObjects } from "@/lib/geminiFetch";
 
 const resp = (status: number) => new Response(status === 200 ? "{}" : "err", { status });
 afterEach(() => vi.restoreAllMocks());
@@ -37,6 +37,15 @@ describe("geminiPost — transient-failure backoff", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("retries a transient network error (non-abort throw) then succeeds", async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed")).mockResolvedValueOnce(resp(200));
+    vi.stubGlobal("fetch", fetchMock);
+    const { res, timedOut } = await geminiPost("u", {}, { timeoutMs: 100, backoffMs: 1 });
+    expect(res?.status).toBe(200);
+    expect(timedOut).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("reports a timeout (AbortError) without retrying", async () => {
     const fetchMock = vi.fn().mockRejectedValue(Object.assign(new Error("aborted"), { name: "AbortError" }));
     vi.stubGlobal("fetch", fetchMock);
@@ -53,5 +62,21 @@ describe("geminiPost — transient-failure backoff", () => {
     expect(res?.status).toBe(200);
     expect(timedOut).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("salvageJsonObjects — partial recovery from truncated/garbled JSON", () => {
+  it("keeps the complete objects when the array is cut off mid-item", () => {
+    const truncated = '[{"id":1,"x":"a"},{"id":2,"x":"b"},{"id":3,"x":"incompl';
+    const out = salvageJsonObjects(truncated) as Array<{ id: number }>;
+    expect(out.map((o) => o.id)).toEqual([1, 2]); // the cut-off 3rd is dropped, first two kept
+  });
+  it("ignores braces inside string values", () => {
+    const out = salvageJsonObjects('[{"id":1,"note":"has {braces} and \\" quote"}]') as Array<{ note: string }>;
+    expect(out).toHaveLength(1);
+    expect(out[0].note).toBe('has {braces} and " quote');
+  });
+  it("returns [] for text with no complete object", () => {
+    expect(salvageJsonObjects("totally broken {")).toEqual([]);
   });
 });

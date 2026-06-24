@@ -4,10 +4,8 @@
 // to the flat effort and no summary). Server-only key. Mirrors lib/briefing.ts.
 
 import { createHash } from "crypto";
-import { geminiPost } from "./geminiFetch";
+import { geminiPost, salvageJsonObjects, GEMINI_URL, geminiKey } from "./geminiFetch";
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const TIMEOUT_MS = 12000;
 export const MAX_BATCH = 40;
 
@@ -160,23 +158,24 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
   const text = extractGeminiText(json);
   if (!text) return [];
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  let arr: unknown;
-  try {
-    arr = JSON.parse(cleaned);
-  } catch {
-    return [];
-  }
   let list: unknown[];
-  if (Array.isArray(arr)) {
-    list = arr;
-  } else if (arr && typeof arr === "object") {
-    // Tolerate a wrapping object, e.g. { "assignments": [...] } or { "items": [...] }.
-    const nested = Object.values(arr as Record<string, unknown>).find((v) => Array.isArray(v));
-    if (!Array.isArray(nested)) return [];
-    list = nested;
-  } else {
-    return [];
+  try {
+    const arr: unknown = JSON.parse(cleaned);
+    if (Array.isArray(arr)) {
+      list = arr;
+    } else if (arr && typeof arr === "object") {
+      // Tolerate a wrapping object, e.g. { "assignments": [...] } or { "items": [...] }.
+      const nested = Object.values(arr as Record<string, unknown>).find((v) => Array.isArray(v));
+      list = Array.isArray(nested) ? nested : [];
+    } else {
+      list = [];
+    }
+  } catch {
+    // Truncated/garbled JSON (e.g. response cut off mid-array): salvage the complete
+    // objects so one broken item doesn't discard the whole batch.
+    list = salvageJsonObjects(cleaned);
   }
+  if (list.length === 0) return [];
 
   const byId = new Map(inputs.map((i) => [i.canvasId, i]));
   const out: AnalysisItemResult[] = [];
@@ -210,12 +209,6 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
     out.push({ canvasId: id, estimatedEffortHours: hours, bucket, summary, importance, requiresAction });
   }
   return out;
-}
-
-export function geminiKey(): string | undefined {
-  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
-  const hit = Object.entries(process.env).find(([k]) => k.toLowerCase() === "gemini_api_key");
-  return hit?.[1] || undefined;
 }
 
 export async function analyzeAssignments(

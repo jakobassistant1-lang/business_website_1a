@@ -119,23 +119,26 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
     EFFORT_HOURS,
     now,
   );
-  const valueOf = new Map(ranked.map((r) => [r.canvasId, r.score]));
+  // Raw marginal value (not the rounded display score), screened set only — mirrors lib/calendarData.
+  const valueOf = new Map(ranked.map((r) => [r.canvasId, r.value ?? 0]));
 
   // Same v1 week scheduler as live data (lib/weekPlan): spaced study sessions + ≤1h chunks.
-  const assignments: SchedulerAssignment[] = activeRows.map((r) => ({
-    canvasId: r.canvasId,
-    name: r.name,
-    courseName: r.courseName,
-    dueAt: dueDate(r.dueOffsetDays, r.dueHour),
-    pointsPossible: r.pointsPossible,
-    htmlUrl: null,
-    estimatedEffortHours: r.estimatedEffortHours ?? null,
-    summary: r.summary ?? null,
-    studyLeadDays: r.studyLeadDays ?? null,
-    aiImportance: null,
-    assessmentTier: isStudyType(r.type) ? assessmentTier(r.type, r.name) : null,
-    value: valueOf.get(r.canvasId) ?? null,
-  }));
+  const assignments: SchedulerAssignment[] = activeRows
+    .filter((r) => valueOf.has(r.canvasId))
+    .map((r) => ({
+      canvasId: r.canvasId,
+      name: r.name,
+      courseName: r.courseName,
+      dueAt: dueDate(r.dueOffsetDays, r.dueHour),
+      pointsPossible: r.pointsPossible,
+      htmlUrl: null,
+      estimatedEffortHours: r.estimatedEffortHours ?? null,
+      summary: r.summary ?? null,
+      studyLeadDays: r.studyLeadDays ?? null,
+      aiImportance: null,
+      assessmentTier: isStudyType(r.type) ? assessmentTier(r.type, r.name) : null,
+      value: valueOf.get(r.canvasId) ?? 0,
+    }));
 
   const plan = generateWeekPlan(assignments, HOURS_PER_DAY, WINDOW_DAYS, EFFORT_HOURS, now);
 

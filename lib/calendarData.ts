@@ -120,29 +120,35 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     user.defaultEffortHours,
     now,
   );
-  // Marginal value per item → the scheduler's contention currency (spec §8).
-  const valueOf = new Map(ranked.map((r) => [r.canvasId, r.score]));
+  // Marginal value per item → the scheduler's contention currency (spec §8). Use the
+  // RAW value (not the rounded 0–100 display `score`), and only items that survived
+  // the AI actionable-screen (`ranked` excludes passive placeholders) so a screened
+  // item can't be scheduled — nor reach the scheduler with a null value that would
+  // otherwise fall back to raw points and dominate.
+  const valueOf = new Map(ranked.map((r) => [r.canvasId, r.value ?? 0]));
 
   // v1 week scheduler (docs/navo-scheduling-v1-spec.md): assessments expand into
   // spaced ≤1h study sessions, deliverables into ≤1h chunks, placed under 90% of
-  // the daily budget with EDF feasibility → priority(value) → spacing.
-  const assignments: SchedulerAssignment[] = activeRows.map((a) => {
-    const t = itemType(a.submissionType, a.name);
-    return {
-      canvasId: a.canvasId,
-      name: a.name,
-      courseName: a.course.name,
-      dueAt: a.dueAt,
-      pointsPossible: a.pointsPossible,
-      htmlUrl: a.htmlUrl,
-      estimatedEffortHours: a.estimatedEffortHours ?? null,
-      summary: a.aiSummary ?? null,
-      studyLeadDays: leadDaysFor(a),
-      aiImportance: a.aiImportance ?? null,
-      assessmentTier: isStudyType(t) ? assessmentTier(t, a.name) : null,
-      value: valueOf.get(a.canvasId) ?? null,
-    };
-  });
+  // the daily budget, ordered by marginal value (contention) then spacing.
+  const assignments: SchedulerAssignment[] = activeRows
+    .filter((a) => valueOf.has(a.canvasId))
+    .map((a) => {
+      const t = itemType(a.submissionType, a.name);
+      return {
+        canvasId: a.canvasId,
+        name: a.name,
+        courseName: a.course.name,
+        dueAt: a.dueAt,
+        pointsPossible: a.pointsPossible,
+        htmlUrl: a.htmlUrl,
+        estimatedEffortHours: a.estimatedEffortHours ?? null,
+        summary: a.aiSummary ?? null,
+        studyLeadDays: leadDaysFor(a),
+        aiImportance: a.aiImportance ?? null,
+        assessmentTier: isStudyType(t) ? assessmentTier(t, a.name) : null,
+        value: valueOf.get(a.canvasId) ?? 0,
+      };
+    });
 
   const plan = generateWeekPlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, now);
 
