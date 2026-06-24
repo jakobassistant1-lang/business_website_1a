@@ -118,6 +118,21 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
     effortHours: EFFORT_HOURS,
     now,
   }).ranked;
+
+  // DEMO-ONLY ordering. The live app ranks the do-next list by IMPORTANCE
+  // (points/effort), which can place a small task due today below a big assignment
+  // due later — confusing in a first-run walkthrough ("why is today's work #4?").
+  // For the demo we re-sort by DEADLINE (soonest first; heavier breaks a same-day
+  // tie; undated last) so "what's due now" always leads. This reorders ONLY the
+  // demo payload — the real app's ranking (lib/priority) is intentionally untouched.
+  const dueOffOf = new Map(activeRows.map((r) => [r.canvasId, r.dueOffsetDays] as const));
+  const ptsOf = new Map(activeRows.map((r) => [r.canvasId, r.pointsPossible ?? 0] as const));
+  ranked.sort((a, b) => {
+    const da = dueOffOf.get(a.canvasId) ?? Infinity; // null (undated) → Infinity → last
+    const db = dueOffOf.get(b.canvasId) ?? Infinity;
+    if (da !== db) return da - db; // soonest (overdue is negative) first
+    return (ptsOf.get(b.canvasId) ?? 0) - (ptsOf.get(a.canvasId) ?? 0); // tie → heavier first
+  });
   const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
 
   const toItem = (r: DemoRow, done: boolean): CalendarItem => {

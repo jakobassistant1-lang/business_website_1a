@@ -38,11 +38,17 @@ describe("buildDemoCalendarData", () => {
     expect(data.recommendations.every((r) => !overdueIds.has(r.canvasId))).toBe(true);
   });
 
-  it("leads the do-next order with near-term work (the redesigned, intuitive order)", () => {
-    // Deadlines are spread, so the top suggestion should be one of the soonest
-    // forward items — Reading Response (today, id 3), Problem Set 6 (+1d, id 4),
-    // Essay Draft (+2d, id 5), or Quiz: Cell Division (+3d, id 6) — never a +6 item.
-    expect([3, 4, 5, 6]).toContain(data.recommendations[0].canvasId);
+  it("orders the demo do-next list by deadline so today's work leads (demo-only)", () => {
+    // The demo re-sorts by due date, so the top forward recommendation is the
+    // soonest item — Reading Response, due today (id 3) — not a heavier item due later.
+    expect(data.recommendations[0].canvasId).toBe(3);
+    // And the whole ranked list is non-decreasing by due date (overdue first).
+    const dueOf = (id: number) => {
+      const it = [...data.items, ...data.completed].find((i) => i.canvasId === id);
+      return it?.dueAt ? new Date(it.dueAt).getTime() : Number.POSITIVE_INFINITY;
+    };
+    const dues = data.ranked.map((r) => dueOf(r.canvasId));
+    for (let i = 1; i < dues.length; i++) expect(dues[i]).toBeGreaterThanOrEqual(dues[i - 1]);
   });
 
   it("gives every item the fields the views read", () => {
