@@ -59,17 +59,17 @@ const ROWS: DemoRow[] = [
   { canvasId: 6, name: "Quiz: Cell Division", courseName: COURSE.science, type: "quiz", dueOffsetDays: 3, pointsPossible: 30, studyLeadDays: 2 },
   { canvasId: 9, name: "Midterm Exam", courseName: COURSE.science, type: "exam", dueOffsetDays: 6, pointsPossible: 150, studyLeadDays: 5, summary: "Covers chapters 1–6: cells, energy, and genetics." },
   // Calculus
-  { canvasId: 4, name: "Problem Set 6", courseName: COURSE.math, type: "assignment", dueOffsetDays: 1, pointsPossible: 40, estimatedEffortHours: 2, effortBucket: "medium" },
-  { canvasId: 2, name: "Problem Set 5", courseName: COURSE.math, type: "assignment", dueOffsetDays: -3, pointsPossible: 40, done: true },
+  { canvasId: 4, name: "Problem Set 6", courseName: COURSE.math, type: "assignment", dueOffsetDays: 1, pointsPossible: 40, estimatedEffortHours: 2, effortBucket: "medium", summary: "Work the integration set in order — u-substitution first, then the trig integrals. Show each step for full marks." },
+  { canvasId: 2, name: "Problem Set 5", courseName: COURSE.math, type: "assignment", dueOffsetDays: -3, pointsPossible: 40, done: true, summary: "Five derivative problems — already submitted. Nice work." },
   // U.S. History
   { canvasId: 3, name: "Reading Response", courseName: COURSE.history, type: "other", dueOffsetDays: 0, dueHour: 23, pointsPossible: 15, summary: "One paragraph reacting to the assigned chapter." },
   { canvasId: 5, name: "Essay Draft", courseName: COURSE.history, type: "assignment", dueOffsetDays: 2, pointsPossible: 80, estimatedEffortHours: 3, effortBucket: "long", summary: "First draft of the Civil War essay — thesis plus three sources." },
   { canvasId: 10, name: "Research Paper", courseName: COURSE.history, type: "assignment", dueOffsetDays: 6, pointsPossible: 120, estimatedEffortHours: 4, effortBucket: "long", summary: "8–10 pages with a works-cited page." },
   // Literature
-  { canvasId: 7, name: "Discussion Post", courseName: COURSE.english, type: "other", dueOffsetDays: 4, dueHour: 23, pointsPossible: 20 },
+  { canvasId: 7, name: "Discussion Post", courseName: COURSE.english, type: "other", dueOffsetDays: 4, dueHour: 23, pointsPossible: 20, summary: "Post a short reaction to this week's reading, then reply to at least one classmate before midnight." },
   { canvasId: 8, name: "Vocabulary Quiz", courseName: COURSE.english, type: "quiz", dueOffsetDays: 5, pointsPossible: 20, studyLeadDays: 2 },
   // Ongoing / undated
-  { canvasId: 11, name: "Class Participation", courseName: COURSE.english, type: "other", dueOffsetDays: null, pointsPossible: 30 },
+  { canvasId: 11, name: "Class Participation", courseName: COURSE.english, type: "other", dueOffsetDays: null, pointsPossible: 30, summary: "Stay engaged in class — ask questions and join discussions. Graded on your contributions across the term." },
 ];
 
 export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarData; todayYmd: string } {
