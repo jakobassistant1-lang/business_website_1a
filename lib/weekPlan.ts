@@ -41,6 +41,7 @@ interface Unit {
   targetDay: number; // preferred day index in [0, windowDays)
   deadlineDay: number; // last day index it may be placed on
   isStudy: boolean;
+  isFloor: boolean; // study floor = the review (first) or day-before (last) session — protected under contention
   sessionKind?: SessionKind;
 }
 
@@ -98,7 +99,10 @@ export function generateWeekPlan(
       for (const s of plan.sessions) {
         const target = due - s.dayOffset;
         if (target < 0 || target >= days) continue; // session falls outside this week's window
-        units.push({ a, hours: s.hours, targetDay: target, deadlineDay: due, isStudy: true, sessionKind: s.kind });
+        // Floor = the spacing endpoints (review + day-before): kept when an exam's
+        // interior sessions overflow, so compression preserves the spacing.
+        const isFloor = s.index === 1 || s.index === plan.sessions.length;
+        units.push({ a, hours: s.hours, targetDay: target, deadlineDay: due, isStudy: true, isFloor, sessionKind: s.kind });
       }
       if (due < days) inWindowDue.add(a.canvasId); // the exam itself is in-window
     } else {
@@ -112,21 +116,10 @@ export function generateWeekPlan(
       for (let i = 0; i < blocks.length; i++) {
         const span = Math.max(1, blocks.length);
         const target = blocks.length === 1 ? due : Math.round((i * due) / (span - 1 || 1));
-        units.push({ a, hours: blocks[i].hours, targetDay: Math.min(target, due), deadlineDay: due, isStudy: false });
+        units.push({ a, hours: blocks[i].hours, targetDay: Math.min(target, due), deadlineDay: due, isStudy: false, isFloor: false });
       }
     }
   }
-
-  // Placement order: earliest deadline first (EDF feasibility) → higher value
-  // (contention) → study before work on a tie → earlier target. Deterministic.
-  units.sort(
-    (x, y) =>
-      x.deadlineDay - y.deadlineDay ||
-      (y.a.value ?? y.a.pointsPossible ?? 0) - (x.a.value ?? x.a.pointsPossible ?? 0) ||
-      Number(y.isStudy) - Number(x.isStudy) ||
-      x.targetDay - y.targetDay ||
-      x.a.canvasId - y.a.canvasId,
-  );
 
   const planDays: PlanDay[] = [];
   for (let d = 0; d < days; d++) {
@@ -134,16 +127,32 @@ export function generateWeekPlan(
     planDays.push({ date: ymd(date), weekday: WEEKDAYS[date.getDay()], isToday: d === 0, blocks: [], allocated: 0, capacity: H });
   }
   const remaining = planDays.map(() => cap);
-
-  // Accumulate hours per (item, day, kind) so each emits one merged block.
   const merged = new Map<string, { unit: Unit; hours: number }>();
   let overloadHours = 0;
   const represented = new Set<number>();
 
+  // VALUE-FIRST placement (spec §8): the goal is to maximize marginal points, so
+  // rank every unit — study session OR work chunk — by the prioritizer's marginal
+  // value and place the highest first. The LOWEST-value work overflows under crunch
+  // regardless of type (so a low-stakes assignment yields to high-stakes exam prep
+  // when that nets more points). Urgency is already inside `value`, so imminent work
+  // is protected without a special case, and EDF is NOT the selector — deadlines are
+  // only a hard placement constraint (findDay never lands past one). Within a single
+  // item, floor sessions (the review + day-before endpoints) sort ahead of its
+  // interior sessions, so an exam's spacing survives compression. Deterministic.
+  const valueOf = (u: Unit) => u.a.value ?? u.a.pointsPossible ?? 0;
+  units.sort(
+    (x, y) =>
+      valueOf(y) - valueOf(x) ||
+      Number(y.isFloor) - Number(x.isFloor) ||
+      x.targetDay - y.targetDay ||
+      x.a.canvasId - y.a.canvasId,
+  );
+
   for (const u of units) {
     const d = findDay(u.targetDay, u.deadlineDay, u.hours, remaining, days);
     if (d === null) {
-      overloadHours += u.hours;
+      overloadHours += u.hours; // can't fit before its deadline → surfaced, never crammed
       continue;
     }
     remaining[d] -= u.hours;

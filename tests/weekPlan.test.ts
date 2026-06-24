@@ -102,4 +102,14 @@ describe("generateWeekPlan — contention (value wins scarce slots)", () => {
     expect(totalFor(p, 1)).toBeGreaterThanOrEqual(totalFor(p, 2));
     expect(p.overloadHours).toBeGreaterThan(0); // genuinely over capacity
   });
+
+  it("value-first: a low-value chore yields to high-stakes exam prep when both can't fit", () => {
+    // A big low-value chore vs studying for a high-value exam, same deadline, tight
+    // budget. Maximizing points means the chore overflows so the exam keeps its prep.
+    const chore = mk(1, due(5), { estimatedEffortHours: 6, value: 1 });
+    const exam = study(2, due(5), { estimatedEffortHours: 6, value: 100 });
+    const p = generateWeekPlan([chore, exam], 2, 7, 2, NOW); // ~1.8h/day usable → can't fit both
+    expect(totalFor(p, 2)).toBeGreaterThan(totalFor(p, 1)); // high-value exam prep wins the scarce time
+    expect(p.overloadHours).toBeGreaterThan(0);
+  });
 });

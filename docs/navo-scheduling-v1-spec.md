@@ -105,6 +105,8 @@ When several assessments' (and deliverables') ideal sessions exceed available ti
 6. **Free time by deferring low-value deliverables** — the prioritizer already flags low-weight, forgiving-late work; let those slip to protect high-stakes prep rather than stealing from study.
 7. **Surface the crunch + hand over the levers.** If the week genuinely can't hold adequate spaced study, **say so** ("Calc and Bio exams both Thursday — here's what's compressed") and offer: start earlier, add daily hours, or accept lighter prep on the lowest-stakes item. **Never degrade silently.**
 
+**Implemented as (v1) — value-first, NOT feasibility-first.** The goal is to maximize marginal points, so `generateWeekPlan` ranks EVERY unit (study session OR work chunk) by the prioritizer's marginal value and places the highest first; the **lowest-value work overflows** under crunch regardless of type — so a low-stakes assignment yields to high-stakes exam prep when that nets more points (rare, because urgency is already inside the value, so imminent work is protected automatically). **EDF is not the selector** — deadlines are only a hard placement constraint (nothing lands past its due/exam day). The **"floor"** is therefore an *intra-item* rule, not a cross-item guarantee: within one exam, the review + day-before sessions sort ahead of its interior sessions, so when its interior overflows the **spacing endpoints survive** (spacing-preserving compression). Class-standing (#2) and deferring low-value deliverables (#6) fall out of the single value ranking, since grade-leverage and late-policy are already baked into `value`.
+
 ---
 
 ## 9. Decisions locked in the gap review (kept as-is)
