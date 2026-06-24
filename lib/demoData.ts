@@ -48,27 +48,28 @@ interface DemoRow {
   done?: boolean;
 }
 
-// 13 items across 4 classes: a mix of assignments / quizzes / exams / tasks, one
-// overdue, one already done, one undated — enough to light up every view.
+// 11 items across 4 classes: a mix of assignments / quizzes / exam / tasks, with
+// one overdue (Lab Report 2), one done (Problem Set 5), and one undated (Class
+// Participation). Deadlines are spread across distinct days (-1 → +6) so the
+// resulting do-next order reads clearly — urgent-first, then by deadline — instead
+// of a confusing cluster of same-day items. Ids are unique but not sequential.
 const ROWS: DemoRow[] = [
-  // Science
-  { canvasId: 1, name: "Lab Report 3", courseName: COURSE.science, type: "assignment", dueOffsetDays: 2, pointsPossible: 50, estimatedEffortHours: 1.5, effortBucket: "medium", summary: "Write up the cell-division lab with your data and a short conclusion." },
-  { canvasId: 2, name: "Quiz 3: The Cell", courseName: COURSE.science, type: "quiz", dueOffsetDays: 4, pointsPossible: 30, studyLeadDays: 3 },
-  { canvasId: 3, name: "Midterm Exam", courseName: COURSE.science, type: "exam", dueOffsetDays: 6, pointsPossible: 150, studyLeadDays: 7, summary: "Covers chapters 1–6: cells, energy, and genetics." },
-  // Math
-  { canvasId: 4, name: "Problem Set 5", courseName: COURSE.math, type: "assignment", dueOffsetDays: 1, pointsPossible: 40, estimatedEffortHours: 2, effortBucket: "medium" },
-  { canvasId: 5, name: "Problem Set 4", courseName: COURSE.math, type: "assignment", dueOffsetDays: -2, pointsPossible: 40, done: true },
-  { canvasId: 6, name: "Quiz 4: Integrals", courseName: COURSE.math, type: "quiz", dueOffsetDays: 5, pointsPossible: 25, studyLeadDays: 3 },
-  // History
-  { canvasId: 7, name: "Reading Response", courseName: COURSE.history, type: "other", dueOffsetDays: -1, pointsPossible: 20, summary: "One paragraph reacting to the assigned chapter." },
-  { canvasId: 8, name: "Essay Draft", courseName: COURSE.history, type: "assignment", dueOffsetDays: 3, pointsPossible: 100, estimatedEffortHours: 3, effortBucket: "long", summary: "First draft of the Civil War essay — thesis plus three sources." },
-  { canvasId: 9, name: "Final Paper", courseName: COURSE.history, type: "assignment", dueOffsetDays: 6, pointsPossible: 120, estimatedEffortHours: 4, effortBucket: "long" },
-  // English
-  { canvasId: 10, name: "Discussion Post", courseName: COURSE.english, type: "other", dueOffsetDays: 0, dueHour: 23, pointsPossible: 15 },
-  { canvasId: 11, name: "Vocabulary Quiz", courseName: COURSE.english, type: "quiz", dueOffsetDays: 4, pointsPossible: 20, studyLeadDays: 3 },
-  { canvasId: 12, name: "Midterm Essay", courseName: COURSE.english, type: "exam", dueOffsetDays: 6, pointsPossible: 100, studyLeadDays: 7, summary: "In-class essay on a major theme from the novel." },
+  // Biology
+  { canvasId: 1, name: "Lab Report 2", courseName: COURSE.science, type: "assignment", dueOffsetDays: -1, pointsPossible: 40, estimatedEffortHours: 1.5, effortBucket: "medium", summary: "Write up the cell-division lab with your data and a short conclusion." },
+  { canvasId: 6, name: "Quiz: Cell Division", courseName: COURSE.science, type: "quiz", dueOffsetDays: 3, pointsPossible: 30, studyLeadDays: 2 },
+  { canvasId: 9, name: "Midterm Exam", courseName: COURSE.science, type: "exam", dueOffsetDays: 6, pointsPossible: 150, studyLeadDays: 5, summary: "Covers chapters 1–6: cells, energy, and genetics." },
+  // Calculus
+  { canvasId: 4, name: "Problem Set 6", courseName: COURSE.math, type: "assignment", dueOffsetDays: 1, pointsPossible: 40, estimatedEffortHours: 2, effortBucket: "medium" },
+  { canvasId: 2, name: "Problem Set 5", courseName: COURSE.math, type: "assignment", dueOffsetDays: -3, pointsPossible: 40, done: true },
+  // U.S. History
+  { canvasId: 3, name: "Reading Response", courseName: COURSE.history, type: "other", dueOffsetDays: 0, dueHour: 23, pointsPossible: 15, summary: "One paragraph reacting to the assigned chapter." },
+  { canvasId: 5, name: "Essay Draft", courseName: COURSE.history, type: "assignment", dueOffsetDays: 2, pointsPossible: 80, estimatedEffortHours: 3, effortBucket: "long", summary: "First draft of the Civil War essay — thesis plus three sources." },
+  { canvasId: 10, name: "Research Paper", courseName: COURSE.history, type: "assignment", dueOffsetDays: 6, pointsPossible: 120, estimatedEffortHours: 4, effortBucket: "long", summary: "8–10 pages with a works-cited page." },
+  // Literature
+  { canvasId: 7, name: "Discussion Post", courseName: COURSE.english, type: "other", dueOffsetDays: 4, dueHour: 23, pointsPossible: 20 },
+  { canvasId: 8, name: "Vocabulary Quiz", courseName: COURSE.english, type: "quiz", dueOffsetDays: 5, pointsPossible: 20, studyLeadDays: 2 },
   // Ongoing / undated
-  { canvasId: 13, name: "Class Participation", courseName: COURSE.english, type: "other", dueOffsetDays: null, pointsPossible: 30 },
+  { canvasId: 11, name: "Class Participation", courseName: COURSE.english, type: "other", dueOffsetDays: null, pointsPossible: 30 },
 ];
 
 export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarData; todayYmd: string } {

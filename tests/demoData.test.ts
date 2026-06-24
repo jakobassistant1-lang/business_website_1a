@@ -31,11 +31,18 @@ describe("buildDemoCalendarData", () => {
     expect(data.ranked.length).toBeGreaterThan(0);
     expect(data.recommendations.length).toBeGreaterThan(0);
     expect(data.recommendations.length).toBeLessThanOrEqual(3);
-    // The History "Reading Response" is due in the past → overdue, in atRisk only.
+    // Biology "Lab Report 2" is due in the past → overdue, in atRisk only (not recommendations).
     expect(data.atRisk.length).toBeGreaterThanOrEqual(1);
     expect(data.atRisk.every((r) => r.kind === "overdue")).toBe(true);
     const overdueIds = new Set(data.atRisk.map((r) => r.canvasId));
     expect(data.recommendations.every((r) => !overdueIds.has(r.canvasId))).toBe(true);
+  });
+
+  it("leads the do-next order with near-term work (the redesigned, intuitive order)", () => {
+    // Deadlines are spread, so the top suggestion should be one of the soonest
+    // forward items — Reading Response (today, id 3), Problem Set 6 (+1d, id 4),
+    // Essay Draft (+2d, id 5), or Quiz: Cell Division (+3d, id 6) — never a +6 item.
+    expect([3, 4, 5, 6]).toContain(data.recommendations[0].canvasId);
   });
 
   it("gives every item the fields the views read", () => {

@@ -79,10 +79,13 @@ export const DEMO_STEPS: Record<DemoView, TourStep[]> = {
     { selector: '[data-tour="cal-day"]', title: "Deadlines on their day", body: "Each assignment lands on the day it's due, color-coded by class — click any to open it.", side: "right", align: "start" },
   ],
   "plan-timeline": [
+    // The timeline was the most-confusing page in testing, so lead with a brief,
+    // centered intro (no anchor) → then the KEY → then the timeline itself.
+    { title: "Your whole term, mapped out", body: "The timeline lays your classes out left-to-right so you can see what's coming and when to start. Here's how to read it." },
+    { selector: '[data-tour="tl-legend"]', title: "Start with the key", body: "Each color is a class; ◆ marks a due date, and the striped bars are time set aside to study.", side: "top", align: "start" },
     // tl-gantt is wide; place the popover above it (it sits below the banner/summary).
-    { selector: '[data-tour="tl-gantt"]', title: "Your whole term", body: "One row per class; each bar is the days set aside to work — click a bar for details.", side: "top", align: "start" },
+    { selector: '[data-tour="tl-gantt"]', title: "Now the timeline", body: "One row per class; each bar is the days planned to work on something — click a bar for details.", side: "top", align: "start" },
     { selector: '[data-tour="tl-priority"]', title: "Done before it's due", body: "Work is scheduled to finish on time. The number is its priority order.", side: "bottom", align: "start" },
-    { selector: '[data-tour="tl-legend"]', title: "What every mark means", body: "The key decodes the colors — quiz vs exam, ◆ due dates, and striped study time.", side: "top", align: "start" },
   ],
   study: [
     { selector: '[data-tour="study-featured"]', title: "Prep for any test", body: "Your next quiz or exam, front and center — with a study plan ready.", side: "bottom", align: "start" },
