@@ -596,7 +596,7 @@ function DemoStudyDetail({ item, onBack }: { item: CalendarItem; onBack: () => v
         {TYPE_LABEL[item.type]} · {cleanCourse(item.courseName)}
       </p>
       <h1 className="mt-1 text-[28px] font-bold tracking-tight text-ink">{item.name}</h1>
-      <p className="mt-2 text-[15px] text-muted">The study guide and practice questions Navo builds from this test&rsquo;s Canvas notes &amp; readings.</p>
+      <p className="mt-2 text-[15px] text-muted">A sample of the study guide and practice questions Navo auto-builds from each test&rsquo;s Canvas notes &amp; readings.</p>
       <DemoStudyTools />
     </div>
   );
