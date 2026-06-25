@@ -287,6 +287,81 @@ export function StudyLeadEditor({ item }: { item: CalendarItem }) {
   );
 }
 
+const EFFORT_PRESETS = [0.25, 0.5, 1, 1.5, 2, 3, 4, 6]; // 15m … 6h
+
+/** Subtle, click-to-reveal effort override (#14). Lives ONLY on the assignment
+ *  detail page — every list stays read-only. It looks exactly like the read-only
+ *  EffortTag chip until tapped; then a row of one-tap presets. The chosen value
+ *  feeds the displayed tag AND the scheduler, so it re-plans the work. */
+export function EffortEditor({ canvasId, estimate, override }: { canvasId: number; estimate: number | null; override: number | null }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const effective = override ?? estimate;
+  const label = effortHoursText(effective);
+
+  async function save(hours: number | null) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/assignment/effort", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: canvasId, hours }),
+      });
+      if (res.ok) {
+        setOpen(false);
+        router.refresh(); // re-plan + re-render with the new effort
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        title="Adjust the estimated time"
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-surface-soft px-3 py-1 text-[13px] font-medium text-muted transition hover:text-ink"
+      >
+        <Glyph d={ICON.clock} size={12} aria-hidden />
+        {label ?? "Add time"}
+        {override != null && <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-accent" title="Your estimate" aria-hidden />}
+      </button>
+      {open && (
+        <span className="absolute left-0 top-full z-30 mt-1.5 w-max rounded-lg border border-line-subtle bg-surface p-2 text-left shadow-md">
+          <span className="block px-1 pb-1.5 text-[11px] text-muted">How long will this take?</span>
+          <span className="flex max-w-[15rem] flex-wrap gap-1">
+            {EFFORT_PRESETS.map((h) => {
+              const active = effective != null && Math.abs(effective - h) < 1e-9;
+              return (
+                <button
+                  key={h}
+                  disabled={busy}
+                  onClick={() => save(h)}
+                  className={`rounded-full px-2.5 py-1 text-[13px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-white" : "bg-surface-soft text-ink hover:bg-line-subtle"}`}
+                >
+                  {fmtHours(h)}
+                </button>
+              );
+            })}
+          </span>
+          {override != null && (
+            <button
+              disabled={busy}
+              onClick={() => save(null)}
+              className="mt-1.5 block text-[12px] text-muted transition hover:text-ink disabled:opacity-50"
+            >
+              ↺ Use the estimate{estimate != null ? ` (${effortHoursText(estimate)})` : ""}
+            </button>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export interface StudyEntry {
   canvasId: number;
   name: string;

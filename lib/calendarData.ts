@@ -87,6 +87,11 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     return tier === "final" ? user.studyDaysFinal : tier === "exam" ? user.studyDaysTest : user.studyDaysQuiz;
   };
 
+  // Effective effort: a student's manual override beats the AI estimate, and it
+  // feeds EVERYTHING (the ranker, the scheduler, and the displayed "~2h" tag) so a
+  // change reshapes the plan, not just the label (#14).
+  const effortOf = (a: AssignmentRow): number | null => a.effortOverrideHours ?? a.estimatedEffortHours ?? null;
+
   // v1 prioritizer (docs/navo-priority-v1-spec.md): rank active work by the
   // MARGINAL expected grade-% at stake. Each item's raw points are converted to
   // its share of ITS course grade first (course totals differ, so raw points
@@ -106,7 +111,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
       pointsPossible: a.pointsPossible,
       htmlUrl: a.htmlUrl,
       submissionType: a.submissionType,
-      estimatedEffortHours: a.estimatedEffortHours ?? null,
+      estimatedEffortHours: effortOf(a),
       // v1 signals (null/absent ⇒ fail open): current grade (0–100 → fraction),
       // weighted-group share, parsed late policy, and the AI actionable screen.
       courseGrade: a.course.currentScore != null ? a.course.currentScore / 100 : null,
@@ -141,7 +146,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
         dueAt: a.dueAt,
         pointsPossible: a.pointsPossible,
         htmlUrl: a.htmlUrl,
-        estimatedEffortHours: a.estimatedEffortHours ?? null,
+        estimatedEffortHours: effortOf(a),
         summary: a.aiSummary ?? null,
         studyLeadDays: leadDaysFor(a),
         aiImportance: a.aiImportance ?? null,

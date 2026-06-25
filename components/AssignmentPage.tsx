@@ -12,7 +12,7 @@ import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates"
 import { cleanCourse } from "@/lib/courseName";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { TYPE_LABEL, type ItemType } from "@/lib/itemType";
-import { EffortTag } from "@/components/calendar/parts";
+import { EffortTag, EffortEditor } from "@/components/calendar/parts";
 import type { CanvasRubricCriterion } from "@/lib/canvas";
 
 /** Relative, do-next voice for the due date — matches the rest of the app. */
@@ -55,6 +55,7 @@ export function AssignmentPage(props: {
   dueAt: string | null;
   points: number | null;
   estimatedEffortHours?: number | null;
+  effortOverrideHours?: number | null;
   htmlUrl: string | null;
   description: string | null;
   submissionState: string | null;
@@ -67,7 +68,7 @@ export function AssignmentPage(props: {
   demo?: boolean;
   onBack?: () => void;
 }) {
-  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, todayYmd, demo, onBack } = props;
+  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, todayYmd, demo, onBack } = props;
   const router = useRouter();
 
   // AI approach + steps, lazy-fetched. Seed the approach with the stored one-liner
@@ -138,7 +139,11 @@ export function AssignmentPage(props: {
       <div className="mt-3 flex flex-wrap items-center gap-2.5 text-[13.5px] font-medium">
         <span className="rounded-full bg-surface-soft px-3 py-1 text-ink">{dueLabel(dueAt, todayYmd)}</span>
         {points != null && points > 0 && <span className="rounded-full bg-surface-soft px-3 py-1 text-ink">{points} pts</span>}
-        <EffortTag hours={estimatedEffortHours} className="rounded-full bg-surface-soft px-3 py-1" />
+        {demo ? (
+          <EffortTag hours={estimatedEffortHours} className="rounded-full bg-surface-soft px-3 py-1" />
+        ) : (
+          <EffortEditor canvasId={canvasId} estimate={estimatedEffortHours ?? null} override={effortOverrideHours ?? null} />
+        )}
         <span className={`rounded-full px-3 py-1 ${toneSoft[badge.tone]}`}>{badge.label}</span>
       </div>
 

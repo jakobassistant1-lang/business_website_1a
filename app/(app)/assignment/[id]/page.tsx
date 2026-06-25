@@ -34,6 +34,7 @@ export default async function AssignmentDetailPage({ params }: { params: Promise
       dueAt={a.dueAt ? a.dueAt.toISOString() : null}
       points={a.pointsPossible ?? null}
       estimatedEffortHours={a.estimatedEffortHours ?? null}
+      effortOverrideHours={a.effortOverrideHours ?? null}
       htmlUrl={a.htmlUrl ?? null}
       description={description}
       submissionState={a.submissionState ?? null}
