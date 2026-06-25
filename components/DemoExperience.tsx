@@ -574,6 +574,7 @@ function DemoDetail({
       type={item.type}
       dueAt={item.dueAt}
       points={item.pointsPossible}
+      estimatedEffortHours={item.estimatedEffortHours}
       htmlUrl={null}
       description={null}
       submissionState={item.status === "done" ? "submitted" : null}

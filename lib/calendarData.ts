@@ -60,6 +60,14 @@ function loadAssignmentRows(userId: number) {
   return prisma.assignment.findMany({ where: { userId }, include: { course: true } });
 }
 
+/** The effort to use EVERYWHERE — display and scheduling: a student's manual
+ *  override beats the AI estimate. This is the single source; never read
+ *  `estimatedEffortHours` raw in a display/schedule path, so a new projection can't
+ *  silently bypass the override (the bug fixed in 06ebb2f). Pure + unit-tested. */
+export function effectiveEffort(row: { effortOverrideHours?: number | null; estimatedEffortHours?: number | null }): number | null {
+  return row.effortOverrideHours ?? row.estimatedEffortHours ?? null;
+}
+
 export async function loadCalendarData(userId: number, hoursOverride?: number): Promise<CalendarData> {
   const [user, cred, rows, events] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
@@ -87,10 +95,9 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     return tier === "final" ? user.studyDaysFinal : tier === "exam" ? user.studyDaysTest : user.studyDaysQuiz;
   };
 
-  // Effective effort: a student's manual override beats the AI estimate, and it
-  // feeds EVERYTHING (the ranker, the scheduler, and the displayed "~2h" tag) so a
-  // change reshapes the plan, not just the label (#14).
-  const effortOf = (a: AssignmentRow): number | null => a.effortOverrideHours ?? a.estimatedEffortHours ?? null;
+  // Feeds the ranker, the scheduler, AND the displayed "~2h" tag from one place
+  // (effectiveEffort) so an override reshapes the plan, not just the label (#14).
+  const effortOf = effectiveEffort;
 
   // v1 prioritizer (docs/navo-priority-v1-spec.md): rank active work by the
   // MARGINAL expected grade-% at stake. Each item's raw points are converted to

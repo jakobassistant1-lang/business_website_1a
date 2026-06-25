@@ -61,18 +61,12 @@ export function fmtHours(h: number): string {
   return mins < 60 ? `${mins}m` : `${Math.round(h * 10) / 10}h`;
 }
 
-export function effortText(item: CalendarItem): string | null {
-  if (item.estimatedEffortHours != null && item.estimatedEffortHours > 0) {
-    const h = Math.round(item.estimatedEffortHours * 10) / 10;
-    return `~${h}h${item.effortBucket ? ` (${item.effortBucket})` : ""}`;
-  }
-  return item.effortBucket;
-}
-
-/** "~2h" from a total estimate; null when there's no usable number. */
+/** "~2h" / "~30m" from a total estimate; null when there's no usable number.
+ *  Routes through fmtHours so anything under an hour reads as minutes (never a
+ *  decimal of an hour) — consistent with the preset chips in EffortEditor. */
 export function effortHoursText(hours: number | null | undefined): string | null {
   if (hours == null || hours <= 0) return null;
-  return `~${Math.round(hours * 10) / 10}h`;
+  return `~${fmtHours(hours)}`;
 }
 
 /** One consistent "estimated work" tag, used everywhere an assignment appears
@@ -168,7 +162,7 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
       cancelled = true;
     };
   }, [item.canvasId, item.summary]);
-  const eff = effortText(item);
+  const eff = effortHoursText(item.estimatedEffortHours); // effective hours (override-aware), minute-formatted, no stale bucket
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true">
       <div className="card w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
@@ -297,11 +291,21 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const effective = override ?? estimate;
   const label = effortHoursText(effective);
 
+  // Close on Escape; the backdrop below handles outside-clicks.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
   async function save(hours: number | null) {
     setBusy(true);
+    setErr(null);
     try {
       const res = await fetch("/api/assignment/effort", {
         method: "PATCH",
@@ -311,7 +315,12 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
       if (res.ok) {
         setOpen(false);
         router.refresh(); // re-plan + re-render with the new effort
+      } else {
+        const b = await res.json().catch(() => ({}));
+        setErr(typeof b.error === "string" ? b.error : "Couldn't save — try again.");
       }
+    } catch {
+      setErr("Couldn't save — check your connection.");
     } finally {
       setBusy(false);
     }
@@ -330,33 +339,39 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
         {override != null && <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-accent" title="Your estimate" aria-hidden />}
       </button>
       {open && (
-        <span className="absolute left-0 top-full z-30 mt-1.5 w-max rounded-lg border border-line-subtle bg-surface p-2 text-left shadow-md">
-          <span className="block px-1 pb-1.5 text-[11px] text-muted">How long will this take?</span>
-          <span className="flex max-w-[15rem] flex-wrap gap-1">
-            {EFFORT_PRESETS.map((h) => {
-              const active = effective != null && Math.abs(effective - h) < 1e-9;
-              return (
-                <button
-                  key={h}
-                  disabled={busy}
-                  onClick={() => save(h)}
-                  className={`rounded-full px-2.5 py-1 text-[13px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-white" : "bg-surface-soft text-ink hover:bg-line-subtle"}`}
-                >
-                  {fmtHours(h)}
-                </button>
-              );
-            })}
+        <>
+          <span className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden />
+          <span className="absolute left-0 top-full z-30 mt-1.5 w-max rounded-lg border border-line-subtle bg-surface p-2 text-left shadow-md">
+            <span className="block px-1 pb-1.5 text-[11px] text-muted">
+              How long will this take?{label ? ` (now ${label})` : ""}
+            </span>
+            <span className="flex max-w-[15rem] flex-wrap gap-1">
+              {EFFORT_PRESETS.map((h) => {
+                const active = effective != null && Math.abs(effective - h) < 1e-9;
+                return (
+                  <button
+                    key={h}
+                    disabled={busy}
+                    onClick={() => save(h)}
+                    className={`rounded-full px-2.5 py-1 text-[13px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-white" : "bg-surface-soft text-ink hover:bg-line-subtle"}`}
+                  >
+                    {fmtHours(h)}
+                  </button>
+                );
+              })}
+            </span>
+            {override != null && (
+              <button
+                disabled={busy}
+                onClick={() => save(null)}
+                className="mt-1.5 block text-[12px] text-muted transition hover:text-ink disabled:opacity-50"
+              >
+                ↺ Use the estimate{estimate != null ? ` (${effortHoursText(estimate)})` : ""}
+              </button>
+            )}
+            {err && <span className="mt-1.5 block px-1 text-[11px] text-danger">{err}</span>}
           </span>
-          {override != null && (
-            <button
-              disabled={busy}
-              onClick={() => save(null)}
-              className="mt-1.5 block text-[12px] text-muted transition hover:text-ink disabled:opacity-50"
-            >
-              ↺ Use the estimate{estimate != null ? ` (${effortHoursText(estimate)})` : ""}
-            </button>
-          )}
-        </span>
+        </>
       )}
     </span>
   );
