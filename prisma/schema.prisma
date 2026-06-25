@@ -46,6 +46,7 @@ model User {
   googleEvents   GoogleCalendarEvent[]
   studyGenerations StudyGeneration[]
   passwordResetTokens PasswordResetToken[]
+  studentNotes  StudentNote[]
 }
 
 // Single-use, time-limited password-reset tokens (the "forgot password" flow).
@@ -262,4 +263,28 @@ model Announcement {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, canvasId])
+}
+
+// Student-uploaded study notes for ONE assessment (per-test scope). Only the
+// EXTRACTED TEXT is stored — never the original file (text-only by design). These
+// are fed into study-guide / practice-question generation as PINNED sources:
+// always included, ordered ahead of Canvas material, and exempt from the AI
+// relevance filter (see lib/study.ts collectStudyMaterial / relevanceFilter).
+// sourceKind drives the UI badge; imageCount > 0 marks photo notes (handwriting
+// transcribed by Gemini vision in Phase 2).
+model StudentNote {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  canvasId   Int // the Assignment.canvasId this note supports
+  title      String
+  sourceKind String // "paste" | "pdf" | "docx" | "text" | "image"
+  text       String // extracted text — the only thing persisted
+  charCount  Int      @default(0)
+  imageCount Int      @default(0) // photo notes: number of source images (else 0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, canvasId])
 }

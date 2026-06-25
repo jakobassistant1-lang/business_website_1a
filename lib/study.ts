@@ -92,7 +92,7 @@ const norm = (s: string) =>
 // ---------- material collection (Decision A) ----------
 
 export interface StudySource {
-  kind: "description" | "page" | "file" | "announcement" | "syllabus" | "module_item";
+  kind: "description" | "page" | "file" | "announcement" | "syllabus" | "module_item" | "student_note";
   title: string;
   text: string;
 }
@@ -117,7 +117,8 @@ export interface AssessmentMeta {
   aiSummary: string | null;
 }
 
-const TOTAL_BUDGET = 15000;
+const TOTAL_BUDGET = 20000; // chars; raised from 15k to leave headroom for pinned student notes
+const STUDENT_NOTE_CHARS = 4000; // per-note cap so one big upload can't devour the whole budget
 const MAX_PAGES = 6;
 const MAX_PDFS = 3;
 const PDF_MAX_BYTES = 8 * 1024 * 1024; // skip huge scans/textbooks
@@ -133,6 +134,11 @@ function moduleContains(m: CanvasModule, a: AssessmentMeta): boolean {
 }
 
 // ---------- AI relevance check (the hybrid's second stage) ----------
+
+/** Pinned sources are never dropped by the relevance filter and always lead the
+ *  kept array (priority order): the assessment's own instructions + the student's
+ *  own uploaded notes. */
+const isPinnedKind = (k: StudySource["kind"]) => k === "description" || k === "student_note";
 
 const RELEVANCE_INSTRUCTION =
   "You are Navo's relevance checker. From the candidate materials below, decide which are actually relevant " +
@@ -155,14 +161,15 @@ export function parseKeepIndices(raw: unknown, max: number): number[] | null {
 }
 
 /** Gemini screens the deterministic candidates on EVERY generation. The model
- *  only FILTERS — it returns indices to keep; code assembles the final set. The
- *  assessment's own instructions (kind "description") are never droppable.
+ *  only FILTERS — it returns indices to keep; code assembles the final set.
+ *  PINNED sources (the assessment's own instructions + the student's uploaded
+ *  notes) are never droppable and always lead the kept array.
  *  Fail open: no key / error / garbage / empty verdict ⇒ keep everything. */
 async function relevanceFilter(
   a: AssessmentMeta,
   sources: StudySource[],
 ): Promise<{ kept: StudySource[]; excluded: string[]; aiFiltered: boolean }> {
-  const candidates = sources.filter((s) => s.kind !== "description");
+  const candidates = sources.filter((s) => !isPinnedKind(s.kind));
   // With 0-1 candidates there is nothing to choose between — vacuous check.
   if (candidates.length < 2) return { kept: sources, excluded: [], aiFiltered: false };
 
@@ -184,8 +191,8 @@ async function relevanceFilter(
 
   const keepSet = new Set(keep);
   return {
-    // description-kind sources lead the array, so this preserves priority order.
-    kept: [...sources.filter((s) => s.kind === "description"), ...candidates.filter((_, i) => keepSet.has(i))],
+    // Pinned sources lead the array, so this preserves priority order.
+    kept: [...sources.filter((s) => isPinnedKind(s.kind)), ...candidates.filter((_, i) => keepSet.has(i))],
     excluded: candidates.filter((_, i) => !keepSet.has(i)).map((s) => s.title),
     aiFiltered: true,
   };
@@ -198,10 +205,20 @@ export async function collectStudyMaterial(
   token: string,
   assessment: AssessmentMeta,
   announcements: { title: string; message: string | null; postedAt: Date | null }[],
+  studentNotes: { title: string; text: string }[] = [],
 ): Promise<StudyMaterial> {
   const sources: StudySource[] = [];
   const desc = stripHtml(assessment.description, 3000);
   if (desc) sources.push({ kind: "description", title: "Test instructions", text: desc });
+
+  // Student-uploaded notes: PINNED. Inserted right after the test's own
+  // instructions and ahead of all Canvas material, and exempt from the relevance
+  // filter (isPinnedKind). Each is capped (STUDENT_NOTE_CHARS) so one large upload
+  // can't consume the whole budget and starve Canvas sources.
+  for (const n of studentNotes) {
+    const text = n.text.replace(/\s+/g, " ").trim().slice(0, STUDENT_NOTE_CHARS);
+    if (text) sources.push({ kind: "student_note", title: n.title, text });
+  }
 
   // 1) Module containment — Canvas's own unit structure.
   let modules: CanvasModule[] = [];
@@ -334,9 +351,12 @@ function metaLines(a: AssessmentMeta): string {
 }
 
 function materialBlock(material: StudyMaterial): string {
-  if (material.sources.length === 0) return "No Canvas material was found for this assessment.";
+  if (material.sources.length === 0) return "No source material was found for this assessment.";
   const chunks = material.sources.map((s, i) => `[S${i + 1} · ${s.kind} · ${s.title}]\n${s.text}`);
-  return `Canvas material (use ONLY what is relevant to this assessment; ignore the rest):\n${chunks.join("\n\n")}`;
+  const notesNote = material.sources.some((s) => s.kind === "student_note")
+    ? " Sources tagged 'student_note' are the student's OWN notes — treat them as high-priority and authoritative for what this assessment covers."
+    : "";
+  return `Source material (use ONLY what is relevant to this assessment; ignore the rest).${notesNote}\n${chunks.join("\n\n")}`;
 }
 
 const LOW_MATERIAL_NOTE =
@@ -603,7 +623,13 @@ export async function generateStudyGuide(
   if (!parsed) return { ok: false, reason: "bad_response" };
   return {
     ok: true,
-    content: { ...parsed, sparse: material.sparse, sources: material.sources.map((s) => s.title), excluded: material.excluded },
+    content: {
+      ...parsed,
+      sparse: material.sparse,
+      sources: material.sources.map((s) => s.title),
+      excluded: material.excluded,
+      noteCount: material.sources.filter((s) => s.kind === "student_note").length,
+    },
   };
 }
 
@@ -619,6 +645,13 @@ export async function generateStudyQuestions(
   if (!questions) return { ok: false, reason: "bad_response" };
   return {
     ok: true,
-    content: { type, questions, sparse: material.sparse, sources: material.sources.map((s) => s.title), excluded: material.excluded },
+    content: {
+      type,
+      questions,
+      sparse: material.sparse,
+      sources: material.sources.map((s) => s.title),
+      excluded: material.excluded,
+      noteCount: material.sources.filter((s) => s.kind === "student_note").length,
+    },
   };
 }

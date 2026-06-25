@@ -36,6 +36,7 @@ export interface StudyGuideContent {
   sparse: boolean;
   sources: string[]; // human-readable source titles, for the "based on" note
   excluded?: string[]; // titles the AI relevance check dropped (receipts in the UI)
+  noteCount?: number; // how many of the student's own uploaded notes were used
 }
 
 export type StudyQuestion =
@@ -48,6 +49,7 @@ export interface StudyQuestionsContent {
   sparse: boolean;
   sources: string[];
   excluded?: string[]; // titles the AI relevance check dropped (receipts in the UI)
+  noteCount?: number; // how many of the student's own uploaded notes were used
 }
 
 const norm = (s: string) =>

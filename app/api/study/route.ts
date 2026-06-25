@@ -117,7 +117,19 @@ export async function POST(req: Request) {
     orderBy: { postedAt: "desc" },
     take: 30,
   });
-  const material = await collectStudyMaterial(cred.host, decryptSecret(cred.token), meta, announcements);
+  // Fail open if the StudentNote table isn't present yet (the prod schema push can
+  // lag a deploy) — a missing notes table must never break study generation.
+  let studentNotes: { title: string; text: string }[] = [];
+  try {
+    studentNotes = await prisma.studentNote.findMany({
+      where: { userId: user.id, canvasId },
+      select: { title: true, text: true },
+      orderBy: { createdAt: "asc" },
+    });
+  } catch {
+    studentNotes = [];
+  }
+  const material = await collectStudyMaterial(cred.host, decryptSecret(cred.token), meta, announcements, studentNotes);
   const hash = studyHash([
     STUDY_PROMPT_VERSION,
     kind,
