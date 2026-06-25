@@ -75,6 +75,7 @@ _Known facts filled in; TBDs + the brand question need Massah Calvin's input._
 
 ## Database
 - Prisma + Postgres. Change `prisma/schema.prisma` then `npm run db:push` (no migrations dir). Per-user uniqueness uses `@@unique([userId, canvasId])` → Prisma key `userId_canvasId`.
+- **Grade calculator (`components/GradeCalculator.tsx` + pure math in `lib/gradeCalc.ts`, on the per-course page):** the answers Canvas hides — a what-if score simulator, a "what do I need on the remaining work to hit my target" solver, and a weighted-category breakdown. Weighted when Canvas `group_weight`s are present, else raw points; always reconciled against the official total and labeled an estimate where it projects. Needs additive nullable `Assignment.groupId/groupName/groupWeight`, synced from Canvas `assignment_groups` in `lib/sync.ts` (`fetchAssignmentGroups`, fail-open) → **run `npm run db:push` on deploy** so those columns exist. `CalendarItem` carries `score` + the group fields so `CoursePage` builds the inputs.
 
 ## Known follow-ups
 - **Calendar — full provider generality.** A neutral `CalendarProvider` seam exists (`lib/calendar`) and busy-time reads flow through it, but OAuth connect/callback/sync/disconnect + the DB tables are still Google-specific. A 2nd provider or a write scope (`calendar.events`) would want a row-discriminated `Connection` model + shared routes. (Light abstraction done; full generalization deferred until a real 2nd provider.)
