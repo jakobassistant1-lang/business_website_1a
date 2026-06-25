@@ -162,6 +162,7 @@ export async function analyzeLatePolicies(
       temperature: 0,
       maxOutputTokens: Math.min(2000, 128 + items.length * 40),
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
     },
   };
 

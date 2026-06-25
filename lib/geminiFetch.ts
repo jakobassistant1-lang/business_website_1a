@@ -10,8 +10,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Single source of truth for the model endpoint + key resolver (was copied across
 // analysis / latePolicy / briefing / study). A model bump happens in one place now.
+// NOTE: was gemini-2.5-flash-lite — moved to gemini-2.5-flash (2026-06-25) because
+// flash-lite is chronically over capacity (HTTP 503 "high demand") AND, when it does
+// answer, can take ~9s — which tripped every timeout/error path. flash returns ~1s
+// reliably. Pair with thinkingConfig.thinkingBudget=0 at each caller (these are
+// extraction/summary tasks; reasoning just adds latency + eats the JSON budget).
 export const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 /** The server-only Gemini API key, tolerating a mis-cased env var name (e.g. the
  *  Vercel dashboard's `Gemini_API_Key` vs the code's `GEMINI_API_KEY`). */

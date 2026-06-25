@@ -226,6 +226,7 @@ export async function analyzeAssignments(
       maxOutputTokens: Math.min(6000, 256 + items.length * 110),
       responseMimeType: "application/json",
       responseSchema: ANALYSIS_SCHEMA, // force requiresAction (+ all fields) to always be returned
+      thinkingConfig: { thinkingBudget: 0 }, // no reasoning — keeps it fast + leaves the whole budget for the JSON
     },
   };
 

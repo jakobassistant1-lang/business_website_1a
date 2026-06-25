@@ -69,7 +69,7 @@ async function runGemini(fullPrompt: string, maxOutputTokens: number, json = fal
 
   const body = {
     contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-    generationConfig: { temperature: 0.4, maxOutputTokens, ...(json ? { responseMimeType: "application/json" } : {}) },
+    generationConfig: { temperature: 0.4, maxOutputTokens, thinkingConfig: { thinkingBudget: 0 }, ...(json ? { responseMimeType: "application/json" } : {}) },
   };
 
   const { res, timedOut } = await geminiPost(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, body, { timeoutMs: TIMEOUT_MS });

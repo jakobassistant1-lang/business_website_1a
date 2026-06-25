@@ -448,7 +448,7 @@ async function callGemini(
   if (!key) return { ok: false, reason: "no_key" };
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { temperature, maxOutputTokens, responseMimeType: "application/json" },
+    generationConfig: { temperature, maxOutputTokens, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
   };
   // Shared retry helper: backs off through transient 429/503/network blips (study
   // generation previously gave up on the first failure).
