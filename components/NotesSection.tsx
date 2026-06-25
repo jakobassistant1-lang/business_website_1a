@@ -8,7 +8,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type NoteSourceKind = "paste" | "pdf" | "docx" | "text" | "image";
+type NoteSourceKind = "paste" | "pdf" | "docx" | "text" | "image" | "notion";
+interface NotionPageRef {
+  id: string;
+  title: string;
+  url: string | null;
+}
 interface StudentNote {
   id: number;
   title: string;
@@ -25,6 +30,7 @@ const BADGE: Record<NoteSourceKind, string> = {
   docx: "File · Word",
   text: "File · Text",
   image: "Photo notes",
+  notion: "Notion",
 };
 
 const ERROR_TEXT: Record<string, string> = {
@@ -62,6 +68,7 @@ export function NotesSection({
   const [dragOver, setDragOver] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
   const [showPhoto, setShowPhoto] = useState(false);
+  const [showNotion, setShowNotion] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -195,6 +202,9 @@ export function NotesSection({
             <button onClick={() => setShowPhoto(true)} disabled={busy} className="btn-ghost text-sm">
               Add photos
             </button>
+            <button onClick={() => setShowNotion(true)} disabled={busy} className="btn-ghost text-sm">
+              Import from Notion
+            </button>
           </div>
           <p className="mt-3 text-[11px] text-muted">PDF, Word, or text · up to 10 MB · {limit} notes per test.</p>
         </div>
@@ -216,6 +226,9 @@ export function NotesSection({
             </button>
             <button onClick={() => setShowPhoto(true)} disabled={busy || atLimit} className="btn-ghost text-sm">
               + Add photos
+            </button>
+            <button onClick={() => setShowNotion(true)} disabled={busy || atLimit} className="btn-ghost text-sm">
+              + Import from Notion
             </button>
           </div>
           {atLimit && (
@@ -249,6 +262,16 @@ export function NotesSection({
           busy={busy}
           onClose={() => setShowPhoto(false)}
           onSave={(title, text, imageCount) => void submitNote({ title, text, sourceKind: "image", imageCount }, () => setShowPhoto(false))}
+        />
+      )}
+      {showNotion && (
+        <NotionModal
+          canvasId={canvasId}
+          onClose={() => setShowNotion(false)}
+          onImported={async () => {
+            await refresh();
+            onNotesChanged();
+          }}
         />
       )}
     </section>
@@ -601,6 +624,195 @@ function PhotoModal({
             e.target.value = "";
           }}
         />
+      </div>
+    </div>
+  );
+}
+
+const NOTION_ERR: Record<string, string> = {
+  not_connected: "Connect your Notion account first.",
+  limit_reached: "You've reached the max number of notes for this test. Delete one to add another.",
+  empty: "That Notion page has no readable text.",
+  notion_error: "Couldn't reach Notion — try reconnecting.",
+  network: "Couldn't reach the server. Try again.",
+  bad_request: "Something was off with that import.",
+  error: "Something went wrong. Try again.",
+};
+const notionErr = (code: unknown) => (typeof code === "string" && NOTION_ERR[code]) || NOTION_ERR.error;
+
+// Import notes from Notion. On open: check connection (GET). Not connected →
+// "Connect Notion" (full-page OAuth, returns to this study page). Connected →
+// search the granted pages and import any into this test's notes.
+function NotionModal({ canvasId, onClose, onImported }: { canvasId: number; onClose: () => void; onImported: () => void | Promise<void> }) {
+  const [status, setStatus] = useState<"loading" | "unconfigured" | "disconnected" | "ready">("loading");
+  const [workspace, setWorkspace] = useState<string | null>(null);
+  const [pages, setPages] = useState<NotionPageRef[]>([]);
+  const [q, setQ] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
+
+  const loadPages = useCallback(async (query: string) => {
+    setErr(null);
+    try {
+      const res = await fetch(`/api/notes/notion?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!json?.ok) return setErr(notionErr(json?.error));
+      if (!json.configured) return setStatus("unconfigured");
+      if (!json.connected) return setStatus("disconnected");
+      setWorkspace(json.workspace ?? null);
+      setPages(Array.isArray(json.pages) ? json.pages : []);
+      setStatus("ready");
+    } catch {
+      setErr(NOTION_ERR.network);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPages("");
+  }, [loadPages]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function connect() {
+    const returnTo = typeof window !== "undefined" ? window.location.pathname : "/study";
+    window.location.href = `/api/connections/notion/connect?returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  async function disconnect() {
+    await fetch("/api/connections/notion/disconnect", { method: "POST" }).catch(() => {});
+    setPages([]);
+    setStatus("disconnected");
+  }
+
+  async function importPage(p: NotionPageRef) {
+    setImportingId(p.id);
+    setErr(null);
+    try {
+      const res = await fetch("/api/notes/notion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canvasId, pageId: p.id, title: p.title }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) {
+        setImportedIds((s) => new Set(s).add(p.id));
+        await onImported();
+      } else {
+        setErr(notionErr(json?.error));
+      }
+    } catch {
+      setErr(NOTION_ERR.network);
+    } finally {
+      setImportingId(null);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background: "rgb(22 22 25 / 0.55)" }}
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="notion-notes-title"
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-2xl border border-line-subtle bg-surface p-6 shadow-lg"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 id="notion-notes-title" className="text-lg font-semibold text-ink">
+            Import from Notion
+          </h2>
+          {status === "ready" && (
+            <button onClick={disconnect} className="shrink-0 text-[12px] font-medium text-muted transition-colors hover:text-danger">
+              Disconnect
+            </button>
+          )}
+        </div>
+
+        {status === "loading" && <p className="mt-4 text-sm text-muted">Loading…</p>}
+
+        {status === "unconfigured" && (
+          <p className="mt-4 text-sm text-muted">Notion isn&apos;t set up for Navo yet. For now, use a file or paste your notes instead.</p>
+        )}
+
+        {status === "disconnected" && (
+          <div className="mt-4">
+            <p className="text-sm text-muted">Connect your Notion account, then pick the pages you want to study from.</p>
+            <button onClick={connect} className="btn-primary mt-3 text-sm">
+              Connect Notion
+            </button>
+          </div>
+        )}
+
+        {status === "ready" && (
+          <div className="mt-3">
+            {workspace && <p className="text-[12px] text-muted">Workspace: {workspace}</p>}
+            <form
+              className="mt-2 flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void loadPages(q);
+              }}
+            >
+              <input
+                className="field flex-1"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search your Notion pages…"
+                aria-label="Search Notion pages"
+              />
+              <button type="submit" className="btn-ghost text-sm">
+                Search
+              </button>
+            </form>
+
+            <div className="mt-3 space-y-2">
+              {pages.length === 0 ? (
+                <p className="text-sm text-muted">No pages found. Make sure you shared pages with Navo when connecting.</p>
+              ) : (
+                pages.map((p) => {
+                  const done = importedIds.has(p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between gap-3 rounded-[14px] border border-line-subtle bg-surface-soft/50 px-4 py-2.5"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{p.title}</span>
+                      {done ? (
+                        <span className="shrink-0 text-[13px] font-medium text-success">Added ✓</span>
+                      ) : (
+                        <button onClick={() => void importPage(p)} disabled={importingId !== null} className="btn-ghost shrink-0 text-sm">
+                          {importingId === p.id ? "Importing…" : "Import"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {err && (
+          <p className="mt-3 text-sm text-danger" role="alert">
+            {err}
+          </p>
+        )}
+
+        <div className="mt-4 flex justify-end">
+          <button type="button" onClick={onClose} className="btn-ghost text-sm">
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

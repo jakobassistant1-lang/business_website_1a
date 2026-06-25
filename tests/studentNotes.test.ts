@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { classifyNote, extractNoteText, buildTranscribeBody } from "@/lib/notesExtract";
 import { buildGuidePrompt, type AssessmentMeta, type StudyMaterial } from "@/lib/study";
+import { blockToLine, pageTitle } from "@/lib/notion";
 
 const meta: AssessmentMeta = {
   canvasId: 1,
@@ -80,5 +81,22 @@ describe("notesExtract.buildTranscribeBody (handwriting → Gemini vision)", () 
     expect(parts[1]).toEqual({ inlineData: { mimeType: "image/png", data: "AAAA" } });
     expect(parts[2]).toEqual({ inlineData: { mimeType: "image/jpeg", data: "BBBB" } });
     expect(body.generationConfig.thinkingConfig.thinkingBudget).toBe(0);
+  });
+});
+
+describe("notion.blockToLine / pageTitle", () => {
+  const rt = (s: string) => [{ plain_text: s }];
+  it("maps common Notion blocks to markdown-ish lines", () => {
+    expect(blockToLine({ type: "heading_1", heading_1: { rich_text: rt("Topic") } })).toBe("# Topic");
+    expect(blockToLine({ type: "bulleted_list_item", bulleted_list_item: { rich_text: rt("a") } })).toBe("- a");
+    expect(blockToLine({ type: "to_do", to_do: { rich_text: rt("task"), checked: true } })).toBe("- [x] task");
+    expect(blockToLine({ type: "divider", divider: {} })).toBe("---");
+  });
+  it("drops empty paragraphs (Notion uses them for spacing)", () => {
+    expect(blockToLine({ type: "paragraph", paragraph: { rich_text: [] } })).toBeNull();
+  });
+  it("reads a page title from the title-typed property, else 'Untitled'", () => {
+    expect(pageTitle({ properties: { Name: { type: "title", title: rt("My Page") } } })).toBe("My Page");
+    expect(pageTitle({ properties: { Tags: { type: "multi_select" } } })).toBe("Untitled");
   });
 });

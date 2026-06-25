@@ -47,6 +47,7 @@ model User {
   studyGenerations StudyGeneration[]
   passwordResetTokens PasswordResetToken[]
   studentNotes  StudentNote[]
+  notionConnection NotionConnection?
 }
 
 // Single-use, time-limited password-reset tokens (the "forgot password" flow).
@@ -277,7 +278,7 @@ model StudentNote {
   userId     Int
   canvasId   Int // the Assignment.canvasId this note supports
   title      String
-  sourceKind String // "paste" | "pdf" | "docx" | "text" | "image"
+  sourceKind String // "paste" | "pdf" | "docx" | "text" | "image" | "notion"
   text       String // extracted text — the only thing persisted
   charCount  Int      @default(0)
   imageCount Int      @default(0) // photo notes: number of source images (else 0)
@@ -287,4 +288,20 @@ model StudentNote {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, canvasId])
+}
+
+// A student's connected Notion workspace (OAuth). Notion access tokens are
+// long-lived (no refresh token / expiry), so this is simpler than the Google
+// connection. The token is encrypted at rest (lib/crypto). Used to search the
+// pages the integration was granted and import them as student notes.
+model NotionConnection {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique
+  accessToken   String // encrypted
+  workspaceName String?
+  workspaceId   String?
+  botId         String?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
