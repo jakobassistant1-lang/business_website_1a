@@ -190,6 +190,12 @@ model Course {
   canvasId Int
   name     String
 
+  // Student's own course total from Canvas (courses call, include[]=total_scores).
+  // Null when the instructor hides totals OR nothing is graded yet — lib/courseGrade
+  // distinguishes those two cases from the assignment data, so we never guess.
+  currentScore Float?
+  currentGrade String?
+
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments   Assignment[]
   announcements Announcement[]

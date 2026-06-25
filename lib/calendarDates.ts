@@ -79,6 +79,18 @@ export function countdownLabel(dueAtIso: string, todayYmd: string): string {
   return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
 }
 
+/** Human "time since" for an announcement's posted date, day-granularity so it
+ *  stays hydration-safe (pass the server-computed `todayYmd`): Today / Yesterday /
+ *  "{n}d ago" within a week / "Mon D" beyond. Future dates clamp to Today. */
+export function relativeDay(postedAtIso: string, todayYmd: string): string {
+  const d = parseYmd(ymd(new Date(postedAtIso)));
+  const days = Math.round((parseYmd(todayYmd).getTime() - d.getTime()) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days <= 6) return `${days}d ago`;
+  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+}
+
 export function rangeLabel(view: "day" | "week" | "month", anchor: Date, now: Date): string {
   if (view === "day") {
     if (sameDay(anchor, now)) return "Today";

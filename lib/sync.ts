@@ -4,6 +4,7 @@ import {
   fetchCourses,
   fetchAssignments,
   fetchAnnouncements,
+  courseGradeFromEnrollment,
   CanvasError,
 } from "./canvas";
 import { CanvasStatus, messageFor } from "./messages";
@@ -70,10 +71,13 @@ export async function runSync(userId: number): Promise<SyncResult> {
   let credentialError: CanvasStatus | null = null; // token-level problem (FR-5) seen on a data call
   let lastCourseError: CanvasStatus | null = null; // representative status if courses fail
   for (const c of courses) {
+    // The student's own course total (include[]=total_scores). Null is preserved
+    // verbatim — the loader decides "hidden" vs "no grades yet" from the work.
+    const grade = courseGradeFromEnrollment(c);
     const course = await prisma.course.upsert({
       where: { userId_canvasId: { userId, canvasId: c.id } },
-      create: { canvasId: c.id, userId, name: c.name ?? `Course ${c.id}` },
-      update: { name: c.name ?? `Course ${c.id}` },
+      create: { canvasId: c.id, userId, name: c.name ?? `Course ${c.id}`, currentScore: grade.score, currentGrade: grade.grade },
+      update: { name: c.name ?? `Course ${c.id}`, currentScore: grade.score, currentGrade: grade.grade },
     });
 
     try {

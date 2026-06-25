@@ -7,6 +7,8 @@
 import Link from "next/link";
 import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
+import { GradePill } from "@/components/GradePill";
+import type { CourseGrade } from "@/lib/courseGrade";
 import type { CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 
@@ -20,7 +22,7 @@ function dueLabel(iso: string | null, todayYmd: string): string {
   return date;
 }
 
-export function CoursePage({ courseName, active, completed, rankedIds, todayYmd }: { courseName: string; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string }) {
+export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string }) {
   // Do-next ordering — by importance rank, never by due date.
   const rank = new Map(rankedIds.map((id, i) => [id, i] as const));
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
@@ -32,7 +34,10 @@ export function CoursePage({ courseName, active, completed, rankedIds, todayYmd 
       <Link href="/dashboard" className="text-[14px] font-medium text-accent hover:underline">
         ← Dashboard
       </Link>
-      <h1 className="mt-3 text-[28px] font-bold tracking-tight text-ink">{cleanCourse(courseName)}</h1>
+      <div className="mt-3 flex items-start justify-between gap-4">
+        <h1 className="text-[28px] font-bold tracking-tight text-ink">{cleanCourse(courseName)}</h1>
+        {grade && <GradePill grade={grade} size="lg" />}
+      </div>
       <p className="mt-1 text-[15px] text-muted">
         {overdue.length > 0 && (
           <>

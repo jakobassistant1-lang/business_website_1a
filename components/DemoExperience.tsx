@@ -541,9 +541,11 @@ function DemoDetail({
     const active = data.items.filter((it) => it.courseCanvasId === detail.id);
     const completed = data.completed.filter((it) => it.courseCanvasId === detail.id);
     const courseName = [...active, ...completed][0]?.courseName ?? "Course";
+    const grade = data.courses.find((c) => c.canvasId === detail.id)?.grade;
     return (
       <CoursePage
         courseName={courseName}
+        grade={grade}
         active={active}
         completed={completed}
         rankedIds={data.ranked.map((r) => r.canvasId)}

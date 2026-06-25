@@ -1,13 +1,24 @@
 "use client";
 
-// The "By class" overview grid — now its own surface (the Courses page) rather
-// than a dashboard toggle. Each card is a glanceable overview linking into the
-// course's full assignment list at /class/[id].
+// The "By class" overview grid — its own surface (the Courses page). Each card
+// leads with the student's real Canvas grade (the thing the old page lacked and
+// Canvas itself buries), then the do-next item, and links into the course's full
+// assignment list at /class/[id].
 
 import Link from "next/link";
-import { countdownLabel } from "@/lib/calendarDates";
+import { countdownLabel, relativeDay } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
-import type { CalendarData, CalendarItem } from "@/lib/calendarData";
+import { GradePill } from "@/components/GradePill";
+import type { CalendarData, CalendarItem, CourseMeta } from "@/lib/calendarData";
+
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M10 5a2 2 0 0 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6" />
+      <path d="M9 17v1a3 3 0 0 0 6 0v-1" />
+    </svg>
+  );
+}
 
 export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
   const byCourse = new Map<number, { name: string; items: CalendarItem[] }>();
@@ -23,16 +34,17 @@ export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: s
     return <div className="card p-10 text-center text-[16px] text-muted">No classes synced yet.</div>;
   }
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
+  const metaByCourse = new Map(data.courses.map((c) => [c.canvasId, c] as const));
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {courses.map(([id, g], i) => (
-        <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} rank={rank} todayYmd={todayYmd} anchor={i === 0 ? "courses-card" : undefined} />
+        <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} meta={metaByCourse.get(id)} rank={rank} todayYmd={todayYmd} anchor={i === 0 ? "courses-card" : undefined} />
       ))}
     </div>
   );
 }
 
-function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd, anchor }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; rank: Map<number, number>; todayYmd: string; anchor?: string }) {
+function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, anchor }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; meta: CourseMeta | undefined; rank: Map<number, number>; todayYmd: string; anchor?: string }) {
   const overdue = items.filter((it) => it.status === "overdue").length;
   const normal = items.filter((it) => it.status === "normal");
   // Do-next: the most important item in this class, not the soonest by date.
@@ -45,16 +57,21 @@ function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd, anchor 
       className="card group flex flex-col p-5 transition hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 text-[17px] font-semibold leading-snug text-ink">{cleanCourse(courseName)}</h3>
-        {overdue > 0 ? (
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-danger-soft px-2.5 py-1 text-[12px] font-medium text-danger">
-            <span className="h-2 w-2 rounded-full bg-danger" aria-hidden /> {overdue} overdue
-          </span>
-        ) : (
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[12px] font-medium text-success">
-            <span className="h-2 w-2 rounded-full bg-success" aria-hidden /> On track
-          </span>
-        )}
+        <div className="min-w-0">
+          <h3 className="truncate text-[17px] font-semibold leading-snug text-ink">{cleanCourse(courseName)}</h3>
+          <p className="mt-1 text-[12px] font-medium">
+            {overdue > 0 ? (
+              <span className="inline-flex items-center gap-1.5 text-danger">
+                <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-hidden /> {overdue} overdue
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-success">
+                <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden /> On track
+              </span>
+            )}
+          </p>
+        </div>
+        {meta && <GradePill grade={meta.grade} />}
       </div>
 
       {next ? (
@@ -67,6 +84,14 @@ function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd, anchor 
         </div>
       ) : (
         <p className="mt-4 text-[15px] text-muted">Nothing upcoming.</p>
+      )}
+
+      {meta?.latestAnnouncement && (
+        <div className="mt-4 flex items-center gap-2 text-[13px] text-muted" title={meta.latestAnnouncement.title}>
+          <BellIcon />
+          <span className="min-w-0 flex-1 truncate">{meta.latestAnnouncement.title}</span>
+          <span className="shrink-0">{relativeDay(meta.latestAnnouncement.postedAt, todayYmd)}</span>
+        </div>
       )}
 
       <div className="mt-4 flex items-center justify-between border-t border-line-subtle pt-3 text-[13px]">
