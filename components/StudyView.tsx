@@ -7,6 +7,7 @@
 // "Open in Canvas" is secondary.
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { round1 } from "@/lib/round";
 import { fmtHours } from "@/components/calendar/parts";
 import { TYPE_LABEL, shortCourse, dueLabel, StudyChip } from "@/components/studyUi";
@@ -21,6 +22,28 @@ export function StudyView({
   assessments: CalendarItem[];
   sessions: Record<number, { date: string; hours: number }[]>;
 }) {
+  // Warm AI orientation, mirroring the dashboard's summary (fail-open: the page
+  // renders fully without it; this just fills the header line when Gemini answers).
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  useEffect(() => {
+    if (!connected || assessments.length === 0) return;
+    let cancelled = false;
+    setSummaryLoading(true);
+    fetch("/api/study-summary")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!cancelled && body && typeof body.summary === "string") setAiSummary(body.summary);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, assessments.length]);
+
   if (!connected) {
     return (
       <div className="mx-auto max-w-xl">
@@ -52,6 +75,7 @@ export function StudyView({
 
   return (
     <div className="mx-auto max-w-3xl">
+      <StudyAiHeader text={aiSummary} loading={summaryLoading} />
       <div className="mb-6">
         <p className="text-xl font-semibold text-ink">Study</p>
         <p className="mt-0.5 text-sm text-muted">Pick a test to get a plan, a study guide, and practice questions.</p>
@@ -101,6 +125,22 @@ export function StudyView({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Warm AI orientation banner — same style as the dashboard summary; fail-open:
+//    renders nothing once we know there's no text. ──────────────────────────────
+function StudyAiHeader({ text, loading }: { text: string | null; loading: boolean }) {
+  if (!text && !loading) return null;
+  return (
+    <div className="mb-6 flex items-start gap-3 rounded-2xl border border-line-subtle bg-surface-soft/60 p-4">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z" />
+        </svg>
+      </span>
+      <p className="text-[16px] leading-relaxed text-ink">{text ?? <span className="text-muted">Getting you oriented…</span>}</p>
     </div>
   );
 }

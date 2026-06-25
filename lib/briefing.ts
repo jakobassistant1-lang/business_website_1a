@@ -153,6 +153,49 @@ export async function generatePeriodBriefing(
   return runGemini(`${instruction}\n\n${buildPeriodPrompt(input)}`, 320);
 }
 
+// --- Study hub orientation (the /study page header) --------------------------
+// A warm, 2-3 sentence orientation for the Study hub, written for a student who
+// may feel OVERWHELMED by their upcoming tests: reassure, point them to what to
+// study first, and remind them prep is already broken into small spaced sessions.
+
+export const STUDY_HUB_INSTRUCTION =
+  "You are Navo's study coach, speaking to a student on their Study page, where their upcoming tests and " +
+  "quizzes are listed in priority order. Write a WARM, INVITING orientation of 2-3 short sentences for a " +
+  "student who may feel OVERWHELMED by their upcoming tests. Reassure them they don't have to study " +
+  "everything at once; point them to what to focus on FIRST (the test at the top of their list); and remind " +
+  "them their prep is already broken into small, spaced study sessions so they can take it one step at a time. " +
+  "Be specific to their ACTUAL upcoming tests when given, but do NOT invent tests, dates, or details. " +
+  "Warm and encouraging, never alarming. Plain English. No markdown, no lists, no headings.";
+
+export interface StudyHubItem {
+  name: string;
+  courseName: string;
+  type: string; // quiz | exam
+  dueLabel: string; // "in 3 days", "tomorrow"
+}
+export interface StudyHubInput {
+  firstName: string;
+  count: number; // total upcoming tests/quizzes
+  top: StudyHubItem[]; // priority-ordered (first = the next-up / featured test)
+}
+
+export function buildStudyHubPrompt(input: StudyHubInput): string {
+  const lines = [`Student: ${input.firstName || "there"}. Upcoming tests/quizzes: ${input.count}.`];
+  if (input.top.length) {
+    lines.push("Their tests, in the priority order we've already set (study #1 first):");
+    input.top.forEach((t, i) => lines.push(`${i + 1}. ${t.name} (${t.courseName}) [${t.type}] — due ${t.dueLabel}`));
+  }
+  lines.push("Write the study-page orientation.");
+  return lines.join("\n");
+}
+
+export async function generateStudyHub(
+  input: StudyHubInput,
+  instruction: string = STUDY_HUB_INSTRUCTION,
+): Promise<BriefingResult> {
+  return runGemini(`${instruction}\n\n${buildStudyHubPrompt(input)}`, 200);
+}
+
 // --- Per-assignment description (shown when an item is opened) ----------------
 
 export interface AssignmentDescInput {
