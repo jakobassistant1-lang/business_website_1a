@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { weekStart, monthGrid, rangeForView, daysInMonth, ymd, addDays } from "@/lib/calendarDates";
+import { weekStart, monthGrid, rangeForView, daysInMonth, ymd, addDays, relativeDay } from "@/lib/calendarDates";
 
 describe("calendarDates", () => {
   it("weekStart returns the Monday on/before the date", () => {
@@ -28,5 +28,24 @@ describe("calendarDates", () => {
   it("daysInMonth handles month lengths", () => {
     expect(daysInMonth(new Date(2026, 5, 1))).toBe(30); // June
     expect(daysInMonth(new Date(2026, 1, 1))).toBe(28); // Feb 2026
+  });
+});
+
+describe("relativeDay", () => {
+  const today = "2026-06-25";
+  const iso = (y: number, m: number, d: number, h = 12) => new Date(y, m, d, h).toISOString();
+
+  it("labels today, yesterday, and within-week days", () => {
+    expect(relativeDay(iso(2026, 5, 25), today)).toBe("Today");
+    expect(relativeDay(iso(2026, 5, 24), today)).toBe("Yesterday");
+    expect(relativeDay(iso(2026, 5, 22), today)).toBe("3d ago");
+  });
+
+  it("falls back to 'Mon D' beyond a week", () => {
+    expect(relativeDay(iso(2026, 5, 10), today)).toBe("Jun 10");
+  });
+
+  it("clamps a future post to Today", () => {
+    expect(relativeDay(iso(2026, 5, 26), today)).toBe("Today");
   });
 });

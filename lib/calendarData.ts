@@ -12,6 +12,7 @@ import { rankRecommendations, priorityInputsFromPlan, TOP_N, type ScoredAssignme
 import { loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
 import { itemType, isStudyType, type ItemType } from "./itemType";
+import { deriveCourseGrade, type CourseGrade } from "./courseGrade";
 
 // The planning window is fixed at 7 days (a week), not user-configurable.
 export const PLAN_WINDOW_DAYS = 7;
@@ -32,6 +33,20 @@ export interface CalendarItem {
   effortBucket: string | null; // "quick" | "medium" | "long"
   summary: string | null;
   htmlUrl: string | null;
+  // Grade-calculator inputs (course page). All null when ungraded / points-based.
+  score: number | null; // raw points earned (Canvas submissionScore)
+  groupId: number | null; // Canvas assignment_group id
+  groupName: string | null;
+  groupWeight: number | null; // Canvas group_weight (percent)
+}
+
+/** One enrolled course plus its honest grade state (graded / hidden / none) and
+ *  its most recent Canvas announcement (null = none posted). */
+export interface CourseMeta {
+  canvasId: number;
+  name: string;
+  grade: CourseGrade;
+  latestAnnouncement: { title: string; postedAt: string } | null;
 }
 
 export interface CalendarData {
@@ -44,6 +59,7 @@ export interface CalendarData {
   overloadHours: number; // hours the week is over-subscribed (0 = everything fits)
   items: CalendarItem[]; // active coursework (includes undated, dueAt === null)
   completed: CalendarItem[]; // submitted/graded
+  courses: CourseMeta[]; // enrolled courses + their honest grade state
   events: CalendarEvent[]; // calendar "busy" blocks
   plan: Plan; // scheduler output (powers the Timeline)
   atRisk: AtRiskItem[];
@@ -57,10 +73,12 @@ function loadAssignmentRows(userId: number) {
 }
 
 export async function loadCalendarData(userId: number, hoursOverride?: number): Promise<CalendarData> {
-  const [user, cred, rows, events] = await Promise.all([
+  const [user, cred, rows, courseRows, announcementRows, events] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
     prisma.canvasCredential.findUnique({ where: { userId } }),
     loadAssignmentRows(userId),
+    prisma.course.findMany({ where: { userId } }),
+    prisma.announcement.findMany({ where: { userId, postedAt: { not: null } } }),
     loadCalendarEvents(userId),
   ]);
 
@@ -124,7 +142,35 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     effortBucket: a.effortBucket ?? null,
     summary: a.aiSummary ?? null,
     htmlUrl: a.htmlUrl,
+    score: a.submissionScore ?? null,
+    groupId: a.groupId ?? null,
+    groupName: a.groupName ?? null,
+    groupWeight: a.groupWeight ?? null,
   });
+
+  // Honest per-course grade. "Graded work" = any assignment Canvas has scored,
+  // which lets deriveCourseGrade tell a hidden total apart from "nothing graded
+  // yet" when Canvas returns no course total — so we never show a guessed number.
+  const gradedCourseIds = new Set(
+    rows.filter((a) => a.submissionScore != null || a.submissionState === "graded").map((a) => a.courseCanvasId),
+  );
+  // Most recent announcement per course (the cards show "what's new" per class).
+  const latestAnnByCourse = new Map<number, { title: string; postedAt: string }>();
+  for (const an of announcementRows) {
+    if (!an.postedAt) continue;
+    const cur = latestAnnByCourse.get(an.courseCanvasId);
+    if (!cur || an.postedAt.getTime() > new Date(cur.postedAt).getTime()) {
+      latestAnnByCourse.set(an.courseCanvasId, { title: an.title, postedAt: an.postedAt.toISOString() });
+    }
+  }
+  const courses: CourseMeta[] = courseRows
+    .map((c) => ({
+      canvasId: c.canvasId,
+      name: c.name,
+      grade: deriveCourseGrade(c.currentScore, c.currentGrade, gradedCourseIds.has(c.canvasId)),
+      latestAnnouncement: latestAnnByCourse.get(c.canvasId) ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const status = cred?.lastValidationStatus ?? null;
   return {
@@ -139,6 +185,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     atRisk: plan.atRisk.filter((r) => r.kind === "overdue"),
     items: activeRows.map((a) => toItem(a, false)),
     completed: submittedRows.map((a) => toItem(a, true)),
+    courses,
     events,
     plan,
     recommendations,

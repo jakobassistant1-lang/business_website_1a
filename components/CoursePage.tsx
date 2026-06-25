@@ -7,6 +7,10 @@
 import Link from "next/link";
 import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
+import { GradePill } from "@/components/GradePill";
+import { GradeCalculator } from "@/components/GradeCalculator";
+import type { CourseGrade } from "@/lib/courseGrade";
+import type { GradeInput } from "@/lib/gradeCalc";
 import type { CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 
@@ -20,19 +24,31 @@ function dueLabel(iso: string | null, todayYmd: string): string {
   return date;
 }
 
-export function CoursePage({ courseName, active, completed, rankedIds, todayYmd }: { courseName: string; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string }) {
+export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string }) {
   // Do-next ordering — by importance rank, never by due date.
   const rank = new Map(rankedIds.map((id, i) => [id, i] as const));
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
   const overdue = active.filter((it) => it.status === "overdue").sort(byRank);
   const upcoming = active.filter((it) => it.status === "normal").sort(byRank);
+  const gradeItems: GradeInput[] = [...active, ...completed].map((it) => ({
+    canvasId: it.canvasId,
+    name: it.name,
+    pointsPossible: it.pointsPossible ?? 0,
+    score: it.score,
+    groupId: it.groupId,
+    groupName: it.groupName,
+    groupWeight: it.groupWeight,
+  }));
 
   return (
     <div className="mx-auto max-w-3xl">
       <Link href="/dashboard" className="text-[14px] font-medium text-accent hover:underline">
         ← Dashboard
       </Link>
-      <h1 className="mt-3 text-[28px] font-bold tracking-tight text-ink">{cleanCourse(courseName)}</h1>
+      <div className="mt-3 flex items-start justify-between gap-4">
+        <h1 className="text-[28px] font-bold tracking-tight text-ink">{cleanCourse(courseName)}</h1>
+        {grade && <GradePill grade={grade} size="lg" />}
+      </div>
       <p className="mt-1 text-[15px] text-muted">
         {overdue.length > 0 && (
           <>
@@ -41,6 +57,8 @@ export function CoursePage({ courseName, active, completed, rankedIds, todayYmd 
         )}
         {upcoming.length} upcoming · {completed.length} done
       </p>
+
+      <GradeCalculator items={gradeItems} official={grade} />
 
       <div className="mt-7 space-y-7">
         {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger />}

@@ -4,6 +4,8 @@ import {
   fetchCourses,
   fetchAssignments,
   fetchAnnouncements,
+  fetchAssignmentGroups,
+  courseGradeFromEnrollment,
   CanvasError,
 } from "./canvas";
 import { CanvasStatus, messageFor } from "./messages";
@@ -70,19 +72,25 @@ export async function runSync(userId: number): Promise<SyncResult> {
   let credentialError: CanvasStatus | null = null; // token-level problem (FR-5) seen on a data call
   let lastCourseError: CanvasStatus | null = null; // representative status if courses fail
   for (const c of courses) {
+    // The student's own course total (include[]=total_scores). Null is preserved
+    // verbatim — the loader decides "hidden" vs "no grades yet" from the work.
+    const grade = courseGradeFromEnrollment(c);
     const course = await prisma.course.upsert({
       where: { userId_canvasId: { userId, canvasId: c.id } },
-      create: { canvasId: c.id, userId, name: c.name ?? `Course ${c.id}` },
-      update: { name: c.name ?? `Course ${c.id}` },
+      create: { canvasId: c.id, userId, name: c.name ?? `Course ${c.id}`, currentScore: grade.score, currentGrade: grade.grade },
+      update: { name: c.name ?? `Course ${c.id}`, currentScore: grade.score, currentGrade: grade.grade },
     });
 
     try {
-      const [assignments, announcements] = await Promise.all([
+      const [assignments, announcements, groups] = await Promise.all([
         fetchAssignments(cred.host, token, c.id),
         fetchAnnouncements(cred.host, token, c.id),
+        fetchAssignmentGroups(cred.host, token, c.id),
       ]);
+      const groupById = new Map(groups.map((g) => [g.id, g] as const));
 
       for (const a of assignments) {
+        const group = a.assignment_group_id != null ? groupById.get(a.assignment_group_id) : undefined;
         const data = {
           userId,
           courseId: course.id,
@@ -97,6 +105,10 @@ export async function runSync(userId: number): Promise<SyncResult> {
           submittedAt: toDate(a.submission?.submitted_at),
           submissionScore: a.submission?.score ?? null,
           submissionState: a.submission?.workflow_state ?? null,
+          // Assignment group + weight → weighted grade calculator (null when absent).
+          groupId: a.assignment_group_id ?? null,
+          groupName: group?.name ?? null,
+          groupWeight: group?.group_weight ?? null,
         };
         await prisma.assignment.upsert({
           where: { userId_canvasId: { userId, canvasId: a.id } },
