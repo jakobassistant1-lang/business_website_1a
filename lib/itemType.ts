@@ -35,12 +35,13 @@ export function itemType(submissionTypes: string | null | undefined, name: strin
 }
 
 // Fixed categorical colors for the four types — used by the Timeline to color bars
-// by WHAT the work is (not which class). No pink; exam = red to read as high-stakes,
-// assignment = the brand violet (the most common bar). Stable across light/dark.
+// by WHAT the work is (not which class). No pink; NO alarm-red — red is reserved for
+// danger/overdue, so exam uses a deep indigo (serious, not stressful); assignment is
+// the brand violet (the most common bar). Stable across light/dark.
 export const TYPE_COLOR: Record<ItemType, string> = {
   assignment: "#7c5cf0", // violet (brand accent)
   quiz: "#0ea5e9", // sky
-  exam: "#ef4444", // red (highest stakes)
+  exam: "#4f46e5", // deep indigo (serious, calm — NOT red; red means danger/overdue)
   other: "#64748b", // slate (discussions / misc)
 };
 

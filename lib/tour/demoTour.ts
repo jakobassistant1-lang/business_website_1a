@@ -81,8 +81,8 @@ export const DEMO_STEPS: Record<DemoView, TourStep[]> = {
   "plan-timeline": [
     // The timeline was the most-confusing page in testing, so lead with a brief,
     // centered intro (no anchor) → then the KEY → then the timeline itself.
-    { title: "Your whole term, mapped out", body: "The timeline lays your classes out left-to-right so you can see what's coming and when to start. Here's how to read it." },
-    { selector: '[data-tour="tl-legend"]', title: "Start with the key", body: "Each color is a class; ◆ marks a due date, and the striped bars are time set aside to study.", side: "top", align: "start" },
+    { title: "Your week, mapped out", body: "The timeline lays your classes out across the next 7 days so you can see what's coming and when to start. Here's how to read it." },
+    { selector: '[data-tour="tl-legend"]', title: "Start with the key", body: "Each color is a type of work — assignment, quiz, or exam; ◆ marks a due date, and the striped bars are time set aside to study.", side: "top", align: "start" },
     // tl-gantt is wide; place the popover above it (it sits below the banner/summary).
     { selector: '[data-tour="tl-gantt"]', title: "Now the timeline", body: "One row per class; each bar is the days planned to work on something — click a bar for details.", side: "top", align: "start" },
     { selector: '[data-tour="tl-priority"]', title: "Done before it's due", body: "Work is scheduled to finish on time. The number is its priority order.", side: "bottom", align: "start" },

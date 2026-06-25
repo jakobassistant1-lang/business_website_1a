@@ -123,6 +123,10 @@ export function TimelineView({ data }: { data: CalendarData }) {
             <div className="card p-8 text-center text-sm text-muted">No upcoming work to sequence. You&apos;re clear.</div>
           ) : (
             <>
+              <p className="mb-2 mt-4 text-[13px] text-muted">
+                Each bar is the days set aside to <span className="font-semibold text-ink">work</span> on something; the{" "}
+                <span className="font-semibold text-ink">◆</span> marks when it&rsquo;s due, and the number is the order to tackle them.
+              </p>
               <div data-tour="tl-gantt">
                 <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
               </div>
@@ -139,7 +143,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
   );
 }
 
-const BAR_H = 30; // px per lane row
+const BAR_H = 40; // px per lane row (taller for legibility)
 
 function WeekGantt({
   courses,
@@ -158,15 +162,16 @@ function WeekGantt({
   const dueDow = (idx: number | null) => (idx != null ? WEEKDAYS[parseYmd(days[idx].date).getDay()] : null);
   return (
     <div className="overflow-x-auto rounded-lg border border-line-subtle">
-      <div className="min-w-[720px]">
+      <div className="min-w-[760px]">
         {/* Header */}
         <div className="flex bg-surface-soft">
-          <div className="w-[160px] shrink-0 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">Class</div>
+          <div className="w-[180px] shrink-0 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">Class</div>
           <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${N}, 1fr)` }}>
             {days.map((d, i) => {
               const date = parseYmd(d.date);
               return (
-                <div key={d.date} className={`border-l border-line-subtle px-1 py-2 text-center text-sm ${i === 0 ? "font-semibold text-accent" : "text-muted"}`}>
+                <div key={d.date} className={`border-l border-line-subtle px-1 py-2.5 text-center text-[15px] ${i === 0 ? "font-semibold text-accent" : "text-muted"}`}>
+                  {i === 0 && <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-accent">Today</span>}
                   {WEEKDAYS[date.getDay()]} {date.getDate()}
                 </div>
               );
@@ -178,14 +183,14 @@ function WeekGantt({
           const { spans, laneCount } = buildSpans(days, course);
           return (
             <div key={course} className="flex border-t border-line-subtle">
-              <div className="sticky left-0 z-10 flex w-[160px] shrink-0 items-center bg-surface px-3 py-2">
-                <span className="truncate text-sm font-medium text-ink" title={course}>
+              <div className="sticky left-0 z-10 flex w-[180px] shrink-0 items-center bg-surface px-3 py-2">
+                <span className="truncate text-[15px] font-medium text-ink" title={course}>
                   {course}
                 </span>
               </div>
               <div className="relative flex-1" style={{ height: laneCount * BAR_H + 10 }}>
                 {/* today band + day gridlines */}
-                <div className="absolute bottom-0 top-0 bg-accent-soft/20" style={{ left: 0, width: `${100 / N}%` }} />
+                <div className="absolute bottom-0 top-0 bg-accent-soft/40" style={{ left: 0, width: `${100 / N}%` }} />
                 {days.map((_, i) => (
                   <div key={i} className="absolute bottom-0 top-0 border-l border-line-subtle/60" style={{ left: `${(i / N) * 100}%` }} />
                 ))}
@@ -199,8 +204,8 @@ function WeekGantt({
                       <div key={`due-${s.canvasId}`} title={`${s.name} due ${dueDow(s.dueIdx) ?? ""}`}>
                         <div className="absolute bottom-0 top-0 w-px bg-ink/30" style={{ left: `${((s.dueIdx! + 0.5) / N) * 100}%` }} />
                         <span
-                          className="absolute h-3.5 w-3.5 rotate-45 rounded-[2px] border border-surface shadow-sm"
-                          style={{ left: `calc(${((s.dueIdx! + 0.5) / N) * 100}% - 7px)`, bottom: -3, background: c }}
+                          className="absolute h-4 w-4 rotate-45 rounded-[2px] border border-surface shadow-sm"
+                          style={{ left: `calc(${((s.dueIdx! + 0.5) / N) * 100}% - 8px)`, bottom: -4, background: c }}
                         />
                       </div>
                     );
@@ -215,12 +220,12 @@ function WeekGantt({
                       data-tour={rank.get(s.canvasId) === 1 ? "tl-priority" : undefined}
                       onClick={() => onPick(s.canvasId)}
                       title={`${s.study ? "Study: " : ""}${s.name} · ${fmtHours(s.hours)}${s.dueIdx != null ? ` · due ${dueDow(s.dueIdx)}` : ""}`}
-                      className="absolute truncate rounded px-2 text-left text-xs font-medium leading-[26px]"
+                      className="absolute truncate rounded px-2.5 text-left text-sm font-medium leading-[32px] shadow-sm transition hover:brightness-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30"
                       style={{
                         left: `${(s.startIdx / N) * 100}%`,
                         width: `calc(${((s.endIdx - s.startIdx + 1) / N) * 100}% - 3px)`,
                         top: s.lane * BAR_H + 5,
-                        height: 26,
+                        height: 34,
                         background: c,
                         color: fg,
                         backgroundImage: s.study ? "repeating-linear-gradient(45deg, rgba(255,255,255,0.30) 0 5px, transparent 5px 10px)" : undefined,
