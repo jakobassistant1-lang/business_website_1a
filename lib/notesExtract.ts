@@ -5,6 +5,8 @@
 // closed with a typed reason so the API/UI can show a precise message (and route
 // scanned PDFs to the photo path).
 
+import { GEMINI_URL, geminiKey, geminiPost } from "@/lib/geminiFetch";
+
 export type ExtractKind = "pdf" | "docx" | "text";
 export type ExtractFail =
   | "unsupported" // not a type we can read
@@ -67,4 +69,55 @@ export async function extractNoteText(buffer: Buffer, filename: string, mime: st
   } catch {
     return { ok: false, reason: "error" };
   }
+}
+
+// ---------- handwriting photos → text (Gemini vision) ----------
+// Reuses the SAME model the study engine uses (gemini-2.5-flash is multimodal),
+// so there's no new dependency or API key. The transcription is returned for the
+// student to review/edit before saving (OCR can err); saving then goes through
+// POST /api/notes like any other text note.
+
+const TRANSCRIBE_PROMPT =
+  "You are transcribing a student's handwritten study notes from one or more photos. Output ONLY the transcription " +
+  "as clean plain text / markdown: preserve structure (headings, bullet/numbered lists), render math as LaTeX " +
+  "(e.g. $x^2$), and briefly describe any diagrams in [square brackets]. Do not add commentary, summaries, or " +
+  "anything not present in the images.";
+
+export type TranscribeImage = { mimeType: string; base64: string };
+export type TranscribeResult = { ok: true; text: string } | { ok: false; reason: "no_key" | "timeout" | "http_error" | "empty" };
+
+/** The multimodal Gemini request body (exported so the part shape can be tested). */
+export function buildTranscribeBody(images: TranscribeImage[]) {
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: TRANSCRIBE_PROMPT }, ...images.map((im) => ({ inlineData: { mimeType: im.mimeType, data: im.base64 } }))],
+      },
+    ],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } },
+  };
+}
+
+/** Pull the text candidate out of a Gemini generateContent response. */
+function responseText(json: unknown): string {
+  const parts = (json as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return "";
+  return parts
+    .map((p) => (typeof p.text === "string" ? p.text : ""))
+    .join("")
+    .trim();
+}
+
+export async function transcribeImages(images: TranscribeImage[]): Promise<TranscribeResult> {
+  const key = geminiKey();
+  if (!key) return { ok: false, reason: "no_key" };
+  const { res, timedOut } = await geminiPost(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, buildTranscribeBody(images), {
+    timeoutMs: 30000,
+  });
+  if (timedOut) return { ok: false, reason: "timeout" };
+  if (!res || !res.ok) return { ok: false, reason: "http_error" };
+  const json = await res.json().catch(() => null);
+  const text = responseText(json);
+  return text ? { ok: true, text } : { ok: false, reason: "empty" };
 }

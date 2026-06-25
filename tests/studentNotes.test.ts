@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyNote, extractNoteText } from "@/lib/notesExtract";
+import { classifyNote, extractNoteText, buildTranscribeBody } from "@/lib/notesExtract";
 import { buildGuidePrompt, type AssessmentMeta, type StudyMaterial } from "@/lib/study";
 
 const meta: AssessmentMeta = {
@@ -66,5 +66,19 @@ describe("study generation pins student notes", () => {
     expect(prompt).toContain("Mitochondria is the powerhouse of the cell.");
     expect(prompt).toContain("student_note");
     expect(prompt).toContain("student's OWN notes");
+  });
+});
+
+describe("notesExtract.buildTranscribeBody (handwriting → Gemini vision)", () => {
+  it("builds a multimodal request: prompt text + inlineData image parts", () => {
+    const body = buildTranscribeBody([
+      { mimeType: "image/png", base64: "AAAA" },
+      { mimeType: "image/jpeg", base64: "BBBB" },
+    ]);
+    const parts = body.contents[0].parts;
+    expect(parts[0]).toHaveProperty("text");
+    expect(parts[1]).toEqual({ inlineData: { mimeType: "image/png", data: "AAAA" } });
+    expect(parts[2]).toEqual({ inlineData: { mimeType: "image/jpeg", data: "BBBB" } });
+    expect(body.generationConfig.thinkingConfig.thinkingBudget).toBe(0);
   });
 });

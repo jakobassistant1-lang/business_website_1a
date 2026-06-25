@@ -61,6 +61,7 @@ export function NotesSection({
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
+  const [showPhoto, setShowPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -183,13 +184,16 @@ export function NotesSection({
           }`}
         >
           <p className="text-base font-medium text-ink">{busy ? "Reading your file…" : dragOver ? "Drop to upload" : "No notes yet."}</p>
-          <p className="mt-1 text-sm text-muted">Upload a file, or paste from Notion or Docs.</p>
+          <p className="mt-1 text-sm text-muted">Upload a file, paste from Notion or Docs, or snap a photo of handwritten notes.</p>
           <div className="mt-4 flex flex-col justify-center gap-2.5 sm:flex-row">
             <button onClick={() => fileInputRef.current?.click()} disabled={busy} className="btn-primary text-sm">
               Upload file
             </button>
             <button onClick={() => setShowPaste(true)} disabled={busy} className="btn-ghost text-sm">
               Paste text
+            </button>
+            <button onClick={() => setShowPhoto(true)} disabled={busy} className="btn-ghost text-sm">
+              Add photos
             </button>
           </div>
           <p className="mt-3 text-[11px] text-muted">PDF, Word, or text · up to 10 MB · {limit} notes per test.</p>
@@ -209,6 +213,9 @@ export function NotesSection({
             </button>
             <button onClick={() => setShowPaste(true)} disabled={busy || atLimit} className="btn-ghost text-sm">
               + Paste text
+            </button>
+            <button onClick={() => setShowPhoto(true)} disabled={busy || atLimit} className="btn-ghost text-sm">
+              + Add photos
             </button>
           </div>
           {atLimit && (
@@ -236,6 +243,14 @@ export function NotesSection({
       />
 
       {showPaste && <PasteModal busy={busy} onClose={() => setShowPaste(false)} onSave={(title, text) => void submitNote({ title, text }, () => setShowPaste(false))} />}
+      {showPhoto && (
+        <PhotoModal
+          canvasId={canvasId}
+          busy={busy}
+          onClose={() => setShowPhoto(false)}
+          onSave={(title, text, imageCount) => void submitNote({ title, text, sourceKind: "image", imageCount }, () => setShowPhoto(false))}
+        />
+      )}
     </section>
   );
 }
@@ -402,6 +417,190 @@ function PasteModal({ busy, onClose, onSave }: { busy: boolean; onClose: () => v
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+const TRANSCRIBE_ERR: Record<string, string> = {
+  no_key: "The AI service isn't configured.",
+  timeout: "Transcription took too long. Try fewer or clearer photos.",
+  http_error: "AI couldn't read those images. Make sure the writing is in focus and well-lit, then try again.",
+  empty: "We couldn't read any text from those photos. Try clearer, well-lit images.",
+  unsupported_image: "Use JPEG, PNG, WEBP, or HEIC images.",
+  too_large: "One of those images is over 10 MB.",
+  too_many_images: "You can add up to 10 images per note.",
+  network: "Couldn't reach the server. Try again.",
+  not_found: "Couldn't find this test.",
+  bad_request: "Choose at least one image first.",
+  error: "Something went wrong. Try again.",
+};
+const transcribeErr = (code: unknown) => (typeof code === "string" && TRANSCRIBE_ERR[code]) || TRANSCRIBE_ERR.error;
+
+// Photo → handwriting transcription. Select images → "Transcribe with AI" (Gemini
+// vision) → REVIEW/edit the text (OCR can err) → save via the parent's submitNote.
+function PhotoModal({
+  canvasId,
+  busy,
+  onClose,
+  onSave,
+}: {
+  canvasId: number;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (title: string, text: string, imageCount: number) => void;
+}) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [step, setStep] = useState<"select" | "transcribing" | "review">("select");
+  const [text, setText] = useState("");
+  const [title, setTitle] = useState("Handwritten notes");
+  const [err, setErr] = useState<string | null>(null);
+  const imgInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    setErr(null);
+    setFiles((prev) => [...prev, ...Array.from(list)].slice(0, 10));
+  }
+
+  async function transcribe() {
+    if (files.length === 0) return;
+    setStep("transcribing");
+    setErr(null);
+    try {
+      const form = new FormData();
+      form.append("canvasId", String(canvasId));
+      files.forEach((f) => form.append("images", f));
+      const res = await fetch("/api/notes/transcribe", { method: "POST", body: form });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) {
+        setText(json.text || "");
+        setStep("review");
+      } else {
+        setErr(transcribeErr(json?.error));
+        setStep("select");
+      }
+    } catch {
+      setErr(TRANSCRIBE_ERR.network);
+      setStep("select");
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background: "rgb(22 22 25 / 0.55)" }}
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="photo-notes-title"
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-2xl border border-line-subtle bg-surface p-6 shadow-lg"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h2 id="photo-notes-title" className="text-lg font-semibold text-ink">
+          Add photos of handwritten notes
+        </h2>
+        <p className="mt-1 text-[13px] text-muted">We&apos;ll read your handwriting with AI — you can review and fix the text before saving.</p>
+
+        {previews.length > 0 && (
+          <div className="mt-3 flex gap-2 overflow-x-auto">
+            {previews.map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={src} alt={`Page ${i + 1}`} className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+            ))}
+          </div>
+        )}
+
+        {step === "review" ? (
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="label" htmlFor="photo-title">
+                Title
+              </label>
+              <input id="photo-title" className="field" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
+            </div>
+            <div>
+              <label className="label" htmlFor="photo-text">
+                Transcription — check it before saving
+              </label>
+              <textarea id="photo-text" className="field" rows={12} value={text} onChange={(e) => setText(e.target.value)} maxLength={20000} />
+              <p className="mt-1 text-[11px] text-muted">AI can misread handwriting. Fix anything that looks off.</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" onClick={() => setStep("select")} className="text-[13px] font-medium text-muted transition-colors hover:text-accent">
+                ← Back to photos
+              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="btn-ghost text-sm">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!text.trim() || busy}
+                  onClick={() => onSave(title.trim() || "Handwritten notes", text.trim(), files.length)}
+                  className="btn-primary text-sm"
+                >
+                  {busy ? "Saving…" : "Save note"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {step === "transcribing" ? (
+              <div className="rounded-[14px] bg-accent-soft px-4 py-3 text-sm text-accent" aria-live="polite">
+                Reading your handwriting with AI… this can take ~10–25 seconds.
+              </div>
+            ) : (
+              <button onClick={() => imgInputRef.current?.click()} className="btn-ghost text-sm">
+                {files.length > 0 ? "Add more photos" : "Choose photos"}
+              </button>
+            )}
+            {err && (
+              <p className="text-sm text-danger" role="alert">
+                {err}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="btn-ghost text-sm">
+                Cancel
+              </button>
+              <button type="button" disabled={files.length === 0 || step === "transcribing"} onClick={transcribe} className="btn-primary text-sm">
+                {step === "transcribing" ? "Transcribing…" : "Transcribe with AI"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <input
+          ref={imgInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          capture="environment"
+          hidden
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
       </div>
     </div>
   );
