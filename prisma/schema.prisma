@@ -223,6 +223,13 @@ model Assignment {
   submissionScore Float?
   submissionState String?   // "submitted" | "graded" | "unsubmitted" | "pending_review"
 
+  // Assignment-group (Canvas grade category) + its weight — powers the weighted
+  // grade calculator. All null when ungrouped or the course is points-based; the
+  // calculator falls back to raw points in that case (fail-open).
+  groupId         Int?
+  groupName       String?
+  groupWeight     Float?    // Canvas assignment_group.group_weight (percent)
+
   // Canvas body + AI analysis (lib/analysis.ts). All nullable: null effort/summary
   // means "not analyzed yet" → scheduler uses the flat default, UI shows no summary.
   description          String?

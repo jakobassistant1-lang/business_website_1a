@@ -33,6 +33,11 @@ export interface CalendarItem {
   effortBucket: string | null; // "quick" | "medium" | "long"
   summary: string | null;
   htmlUrl: string | null;
+  // Grade-calculator inputs (course page). All null when ungraded / points-based.
+  score: number | null; // raw points earned (Canvas submissionScore)
+  groupId: number | null; // Canvas assignment_group id
+  groupName: string | null;
+  groupWeight: number | null; // Canvas group_weight (percent)
 }
 
 /** One enrolled course plus its honest grade state (graded / hidden / none) and
@@ -137,6 +142,10 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     effortBucket: a.effortBucket ?? null,
     summary: a.aiSummary ?? null,
     htmlUrl: a.htmlUrl,
+    score: a.submissionScore ?? null,
+    groupId: a.groupId ?? null,
+    groupName: a.groupName ?? null,
+    groupWeight: a.groupWeight ?? null,
   });
 
   // Honest per-course grade. "Graded work" = any assignment Canvas has scored,

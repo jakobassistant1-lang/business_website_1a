@@ -8,7 +8,9 @@ import Link from "next/link";
 import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
 import { GradePill } from "@/components/GradePill";
+import { GradeCalculator } from "@/components/GradeCalculator";
 import type { CourseGrade } from "@/lib/courseGrade";
+import type { GradeInput } from "@/lib/gradeCalc";
 import type { CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 
@@ -28,6 +30,15 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
   const overdue = active.filter((it) => it.status === "overdue").sort(byRank);
   const upcoming = active.filter((it) => it.status === "normal").sort(byRank);
+  const gradeItems: GradeInput[] = [...active, ...completed].map((it) => ({
+    canvasId: it.canvasId,
+    name: it.name,
+    pointsPossible: it.pointsPossible ?? 0,
+    score: it.score,
+    groupId: it.groupId,
+    groupName: it.groupName,
+    groupWeight: it.groupWeight,
+  }));
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -46,6 +57,8 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
         )}
         {upcoming.length} upcoming · {completed.length} done
       </p>
+
+      <GradeCalculator items={gradeItems} official={grade} />
 
       <div className="mt-7 space-y-7">
         {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger />}

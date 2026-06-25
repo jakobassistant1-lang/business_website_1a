@@ -147,6 +147,7 @@ export interface CanvasAssignment {
   html_url: string;
   description: string | null; // assignment body (HTML); used as AI context
   submission_types?: string[]; // e.g. ["online_quiz"], ["online_upload"] — used to classify item TYPE
+  assignment_group_id?: number; // Canvas grade category — joined to assignment_groups for its weight
   /** Present when the request includes `include[]=submission` (canvas-mcp integration). */
   submission?: {
     submitted_at: string | null;
@@ -180,6 +181,22 @@ export function fetchAnnouncements(host: string, token: string, courseId: number
     token,
     `/courses/${courseId}/discussion_topics?only_announcements=true`
   );
+}
+
+export interface CanvasAssignmentGroup {
+  id: number;
+  name: string;
+  group_weight: number | null; // percent; 0 / all-zero when the course isn't weighted
+}
+
+/** Assignment groups (grade categories) + their weights — powers the weighted
+ *  grade calculator. Fails OPEN ([] on error) so weights never break a sync. */
+export async function fetchAssignmentGroups(host: string, token: string, courseId: number): Promise<CanvasAssignmentGroup[]> {
+  try {
+    return await fetchAll<CanvasAssignmentGroup>(host, token, `/courses/${courseId}/assignment_groups`);
+  } catch {
+    return [];
+  }
 }
 
 // Single-assignment rubric (best-effort, for the assignment-detail page). Returns
