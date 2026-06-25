@@ -170,7 +170,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     status: done ? "done" : overdue.has(a.canvasId) ? "overdue" : "normal",
     studyLeadDays: leadDaysFor(a),
     pointsPossible: a.pointsPossible,
-    estimatedEffortHours: a.estimatedEffortHours ?? null,
+    estimatedEffortHours: effortOf(a),
     effortBucket: a.effortBucket ?? null,
     summary: a.aiSummary ?? null,
     htmlUrl: a.htmlUrl,
