@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { countdownLabel } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
+import { EffortTag } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 
 export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
@@ -63,6 +64,7 @@ function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd, anchor 
           <div className="mt-0.5 flex items-baseline gap-2">
             <span className="min-w-0 truncate text-[16px] font-medium text-ink">{next.name}</span>
             {next.dueAt && <span className="shrink-0 text-[14px] font-medium text-accent">{countdownLabel(next.dueAt, todayYmd)}</span>}
+            <EffortTag hours={next.estimatedEffortHours} className="shrink-0 self-center" />
           </div>
         </div>
       ) : (

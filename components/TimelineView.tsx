@@ -5,7 +5,7 @@ import Link from "next/link";
 import { pickTextOn } from "@/lib/courseColor";
 import { WEEKDAYS, parseYmd } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
-import { AttentionBanner, PeriodSummary, ItemDetail, Glyph, ICON, fmtHours } from "@/components/calendar/parts";
+import { AttentionBanner, PeriodSummary, ItemDetail, Glyph, ICON, fmtHours, EffortTag } from "@/components/calendar/parts";
 import { TYPE_COLOR, TYPE_LABEL, type ItemType } from "@/lib/itemType";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { PlanDay } from "@/lib/scheduler";
@@ -14,6 +14,7 @@ interface Span {
   canvasId: number;
   name: string;
   hours: number;
+  estimatedEffortHours: number | null; // assignment TOTAL estimate (#14) — same on every block of this assignment
   startIdx: number;
   endIdx: number;
   dueIdx: number | null;
@@ -28,7 +29,7 @@ function localYmd(d: Date): string {
 /** Build one continuous bar per assignment for a course: span = first→last day it
  *  has scheduled work, stacked into non-overlapping lanes. */
 function buildSpans(days: PlanDay[], course: string): { spans: Span[]; laneCount: number } {
-  const acc = new Map<number, { name: string; hours: number; min: number; max: number; study: boolean; dueIso: string }>();
+  const acc = new Map<number, { name: string; hours: number; effort: number | null; min: number; max: number; study: boolean; dueIso: string }>();
   days.forEach((d, i) => {
     for (const b of d.blocks) {
       if (b.courseName !== course) continue;
@@ -39,7 +40,7 @@ function buildSpans(days: PlanDay[], course: string): { spans: Span[]; laneCount
         cur.max = Math.max(cur.max, i);
         if (b.study) cur.study = true;
       } else {
-        acc.set(b.canvasId, { name: b.name, hours: b.hours, min: i, max: i, study: !!b.study, dueIso: b.dueAt });
+        acc.set(b.canvasId, { name: b.name, hours: b.hours, effort: b.estimatedEffortHours ?? null, min: i, max: i, study: !!b.study, dueIso: b.dueAt });
       }
     }
   });
@@ -48,7 +49,7 @@ function buildSpans(days: PlanDay[], course: string): { spans: Span[]; laneCount
     .map(([canvasId, a]) => {
       const dueKey = localYmd(new Date(a.dueIso));
       const dueIdx = days.findIndex((d) => d.date === dueKey);
-      return { canvasId, name: a.name, hours: round1(a.hours), startIdx: a.min, endIdx: a.max, dueIdx: dueIdx >= 0 ? dueIdx : null, study: a.study, lane: 0 };
+      return { canvasId, name: a.name, hours: round1(a.hours), estimatedEffortHours: a.effort, startIdx: a.min, endIdx: a.max, dueIdx: dueIdx >= 0 ? dueIdx : null, study: a.study, lane: 0 };
     })
     .sort((x, y) => x.startIdx - y.startIdx || x.endIdx - y.endIdx);
 
@@ -229,6 +230,7 @@ function WeekGantt({
                       {rank.get(s.canvasId) ? <span className="font-bold">{rank.get(s.canvasId)}. </span> : null}
                       {s.study ? "Study: " : ""}
                       {s.name} {fmtHours(s.hours)}
+                      {!s.study && <EffortTag hours={s.estimatedEffortHours} className="ml-1 align-middle" />}
                     </button>
                   );
                 })}

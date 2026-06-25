@@ -7,6 +7,7 @@ import type { PlanDay } from "@/lib/scheduler";
 import type { ScoredAssignment } from "@/lib/priority";
 import { toneSoft } from "@/lib/tone";
 import { courseColor } from "@/lib/courseColor";
+import { EffortTag } from "@/components/calendar/parts";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -410,6 +411,7 @@ function DayCard({ day, today }: { day: PlanDay; today?: boolean }) {
                   </span>
                 )}
                 <CourseDot name={b.courseName} />{b.courseName} · due {fmtDue(b.dueAt)}
+                {!b.study && <EffortTag hours={b.estimatedEffortHours} />}
               </p>
               {b.summary && <p className="mt-0.5 truncate text-xs italic text-muted">{b.summary}</p>}
             </div>

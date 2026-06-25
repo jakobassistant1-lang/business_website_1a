@@ -13,7 +13,7 @@ import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_LONG, countdownLabel } f
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
 import { deterministicIntensity, type Intensity } from "@/lib/intensity";
-import { Glyph, ICON, fmtTime, fmtHours } from "@/components/calendar/parts";
+import { Glyph, ICON, fmtTime, fmtHours, EffortTag } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import { shortCourse } from "@/lib/courseName";
@@ -290,8 +290,11 @@ function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
       <StatusDisc />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[16px] font-medium text-ink">{item.name}</span>
-        <span className="block truncate text-[14px] text-muted">
-          {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
+        <span className="flex items-center gap-1.5 text-[14px] text-muted">
+          <span className="truncate">
+            {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
+          </span>
+          <EffortTag hours={item.estimatedEffortHours} className="shrink-0 before:mr-1.5 before:content-['·']" />
         </span>
       </span>
       <span className="shrink-0 text-[14px] font-medium text-ink">{dueLabel}</span>
@@ -434,8 +437,11 @@ function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: (
             <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-danger/50" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[16px] font-medium text-ink">{it.name}</span>
-              <span className="block truncate text-[14px] text-muted">
-                {TYPE_LABEL[it.type]} · {shortCourse(it.courseName)}
+              <span className="flex items-center gap-1.5 text-[14px] text-muted">
+                <span className="truncate">
+                  {TYPE_LABEL[it.type]} · {shortCourse(it.courseName)}
+                </span>
+                <EffortTag hours={it.estimatedEffortHours} className="shrink-0 before:mr-1.5 before:content-['·']" />
               </span>
             </span>
             <span className="shrink-0 rounded-full bg-danger-soft px-2.5 py-0.5 text-[12px] font-medium text-danger">Past due</span>

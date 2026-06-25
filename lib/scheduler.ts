@@ -39,6 +39,7 @@ export interface DayBlock {
   summary?: string | null;
   study?: boolean; // true = a study session ahead of an exam/quiz (not the work itself)
   sessionKind?: "review" | "relearn"; // v1 week scheduler: review/re-read vs successive relearning
+  estimatedEffortHours?: number | null; // the assignment's TOTAL estimated effort (not this block's `hours`) — for display when work is split across blocks
 }
 
 export interface PlanDay {

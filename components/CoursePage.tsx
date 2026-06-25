@@ -9,6 +9,7 @@ import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates"
 import { cleanCourse } from "@/lib/courseName";
 import type { CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
+import { EffortTag } from "@/components/calendar/parts";
 
 function dueLabel(iso: string | null, todayYmd: string): string {
   if (!iso) return "No due date";
@@ -89,9 +90,12 @@ function Row({ item, todayYmd, done }: { item: CalendarItem; todayYmd: string; d
     <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60">
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-[16px] ${done ? "text-muted line-through" : "font-medium text-ink"}`}>{item.name}</span>
-        <span className="block truncate text-[13px] text-muted">
-          {TYPE_LABEL[item.type]}
-          {item.pointsPossible != null && item.pointsPossible > 0 ? ` · ${item.pointsPossible} pts` : ""}
+        <span className="flex items-center gap-1.5 truncate text-[13px] text-muted">
+          <span className="truncate">
+            {TYPE_LABEL[item.type]}
+            {item.pointsPossible != null && item.pointsPossible > 0 ? ` · ${item.pointsPossible} pts` : ""}
+          </span>
+          <EffortTag hours={item.estimatedEffortHours} className="text-[13px]" />
         </span>
       </span>
       <span className={`shrink-0 text-[14px] font-medium ${done ? "text-success" : "text-ink"}`}>{done ? "Done" : dueLabel(item.dueAt, todayYmd)}</span>

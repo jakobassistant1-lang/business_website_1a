@@ -187,6 +187,7 @@ export function generateWeekPlan(
       summary: unit.a.summary ?? null,
       study: unit.isStudy,
       sessionKind: unit.sessionKind,
+      estimatedEffortHours: unit.a.estimatedEffortHours ?? null, // total estimate (for "split across blocks → show total")
     });
     represented.add(unit.a.canvasId); // only an item with a real (>0h) emitted block counts as represented
   }
@@ -207,6 +208,7 @@ export function generateWeekPlan(
       dueAt: a.dueAt.toISOString(),
       summary: a.summary ?? null,
       study: a.assessmentTier != null,
+      estimatedEffortHours: a.estimatedEffortHours ?? null,
     });
     represented.add(a.canvasId);
   }

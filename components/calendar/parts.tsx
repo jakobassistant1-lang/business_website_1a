@@ -69,6 +69,30 @@ export function effortText(item: CalendarItem): string | null {
   return item.effortBucket;
 }
 
+/** "~2h" from a total estimate; null when there's no usable number. */
+export function effortHoursText(hours: number | null | undefined): string | null {
+  if (hours == null || hours <= 0) return null;
+  return `~${Math.round(hours * 10) / 10}h`;
+}
+
+/** One consistent "estimated work" tag, used everywhere an assignment appears
+ *  (#14). Always the assignment's TOTAL estimate — never a per-block fragment —
+ *  so it reads the same whether or not the work was split across days. Renders
+ *  nothing when there's no estimate. */
+export function EffortTag({ hours, className = "" }: { hours: number | null | undefined; className?: string }) {
+  const label = effortHoursText(hours);
+  if (!label) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap text-[13px] font-medium text-muted ${className}`}
+      title={`Estimated time to do this: ${label}`}
+    >
+      <Glyph d={ICON.clock} size={12} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
 type StatusMeta = { pill: { text: string; cls: string } | null; border: string; muted: boolean; danger: boolean };
 function statusMeta(item: CalendarItem): StatusMeta {
   if (item.status === "done") return { pill: { text: "Done", cls: toneSoft.success }, border: "border-line-subtle", muted: true, danger: false };
@@ -93,8 +117,9 @@ export function ItemPill({ item, onSelect, showTime = true, compact = false }: {
         <Glyph d={glyph} size={15} />
       </span>
       <span className={`min-w-0 flex-1 truncate text-sm ${s.muted ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
-      {/* compact (narrow week cells): drop the trailing pill/time so it can't
-          overflow — overdue still reads via the red border + alert icon. */}
+      {/* compact (narrow week cells): drop the trailing effort tag + pill/time so
+          they can't overflow — overdue still reads via the red border + alert icon. */}
+      {compact ? null : <EffortTag hours={item.estimatedEffortHours} className="shrink-0 self-center text-xs" />}
       {compact ? null : s.pill ? (
         <span className={`shrink-0 self-center rounded-full px-2 py-0.5 text-xs font-medium ${s.pill.cls}`}>{s.pill.text}</span>
       ) : item.dueAt && showTime ? (
