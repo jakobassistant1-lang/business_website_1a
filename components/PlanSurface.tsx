@@ -24,7 +24,7 @@ const VIEWS: { key: View; label: string }[] = [
 ];
 
 export function PlanSurface({ data, todayYmd, demo = false, initialView }: { data: CalendarData; todayYmd: string; demo?: boolean; initialView?: View }) {
-  const [view, setView] = useState<View>(initialView ?? "list"); // do-next first; sticky pref applied post-mount (skipped in demo)
+  const [view, setView] = useState<View>(initialView ?? "calendar"); // calendar default; the saved pref (sp_plan_view) overrides it post-mount
 
   useEffect(() => {
     if (initialView) return; // demo controls the view; ignore the saved pref

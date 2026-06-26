@@ -46,6 +46,7 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
   }, [cur]);
   const [target, setTarget] = useState(defaultTarget);
   const [assume, setAssume] = useState<Map<number, number>>(() => new Map(remaining.map((r) => [r.canvasId, 85])));
+  const [showWhatIf, setShowWhatIf] = useState(false); // per-item sliders collapsed by default — the headline answer leads
 
   if (gradeables.length === 0) return null;
 
@@ -84,29 +85,41 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
 
       {remaining.length > 0 ? (
         <div className="mt-4">
-          <p className="text-[13px] font-semibold text-muted">What if I score&hellip;</p>
-          <div className="mt-2 flex flex-col gap-3">
-            {remaining.map((r) => (
-              <div key={r.canvasId} className="flex items-center gap-3">
-                <span className="min-w-0 flex-1 truncate text-[14px] text-ink">
-                  {r.name}
-                  {mode === "weighted" && r.groupName ? <span className="text-[12px] text-muted"> &middot; {r.groupName}</span> : null}
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={assume.get(r.canvasId) ?? 85}
-                  onChange={(e) => setScore(r.canvasId, Number(e.target.value))}
-                  aria-label={`${r.name} hypothetical score`}
-                  className="flex-[1.2]"
-                  style={{ accentColor: "rgb(var(--accent))" }}
-                />
-                <span className="w-[44px] shrink-0 text-right text-[14px] font-medium tabular-nums text-ink">{assume.get(r.canvasId) ?? 85}%</span>
-              </div>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowWhatIf((v) => !v)}
+            aria-expanded={showWhatIf}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-muted transition-colors hover:text-accent"
+          >
+            <span className={`text-[10px] transition-transform ${showWhatIf ? "rotate-90" : ""}`} aria-hidden>
+              ▶
+            </span>
+            Adjust individual scores ({remaining.length})
+          </button>
+          {showWhatIf && (
+            <div className="mt-3 flex flex-col gap-3">
+              {remaining.map((r) => (
+                <div key={r.canvasId} className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-ink">
+                    {r.name}
+                    {mode === "weighted" && r.groupName ? <span className="text-[12px] text-muted"> &middot; {r.groupName}</span> : null}
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={assume.get(r.canvasId) ?? 85}
+                    onChange={(e) => setScore(r.canvasId, Number(e.target.value))}
+                    aria-label={`${r.name} hypothetical score`}
+                    className="flex-[1.2]"
+                    style={{ accentColor: "rgb(var(--accent))" }}
+                  />
+                  <span className="w-[44px] shrink-0 text-right text-[14px] font-medium tabular-nums text-ink">{assume.get(r.canvasId) ?? 85}%</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <p className="mt-4 text-[14px] text-muted">All your work is graded — this grade is locked in for the term.</p>
