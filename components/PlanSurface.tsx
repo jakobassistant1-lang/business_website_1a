@@ -93,7 +93,7 @@ function PlanList({ data, todayYmd }: { data: CalendarData; todayYmd: string }) 
         {overdue > 0 && (
           <>
             {" · "}
-            <span className="font-medium text-danger">{overdue} overdue</span>
+            <span className="font-medium text-muted">{overdue} overdue</span>
           </>
         )}{" "}
         · in the order to tackle them
@@ -120,7 +120,7 @@ function PlanRow({ item, n, todayYmd }: { item: CalendarItem; n: number; todayYm
         </span>
       </span>
       {overdue ? (
-        <span className="shrink-0 rounded-full bg-danger-soft px-2.5 py-0.5 text-[12px] font-medium text-danger">Past due</span>
+        <span className="shrink-0 rounded-full bg-warning-soft px-2.5 py-0.5 text-[12px] font-medium text-warning">Past due</span>
       ) : item.dueAt ? (
         <span className="shrink-0 text-[14px] font-medium text-ink">{countdownLabel(item.dueAt, todayYmd)}</span>
       ) : null}

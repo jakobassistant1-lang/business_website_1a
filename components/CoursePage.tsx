@@ -53,7 +53,7 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
       <p className="mt-1 text-[15px] text-muted">
         {overdue.length > 0 && (
           <>
-            <span className="font-medium text-danger">{overdue.length} overdue</span> ·{" "}
+            <span className="font-medium text-muted">{overdue.length} overdue</span> ·{" "}
           </>
         )}
         {upcoming.length} upcoming · {completed.length} done

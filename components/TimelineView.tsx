@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { pickTextOn } from "@/lib/courseColor";
+import { cleanCourse } from "@/lib/courseName";
 import { WEEKDAYS, parseYmd } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
 import { AttentionBanner, PeriodSummary, ItemDetail, Glyph, ICON, fmtHours, EffortTag } from "@/components/calendar/parts";
@@ -185,8 +186,8 @@ function WeekGantt({
           return (
             <div key={course} className="flex border-t border-line-subtle">
               <div className="sticky left-0 z-10 flex w-[180px] shrink-0 items-center bg-surface px-3 py-2">
-                <span className="truncate text-[15px] font-medium text-ink" title={course}>
-                  {course}
+                <span className="truncate text-[15px] font-medium text-ink" title={cleanCourse(course)}>
+                  {cleanCourse(course)}
                 </span>
               </div>
               <div className="relative flex-1" style={{ height: laneCount * BAR_H + 10 }}>

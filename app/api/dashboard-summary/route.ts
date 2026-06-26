@@ -12,11 +12,11 @@ export const dynamic = "force-dynamic";
 // Best-effort in-process cache (per warm instance) so a dashboard load / autosync
 // refresh doesn't re-hit Gemini. Only real Gemini results are cached — a fallback
 // stays uncached so the next load retries through a transient outage.
-const CACHE = new Map<string, { summary: string | null; intensity: Intensity; at: number }>();
+const CACHE = new Map<string, { points: string[]; intensity: Intensity; at: number }>();
 const TTL_MS = 30 * 60_000;
 const MAX = 200;
 
-// GET /api/dashboard-summary — { summary, intensity }. `summary` is null when the
+// GET /api/dashboard-summary — { points, intensity }. `points` is [] when the
 // AI is unavailable; `intensity` ALWAYS resolves (deterministic fallback).
 export async function GET() {
   const user = await requireUser();
@@ -37,7 +37,7 @@ export async function GET() {
 
   // Nothing to brief → deterministic rating, skip the AI call entirely.
   if (top.length === 0 && load.dueThisWeek === 0) {
-    return NextResponse.json({ summary: null, intensity: deterministicIntensity(load) });
+    return NextResponse.json({ points: [], intensity: deterministicIntensity(load) });
   }
 
   const firstName = user.fullName.trim().split(/\s+/)[0] ?? "";
@@ -48,7 +48,7 @@ export async function GET() {
   const key = createHash("sha1").update(sig).digest("hex");
   const hit = CACHE.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) {
-    return NextResponse.json({ summary: hit.summary, intensity: hit.intensity });
+    return NextResponse.json({ points: hit.points, intensity: hit.intensity });
   }
 
   const result = await generateDashboardSummary({
@@ -64,10 +64,10 @@ export async function GET() {
       const oldest = CACHE.keys().next().value;
       if (oldest) CACHE.delete(oldest);
     }
-    CACHE.set(key, { summary: result.summary, intensity: result.intensity, at: Date.now() });
+    CACHE.set(key, { points: result.points, intensity: result.intensity, at: Date.now() });
   } else {
     console.warn("[dashboard-summary] gemini unavailable — deterministic rating used");
   }
 
-  return NextResponse.json({ summary: result.summary, intensity: result.intensity });
+  return NextResponse.json({ points: result.points, intensity: result.intensity });
 }

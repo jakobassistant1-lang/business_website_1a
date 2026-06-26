@@ -5,5 +5,6 @@
 /** Strip a Canvas course-code prefix like "2025F-10: " → just the readable name. */
 export const cleanCourse = (name: string): string => name.replace(/^\d{4}[A-Za-z]{1,4}-\d+:\s*/, "").trim() || name;
 
-/** First segment of a " · "-joined course label (the course name without extras). */
-export const shortCourse = (name: string): string => name.split(" · ")[0];
+/** First segment of a " · "-joined course label, with the Canvas code prefix
+ *  stripped — so every surface shows the readable class name, not "2025F-05:…". */
+export const shortCourse = (name: string): string => cleanCourse(name.split(" · ")[0]);

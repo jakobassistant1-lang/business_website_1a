@@ -160,12 +160,10 @@ export async function generatePeriodBriefing(
 
 export const STUDY_HUB_INSTRUCTION =
   "You are Navo's study coach, speaking to a student on their Study page, where their upcoming tests and " +
-  "quizzes are listed in priority order. Write a WARM, INVITING orientation of 2-3 short sentences for a " +
-  "student who may feel OVERWHELMED by their upcoming tests. Reassure them they don't have to study " +
-  "everything at once; point them to what to focus on FIRST (the test at the top of their list); and remind " +
-  "them their prep is already broken into small, spaced study sessions so they can take it one step at a time. " +
-  "Be specific to their ACTUAL upcoming tests when given, but do NOT invent tests, dates, or details. " +
-  "Warm and encouraging, never alarming. Plain English. No markdown, no lists, no headings.";
+  "quizzes are listed in priority order. Write ONE warm, inviting sentence (max ~30 words) for a student who may " +
+  "feel overwhelmed: reassure them they don't have to study everything at once, and point them to the test at the " +
+  "TOP of their list to start with. Be specific to their actual top test when given, but do NOT invent tests, " +
+  "dates, or details. Warm and encouraging, never alarming. Plain English. No markdown, no lists, no headings.";
 
 export interface StudyHubItem {
   name: string;
@@ -261,9 +259,10 @@ export async function generateAssignmentPlan(input: AssignmentDescInput, instruc
 
 export const DASHBOARD_SUMMARY_INSTRUCTION =
   "You are Navo's study coach. From the student's week summary and ranked priorities, reply with ONLY a JSON " +
-  'object of the form {"summary": string, "intensity": "easy" | "moderate" | "hard"}. ' +
-  '"summary" is a warm, plain-English 2-3 sentence briefing of what to focus on this week and why — no markdown, no ' +
-  'lists, no headings. "intensity" is your judgment of how demanding THIS WEEK is overall, weighing the number and ' +
+  'object of the form {"points": string[], "intensity": "easy" | "moderate" | "hard"}. ' +
+  '"points" is 2-3 short, scannable bullets (each a brief phrase, max ~14 words) on what to focus on this week ' +
+  "and why — warm and plain-English, with NO leading bullet characters and no markdown. " +
+  '"intensity" is your judgment of how demanding THIS WEEK is overall, weighing the number and ' +
   "importance of items due, the exams/quizzes, and whether the planned work fits the time available. Do not invent " +
   "assignments, points, or deadlines beyond what is given.";
 
@@ -274,7 +273,7 @@ export interface DashboardSummaryInput extends WeekLoad {
   top: ScoredAssignment[];
 }
 
-export type DashboardSummary = { summary: string | null; intensity: Intensity; source: "gemini" | "fallback" };
+export type DashboardSummary = { points: string[]; intensity: Intensity; source: "gemini" | "fallback" };
 
 const INTENSITIES: readonly Intensity[] = ["easy", "moderate", "hard"];
 
@@ -301,13 +300,18 @@ export async function generateDashboardSummary(
 ): Promise<DashboardSummary> {
   const fallback = deterministicIntensity(input);
   const res = await runGemini(`${instruction}\n\n${buildDashboardPrompt(input)}`, 260, true);
-  if (!res.ok) return { summary: null, intensity: fallback, source: "fallback" };
+  if (!res.ok) return { points: [], intensity: fallback, source: "fallback" };
   try {
-    const parsed = JSON.parse(res.text) as { summary?: unknown; intensity?: unknown };
-    const summary = typeof parsed.summary === "string" && parsed.summary.trim() ? parsed.summary.trim() : null;
+    const parsed = JSON.parse(res.text) as { points?: unknown; intensity?: unknown };
+    const points = Array.isArray(parsed.points)
+      ? parsed.points
+          .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+          .map((p) => p.trim().replace(/^[-•*]\s*/, "")) // strip any leading bullet char the model adds anyway
+          .slice(0, 3)
+      : [];
     const intensity = INTENSITIES.includes(parsed.intensity as Intensity) ? (parsed.intensity as Intensity) : fallback;
-    return { summary, intensity, source: "gemini" };
+    return { points, intensity, source: "gemini" };
   } catch {
-    return { summary: null, intensity: fallback, source: "fallback" };
+    return { points: [], intensity: fallback, source: "fallback" };
   }
 }

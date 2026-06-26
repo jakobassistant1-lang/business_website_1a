@@ -62,8 +62,8 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
           <h3 className="truncate text-[17px] font-semibold leading-snug text-ink">{cleanCourse(courseName)}</h3>
           <p className="mt-1 text-[12px] font-medium">
             {overdue > 0 ? (
-              <span className="inline-flex items-center gap-1.5 text-danger">
-                <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-hidden /> {overdue} overdue
+              <span className="inline-flex items-center gap-1.5 text-muted">
+                <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden /> {overdue} overdue
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 text-success">

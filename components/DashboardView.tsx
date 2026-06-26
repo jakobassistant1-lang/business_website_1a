@@ -26,7 +26,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
   const [todayYmd, setTodayYmd] = useState(serverToday);
   const [showOverdue, setShowOverdue] = useState(false);
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiPoints, setAiPoints] = useState<string[]>([]);
   const [aiIntensity, setAiIntensity] = useState<Intensity | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const didAutoSync = useRef(false);
@@ -63,7 +63,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (cancelled || !body) return;
-        if (typeof body.summary === "string") setAiSummary(body.summary);
+        if (Array.isArray(body.points)) setAiPoints(body.points.filter((x: unknown): x is string => typeof x === "string"));
         if (body.intensity === "easy" || body.intensity === "moderate" || body.intensity === "hard") setAiIntensity(body.intensity);
       })
       .catch(() => {})
@@ -130,7 +130,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
         <ConnectCard />
       ) : (
         <>
-          <AiSummary text={aiSummary} loading={summaryLoading} />
+          <AiSummary points={aiPoints} loading={summaryLoading} />
 
           {/* KPI bar — quiet at-a-glance status against the page. */}
           <div className="mb-7 flex flex-wrap items-center gap-x-12 gap-y-4 border-b border-line-subtle pb-5">
@@ -157,9 +157,10 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   );
 }
 
-// ── AI summary banner — fail-open: renders nothing once we know there's no text. ─
-function AiSummary({ text, loading }: { text: string | null; loading: boolean }) {
-  if (!text && !loading) return null;
+// ── AI summary banner — 2-3 scannable bullets. Fail-open: renders nothing once we
+// know there are no points. ─────────────────────────────────────────────────────
+function AiSummary({ points, loading }: { points: string[]; loading: boolean }) {
+  if (points.length === 0 && !loading) return null;
   return (
     <div className="mb-6 flex items-start gap-3 rounded-2xl border border-line-subtle bg-surface-soft/60 p-4">
       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
@@ -167,7 +168,18 @@ function AiSummary({ text, loading }: { text: string | null; loading: boolean })
           <path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z" />
         </svg>
       </span>
-      <p className="text-[16px] leading-relaxed text-ink">{text ?? <span className="text-muted">Reading your week…</span>}</p>
+      {points.length === 0 ? (
+        <p className="text-[16px] leading-relaxed text-muted">Reading your week…</p>
+      ) : (
+        <ul className="space-y-1.5 text-[16px] leading-relaxed text-ink">
+          {points.map((p, i) => (
+            <li key={i} className="flex gap-2.5">
+              <span className="mt-[10px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent/60" aria-hidden />
+              <span>{p}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -204,8 +216,8 @@ function OverdueKpi({ count, onOpen }: { count: number; onOpen: () => void }) {
   return (
     <button onClick={onOpen} className="group text-left" title="View overdue items">
       <p className={KPI_LABEL}>Overdue</p>
-      <p className="mt-1.5 text-[26px] font-bold leading-none text-danger">{count}</p>
-      <span className="mt-1 inline-block text-[13px] font-medium text-danger group-hover:underline">View all ›</span>
+      <p className="mt-1.5 text-[26px] font-bold leading-none text-ink">{count}</p>
+      <span className="mt-1 inline-block text-[13px] font-medium text-accent group-hover:underline">View all ›</span>
     </button>
   );
 }
@@ -419,13 +431,13 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
 function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: () => void }) {
   const shown = items.slice(0, 3);
   return (
-    <div className="card border-danger/30 p-5 sm:p-6">
+    <div className="card p-5 sm:p-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="flex items-center gap-2 text-xl font-semibold text-danger">
-          <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden /> Catch up
+        <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+          <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden /> Catch up
         </h2>
         {items.length > shown.length && (
-          <button onClick={onOpenAll} className="text-[15px] font-medium text-danger hover:underline">
+          <button onClick={onOpenAll} className="text-[15px] font-medium text-accent hover:underline">
             All {items.length} →
           </button>
         )}
@@ -434,7 +446,7 @@ function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: (
       <div className="mt-2 space-y-0.5">
         {shown.map((it) => (
           <Link key={it.canvasId} href={itemHref(it.canvasId, it.type, it.status)} className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60">
-            <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-danger/50" aria-hidden />
+            <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-warning/50" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[16px] font-medium text-ink">{it.name}</span>
               <span className="flex items-center gap-1.5 text-[14px] text-muted">
@@ -444,7 +456,7 @@ function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: (
                 <EffortTag hours={it.estimatedEffortHours} className="shrink-0" />
               </span>
             </span>
-            <span className="shrink-0 rounded-full bg-danger-soft px-2.5 py-0.5 text-[12px] font-medium text-danger">Past due</span>
+            <span className="shrink-0 rounded-full bg-warning-soft px-2.5 py-0.5 text-[12px] font-medium text-warning">Past due</span>
           </Link>
         ))}
       </div>
@@ -479,8 +491,8 @@ function OverdueModal({ atRisk, onClose }: { atRisk: CalendarData["atRisk"]; onC
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]" onClick={onClose} role="dialog" aria-modal="true">
       <div className="card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-xl font-semibold text-danger">
-            <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden /> Overdue ({atRisk.length})
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+            <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden /> Overdue ({atRisk.length})
           </h2>
           <button onClick={onClose} aria-label="Close" className="text-[22px] leading-none text-muted transition hover:text-ink">
             ✕
@@ -496,7 +508,7 @@ function OverdueModal({ atRisk, onClose }: { atRisk: CalendarData["atRisk"]; onC
               ) : (
                 <span className="min-w-0 truncate text-[16px] text-ink">{a.name}</span>
               )}
-              <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft.danger}`}>Past due</span>
+              <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft.warning}`}>Past due</span>
             </li>
           ))}
         </ul>
