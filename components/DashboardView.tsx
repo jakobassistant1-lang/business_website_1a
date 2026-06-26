@@ -294,7 +294,7 @@ function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
           <span className="truncate">
             {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
           </span>
-          <EffortTag hours={item.estimatedEffortHours} className="shrink-0 before:mr-1.5 before:content-['·']" />
+          <EffortTag hours={item.estimatedEffortHours} className="shrink-0" />
         </span>
       </span>
       <span className="shrink-0 text-[14px] font-medium text-ink">{dueLabel}</span>
@@ -441,7 +441,7 @@ function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: (
                 <span className="truncate">
                   {TYPE_LABEL[it.type]} · {shortCourse(it.courseName)}
                 </span>
-                <EffortTag hours={it.estimatedEffortHours} className="shrink-0 before:mr-1.5 before:content-['·']" />
+                <EffortTag hours={it.estimatedEffortHours} className="shrink-0" />
               </span>
             </span>
             <span className="shrink-0 rounded-full bg-danger-soft px-2.5 py-0.5 text-[12px] font-medium text-danger">Past due</span>

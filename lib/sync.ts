@@ -6,7 +6,7 @@ import {
   fetchAnnouncements,
   fetchAssignmentGroups,
   fetchSyllabus,
-  currentScoreOf,
+  courseGradeFromEnrollment,
   CanvasError,
   type CanvasAssignmentGroup,
 } from "./canvas";
@@ -79,22 +79,26 @@ export async function runSync(userId: number): Promise<SyncResult> {
   const courseDbIdByCanvasId = new Map<number, number>(); // map late-policy results back to course rows
   for (const c of courses) {
     const courseName = c.name ?? `Course ${c.id}`;
+    // The student's own course total (include[]=total_scores). Null is preserved
+    // verbatim — the loader decides "hidden" vs "no grades yet" from the work.
+    const grade = courseGradeFromEnrollment(c);
     const course = await prisma.course.upsert({
       where: { userId_canvasId: { userId, canvasId: c.id } },
-      create: { canvasId: c.id, userId, name: courseName, currentScore: currentScoreOf(c) },
-      update: { name: courseName, currentScore: currentScoreOf(c) },
+      create: { canvasId: c.id, userId, name: courseName, currentScore: grade.score, currentGrade: grade.grade },
+      update: { name: courseName, currentScore: grade.score, currentGrade: grade.grade },
     });
     courseDbIdByCanvasId.set(c.id, course.id);
 
     try {
       // assignment_groups + syllabus fail OPEN (a missing group/syllabus must not
-      // fail the whole course); they only enrich the prioritizer's signals.
+      // fail the whole course); they enrich the prioritizer + the grade calculator.
       const [assignments, announcements, groups, syllabus] = await Promise.all([
         fetchAssignments(cred.host, token, c.id),
         fetchAnnouncements(cred.host, token, c.id),
         fetchAssignmentGroups(cred.host, token, c.id).catch(() => [] as CanvasAssignmentGroup[]),
         fetchSyllabus(cred.host, token, c.id).catch(() => null),
       ]);
+      const groupById = new Map(groups.map((g) => [g.id, g] as const));
 
       if (syllabus) syllabiToParse.push({ courseId: c.id, courseName, syllabus });
       const weightById = new Map(
@@ -108,6 +112,7 @@ export async function runSync(userId: number): Promise<SyncResult> {
       );
 
       for (const a of assignments) {
+        const group = a.assignment_group_id != null ? groupById.get(a.assignment_group_id) : undefined;
         const data = {
           userId,
           courseId: course.id,
@@ -123,8 +128,12 @@ export async function runSync(userId: number): Promise<SyncResult> {
           submissionScore: a.submission?.score ?? null,
           submissionState: a.submission?.workflow_state ?? null,
           // Share of the course grade (weighted-group courses); null → caller uses
-          // points / course-total. A failed groups fetch leaves it null (safe).
+          // points / course-total (lib/gradeWeight).
           gradeWeight: weightById.get(a.id) ?? null,
+          // Raw assignment group + weight → the weighted grade calculator.
+          groupId: a.assignment_group_id ?? null,
+          groupName: group?.name ?? null,
+          groupWeight: group?.group_weight ?? null,
         };
         await prisma.assignment.upsert({
           where: { userId_canvasId: { userId, canvasId: a.id } },

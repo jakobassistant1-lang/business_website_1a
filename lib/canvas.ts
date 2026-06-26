@@ -105,16 +105,44 @@ async function fetchAll<T>(host: string, token: string, path: string): Promise<T
   return out;
 }
 
+export interface CanvasEnrollment {
+  type?: string; // "student" | "StudentEnrollment" | "teacher" | …
+  computed_current_score?: number | null; // 0–100, graded work only; null when hidden
+  computed_current_grade?: string | null; // letter, e.g. "B+"
+  grades?: {
+    current_score?: number | null;
+    current_grade?: string | null;
+  };
+}
 export interface CanvasCourse {
   id: number;
   name: string;
-  // Present with include[]=total_scores — the caller's own enrollment carries the
-  // current grade. There's one enrollment per course for the requesting user.
-  enrollments?: { type?: string; computed_current_score?: number | null }[];
+  // Present when the request includes `include[]=total_scores` — the student's own
+  // enrollment with Canvas-computed totals. An absent/null total means the
+  // instructor hides totals OR nothing is graded yet (the caller never guesses).
+  enrollments?: CanvasEnrollment[];
+}
+
+/** The student's own current course total from an include[]=total_scores course.
+ *  Prefers the top-level computed_* fields, falls back to the nested grades object.
+ *  Returns nulls when Canvas reports no total — we never invent a number. */
+export function courseGradeFromEnrollment(c: CanvasCourse): { score: number | null; grade: string | null } {
+  const enrs = c.enrollments ?? [];
+  const enr =
+    enrs.find((e) => e.type === "student" || e.type === "StudentEnrollment") ??
+    enrs.find((e) => e.computed_current_score != null || e.grades?.current_score != null) ??
+    enrs[0];
+  const score = enr?.computed_current_score ?? enr?.grades?.current_score ?? null;
+  const grade = enr?.computed_current_grade ?? enr?.grades?.current_grade ?? null;
+  return {
+    score: typeof score === "number" && Number.isFinite(score) ? score : null,
+    grade: typeof grade === "string" && grade.trim() ? grade.trim() : null,
+  };
 }
 
 export interface CanvasAssignmentGroup {
   id: number;
+  name: string;
   group_weight: number | null; // percent (e.g. 25); 0/absent in points-based courses
   assignments?: { id: number; points_possible: number | null }[];
 }
@@ -126,6 +154,7 @@ export interface CanvasAssignment {
   html_url: string;
   description: string | null; // assignment body (HTML); used as AI context
   submission_types?: string[]; // e.g. ["online_quiz"], ["online_upload"] — used to classify item TYPE
+  assignment_group_id?: number; // Canvas grade category — joined to assignment_groups for its weight
   /** Present when the request includes `include[]=submission` (canvas-mcp integration). */
   submission?: {
     submitted_at: string | null;
@@ -143,7 +172,8 @@ export interface CanvasAnnouncement {
 }
 
 export function fetchCourses(host: string, token: string): Promise<CanvasCourse[]> {
-  // include[]=total_scores attaches the user's current grade to each course.
+  // include[]=total_scores attaches the student's own course total (computed_current_*)
+  // so we can show their real grade — no extra calls, same read-only token.
   return fetchAll<CanvasCourse>(host, token, "/courses?enrollment_state=active&include[]=total_scores");
 }
 
@@ -155,10 +185,14 @@ export function currentScoreOf(course: CanvasCourse): number | null {
   return typeof s === "number" && Number.isFinite(s) ? s : null;
 }
 
-/** A course's assignment groups (with their assignments) — carries group_weight
- *  for weighted courses, used to convert points → share of the course grade. */
-export function fetchAssignmentGroups(host: string, token: string, courseId: number): Promise<CanvasAssignmentGroup[]> {
-  return fetchAll<CanvasAssignmentGroup>(host, token, `/courses/${courseId}/assignment_groups?include[]=assignments`);
+/** A course's assignment groups (+ their assignments) — carries name + group_weight
+ *  for the weighted grade calculator and the prioritizer. Fails OPEN ([] on error). */
+export async function fetchAssignmentGroups(host: string, token: string, courseId: number): Promise<CanvasAssignmentGroup[]> {
+  try {
+    return await fetchAll<CanvasAssignmentGroup>(host, token, `/courses/${courseId}/assignment_groups?include[]=assignments`);
+  } catch {
+    return [];
+  }
 }
 
 export function fetchAssignments(host: string, token: string, courseId: number): Promise<CanvasAssignment[]> {

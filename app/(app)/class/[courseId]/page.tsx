@@ -20,5 +20,6 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ co
   if (active.length === 0 && completed.length === 0) notFound();
 
   const courseName = (active[0] ?? completed[0]).courseName;
-  return <CoursePage courseName={courseName} active={active} completed={completed} rankedIds={data.ranked.map((r) => r.canvasId)} todayYmd={ymd(new Date())} />;
+  const grade = data.courses.find((c) => c.canvasId === id)?.grade;
+  return <CoursePage courseName={courseName} grade={grade} active={active} completed={completed} rankedIds={data.ranked.map((r) => r.canvasId)} todayYmd={ymd(new Date())} />;
 }
