@@ -92,7 +92,7 @@ export const DEMO_STEPS: Record<DemoView, TourStep[]> = {
     { selector: '[data-tour="study-tools"]', title: "Notes → a study guide", body: "We turn its Canvas readings into a guide and practice questions. Pick an answer to try it.", side: "top", align: "start" },
   ],
   courses: [
-    { selector: '[data-tour="courses-card"]', title: "Every class in one place", body: "A card per course shows what to do next — open one for its full list.", side: "right", align: "start" },
+    { selector: '[data-tour="courses-card"]', title: "Every class in one place", body: "A card per class, each led by your real grade. Open one for the full list — plus a calculator that shows exactly what you need on what's left.", side: "right", align: "start" },
   ],
 };
 
