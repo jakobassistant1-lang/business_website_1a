@@ -4,6 +4,7 @@
 // Overdue / Upcoming / Completed sections; each row navigates to that item's
 // detail leaf (/assignment/:id, or /study/:id for exams & quizzes).
 
+import { useState } from "react";
 import Link from "next/link";
 import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
@@ -40,6 +41,8 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
     groupName: it.groupName,
     groupWeight: it.groupWeight,
   }));
+  const hasGradeables = gradeItems.some((i) => i.pointsPossible > 0);
+  const [tab, setTab] = useState<"assignments" | "grades">("assignments");
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -59,13 +62,31 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
         {upcoming.length} upcoming · {completed.length} done
       </p>
 
-      <GradeCalculator items={gradeItems} official={grade} />
+      {hasGradeables && (
+        <div role="tablist" aria-label="Course view" className="mt-5 inline-flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
+          {(["assignments", "grades"] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`rounded-md px-3.5 py-1.5 text-sm font-medium capitalize transition ${tab === t ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <div className="mt-7 space-y-7">
-        {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger />}
-        <Section title="Upcoming" items={upcoming} todayYmd={todayYmd} empty="Nothing upcoming — you're clear." />
-        {completed.length > 0 && <Section title="Completed" items={completed} todayYmd={todayYmd} done />}
-      </div>
+      {hasGradeables && tab === "grades" ? (
+        <GradeCalculator items={gradeItems} official={grade} />
+      ) : (
+        <div className="mt-7 space-y-7">
+          {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger />}
+          <Section title="Upcoming" items={upcoming} todayYmd={todayYmd} empty="Nothing upcoming — you're clear." />
+          {completed.length > 0 && <Section title="Completed" items={completed} todayYmd={todayYmd} done />}
+        </div>
+      )}
     </div>
   );
 }

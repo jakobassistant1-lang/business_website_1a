@@ -18,7 +18,6 @@ import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import { shortCourse } from "@/lib/courseName";
 
-const FOCUS_LIST_MAX = 5;
 const fmtLongDate = (d: Date) => `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
 
 export function DashboardView({ data, todayYmd: serverToday, firstName, demo = false }: { data: CalendarData; todayYmd: string; firstName: string; demo?: boolean }) {
@@ -89,11 +88,6 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
 
-  const focusId = data.recommendations[0]?.canvasId;
-  // The do-next queue beneath the #1 Focus item: the next most important work, in
-  // the order to tackle it.
-  const doNext = data.items.filter((it) => it.status === "normal" && it.canvasId !== focusId).sort(byRank).slice(0, FOCUS_LIST_MAX);
-
   // Overdue, most-important-first — surfaced as an action, not just a count.
   const overdueItems = data.items.filter((it) => it.status === "overdue").sort(byRank);
 
@@ -140,7 +134,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
 
           <div className="flex flex-col gap-6 lg:flex-row">
             <div className="min-w-0 flex-1 space-y-6">
-              <div data-tour="dash-focus"><FocusTodayCard data={data} todayYmd={todayYmd} list={doNext} /></div>
+              <div data-tour="dash-focus"><FocusTodayCard data={data} todayYmd={todayYmd} /></div>
               {overdueItems.length > 0 && <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} />}
             </div>
             <aside className="w-full shrink-0 space-y-7 lg:w-96">
@@ -316,15 +310,21 @@ function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
 
 // ── Focus + what's next: a flush, rounded-bottom violet Focus block (the #1 task)
 // sits edge-to-edge atop a 7-day due list, all in one card. ─────────────────────
-function FocusTodayCard({ data, todayYmd, list }: { data: CalendarData; todayYmd: string; list: CalendarItem[] }) {
+function FocusTodayCard({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
+  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
+  const normal = data.items
+    .filter((it) => it.status === "normal")
+    .sort((a, b) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9));
   const topRec = data.recommendations[0];
   const fromRec = topRec ? data.items.find((it) => it.canvasId === topRec.canvasId) : undefined;
-  // When there are no forward recommendations (e.g. all active work is undated or
-  // far-future), fall back to the do-next #1 from the list — never show "all caught
-  // up" above a list that still has items. `list` already excludes the rec focus, so
-  // when we fall back we drop its head to avoid showing it twice.
-  const focusItem = fromRec ?? list[0];
-  const restList = fromRec ? list : list.slice(1);
+  // Fall back to the #1 ranked item when there's no forward recommendation, so we
+  // never show "all caught up" above a list that still has items.
+  const focusItem = fromRec ?? normal[0];
+  const rest = normal.filter((it) => it.canvasId !== focusItem?.canvasId);
+  // Beneath the Focus item: the next 3 by importance — OR everything still due
+  // TODAY when that's a longer list, so a heavy today never hides behind the cut.
+  const dueToday = rest.filter((it) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd);
+  const restList = dueToday.length > 3 ? dueToday : rest.slice(0, 3);
   const isToday = !!focusItem?.dueAt && ymd(new Date(focusItem.dueAt)) === todayYmd;
   const caughtUp = data.atRisk.length === 0;
   const href = focusItem ? itemHref(focusItem.canvasId, focusItem.type, focusItem.status) : null;
@@ -388,39 +388,36 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
   const tests = data.items
     .filter((it) => (it.type === "exam" || it.type === "quiz") && it.status === "normal")
-    .sort((a, b) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9))
-    .slice(0, 5);
+    .sort((a, b) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9));
+  const next = tests[0];
 
   return (
     <div className="card p-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-semibold text-ink">Upcoming assessments</h2>
+        <h2 className="text-xl font-semibold text-ink">Next test</h2>
         <Link href="/study" className="text-[15px] font-medium text-accent hover:underline">
           Study →
         </Link>
       </div>
-      {tests.length === 0 ? (
+      {!next ? (
         <p className="py-5 text-center text-[15px] text-muted">No tests or quizzes on the horizon.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-line-subtle">
-          {tests.map((t) => (
-            <li key={t.canvasId}>
-              <Link href={itemHref(t.canvasId, t.type, t.status)} className="flex items-center justify-between gap-3 rounded-lg py-3 transition hover:bg-surface-soft/60">
-                <span className="min-w-0">
-                  <span className="block truncate text-[16px] font-medium text-ink">{t.name}</span>
-                  <span className="block truncate text-[14px] text-muted">
-                    {TYPE_LABEL[t.type]} · {shortCourse(t.courseName)}
-                    {t.pointsPossible != null && t.pointsPossible > 0 ? ` · ${t.pointsPossible} pts` : ""}
-                  </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className="block text-[14px] font-semibold text-accent">{t.dueAt ? countdownLabel(t.dueAt, todayYmd) : "No date"}</span>
-                  {studyBooked.has(t.canvasId) && <span className="block text-[12px] font-medium text-success">Study booked</span>}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <>
+          <Link href={itemHref(next.canvasId, next.type, next.status)} className="mt-2 block rounded-lg py-2 transition hover:bg-surface-soft/60">
+            <span className="block truncate text-[16px] font-medium text-ink">{next.name}</span>
+            <span className="block truncate text-[14px] text-muted">
+              {TYPE_LABEL[next.type]} · {shortCourse(next.courseName)}
+              {next.pointsPossible != null && next.pointsPossible > 0 ? ` · ${next.pointsPossible} pts` : ""}
+            </span>
+            <span className="mt-1 block text-[14px] font-semibold text-accent">{next.dueAt ? countdownLabel(next.dueAt, todayYmd) : "No date"}</span>
+            {studyBooked.has(next.canvasId) && <span className="mt-0.5 block text-[12px] font-medium text-success">Study booked</span>}
+          </Link>
+          {tests.length > 1 && (
+            <Link href="/study" className="mt-2 block border-t border-line-subtle pt-3 text-[14px] font-medium text-accent hover:underline">
+              All {tests.length} upcoming tests in Study →
+            </Link>
+          )}
+        </>
       )}
     </div>
   );
