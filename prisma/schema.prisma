@@ -190,9 +190,12 @@ model Course {
   userId   Int
   canvasId Int
   name     String
-  // v1 prioritizer signals (lib/marginalPriority). All nullable → fail open to
-  // neutral leverage / no-credit when a sync hasn't populated them.
-  currentScore    Float?  // current grade in the course, 0–100 (Canvas enrollment computed_current_score)
+  // v1 prioritizer signals + the student's own Canvas course total
+  // (include[]=total_scores). All nullable → fail open. currentScore 0–100;
+  // currentGrade letter. Null = instructor hides totals OR nothing graded yet
+  // (lib/courseGrade tells those apart from the work, so we never guess).
+  currentScore    Float?
+  currentGrade    String?
   latePolicyKind  String? // "none" | "flat" | "perday" (Gemini-parsed from the syllabus)
   latePolicyValue Float?  // fraction of credit lost (flat: one-time; perday: per day)
 
@@ -223,6 +226,13 @@ model Assignment {
   submittedAt     DateTime?
   submissionScore Float?
   submissionState String?   // "submitted" | "graded" | "unsubmitted" | "pending_review"
+
+  // Assignment-group (Canvas grade category) + its weight — powers the weighted
+  // grade calculator. All null when ungrouped or the course is points-based; the
+  // calculator falls back to raw points in that case (fail-open).
+  groupId         Int?
+  groupName       String?
+  groupWeight     Float?    // Canvas assignment_group.group_weight (percent)
 
   // Canvas body + AI analysis (lib/analysis.ts). All nullable: null effort/summary
   // means "not analyzed yet" → scheduler uses the flat default, UI shows no summary.

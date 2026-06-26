@@ -11,6 +11,7 @@ import { assessmentTier } from "./studyPlan";
 import { TOP_N } from "./priority";
 import { rankActiveRows, courseTotalPoints } from "./rankActive";
 import { ymd } from "./calendarDates";
+import { deriveCourseGrade } from "./courseGrade";
 import type { CalendarData, CalendarItem } from "./calendarData";
 import type { CalendarEvent } from "./calendar/types";
 import { isStudyType, type ItemType } from "./itemType";
@@ -49,29 +50,40 @@ interface DemoRow {
   studyLeadDays?: number | null; // set on exam/quiz so the scheduler places study blocks
   summary?: string | null;
   done?: boolean;
+  // Grade-calculator inputs: raw points earned (graded rows only) + the Canvas
+  // assignment group and its weight. Omit on a points-based course (English).
+  score?: number | null;
+  groupId?: number | null;
+  groupName?: string | null;
+  groupWeight?: number | null;
 }
 
-// 11 items across 4 classes: a mix of assignments / quizzes / exam / tasks, with
-// one overdue (Lab Report 2), one done (Problem Set 5), and one undated (Class
-// Participation). Deadlines are spread across distinct days (-1 → +6) so the
-// resulting do-next order reads clearly — urgent-first, then by deadline — instead
-// of a confusing cluster of same-day items. Ids are unique but not sequential.
+// Active coursework (10 items) is unchanged so the Dashboard / Plan / Timeline read
+// exactly as before; we ADD graded history (done rows) + Canvas category weights so
+// the per-course Grade calculator has real graded work to reason about. Three courses
+// are weighted (Science / Math / History); English stays points-based to show that
+// mode. Ids are unique but not sequential.
 const ROWS: DemoRow[] = [
-  // Biology
-  { canvasId: 1, name: "Lab Report 2", courseName: COURSE.science, type: "assignment", dueOffsetDays: -1, pointsPossible: 40, estimatedEffortHours: 1.5, effortBucket: "medium", summary: "Write up the cell-division lab with your data and a short conclusion." },
-  { canvasId: 6, name: "Quiz: Cell Division", courseName: COURSE.science, type: "quiz", dueOffsetDays: 3, pointsPossible: 30, studyLeadDays: 2 },
-  { canvasId: 9, name: "Midterm Exam", courseName: COURSE.science, type: "exam", dueOffsetDays: 6, pointsPossible: 150, studyLeadDays: 5, summary: "Covers chapters 1–6: cells, energy, and genetics." },
-  // Calculus
-  { canvasId: 4, name: "Problem Set 6", courseName: COURSE.math, type: "assignment", dueOffsetDays: 1, pointsPossible: 40, estimatedEffortHours: 2, effortBucket: "medium", summary: "Work the integration set in order — u-substitution first, then the trig integrals. Show each step for full marks." },
-  { canvasId: 2, name: "Problem Set 5", courseName: COURSE.math, type: "assignment", dueOffsetDays: -3, pointsPossible: 40, done: true, summary: "Five derivative problems — already submitted. Nice work." },
-  // U.S. History
-  { canvasId: 3, name: "Reading Response", courseName: COURSE.history, type: "other", dueOffsetDays: 0, dueHour: 23, pointsPossible: 15, summary: "One paragraph reacting to the assigned chapter." },
-  { canvasId: 5, name: "Essay Draft", courseName: COURSE.history, type: "assignment", dueOffsetDays: 2, pointsPossible: 80, estimatedEffortHours: 3, effortBucket: "long", summary: "First draft of the Civil War essay — thesis plus three sources." },
-  { canvasId: 10, name: "Research Paper", courseName: COURSE.history, type: "assignment", dueOffsetDays: 6, pointsPossible: 120, estimatedEffortHours: 4, effortBucket: "long", summary: "8–10 pages with a works-cited page." },
-  // Literature
+  // Biology — weighted: Exams 50%, Quizzes 20%, Labs 30%
+  { canvasId: 1, name: "Lab Report 2", courseName: COURSE.science, type: "assignment", dueOffsetDays: -1, pointsPossible: 40, estimatedEffortHours: 1.5, effortBucket: "medium", summary: "Write up the cell-division lab with your data and a short conclusion.", groupId: 2013, groupName: "Labs", groupWeight: 30 },
+  { canvasId: 6, name: "Quiz: Cell Division", courseName: COURSE.science, type: "quiz", dueOffsetDays: 3, pointsPossible: 30, studyLeadDays: 2, groupId: 2012, groupName: "Quizzes", groupWeight: 20 },
+  { canvasId: 9, name: "Midterm Exam", courseName: COURSE.science, type: "exam", dueOffsetDays: 6, pointsPossible: 150, studyLeadDays: 5, summary: "Covers chapters 1–6: cells, energy, and genetics.", groupId: 2011, groupName: "Exams", groupWeight: 50 },
+  { canvasId: 12, name: "Lab Report 1", courseName: COURSE.science, type: "assignment", dueOffsetDays: -10, pointsPossible: 40, done: true, score: 36, groupId: 2013, groupName: "Labs", groupWeight: 30, summary: "Microscope lab — graded." },
+  { canvasId: 13, name: "Quiz: Cells", courseName: COURSE.science, type: "quiz", dueOffsetDays: -12, pointsPossible: 30, done: true, score: 24, groupId: 2012, groupName: "Quizzes", groupWeight: 20 },
+  { canvasId: 14, name: "Quiz: Energy", courseName: COURSE.science, type: "quiz", dueOffsetDays: -6, pointsPossible: 30, done: true, score: 27, groupId: 2012, groupName: "Quizzes", groupWeight: 20 },
+  // Calculus — weighted: Problem sets 60%, Exams 40%
+  { canvasId: 4, name: "Problem Set 6", courseName: COURSE.math, type: "assignment", dueOffsetDays: 1, pointsPossible: 40, estimatedEffortHours: 2, effortBucket: "medium", summary: "Work the integration set in order — u-substitution first, then the trig integrals. Show each step for full marks.", groupId: 2021, groupName: "Problem sets", groupWeight: 60 },
+  { canvasId: 2, name: "Problem Set 5", courseName: COURSE.math, type: "assignment", dueOffsetDays: -3, pointsPossible: 40, done: true, score: 38, summary: "Five derivative problems — already submitted. Nice work.", groupId: 2021, groupName: "Problem sets", groupWeight: 60 },
+  { canvasId: 15, name: "Problem Set 4", courseName: COURSE.math, type: "assignment", dueOffsetDays: -10, pointsPossible: 40, done: true, score: 36, groupId: 2021, groupName: "Problem sets", groupWeight: 60, summary: "Chain-rule practice — graded." },
+  { canvasId: 16, name: "Midterm", courseName: COURSE.math, type: "exam", dueOffsetDays: -8, pointsPossible: 100, done: true, score: 90, groupId: 2022, groupName: "Exams", groupWeight: 40, summary: "Limits and derivatives — graded." },
+  // U.S. History — weighted: Essays 60%, Responses 40% (instructor hides the total)
+  { canvasId: 3, name: "Reading Response", courseName: COURSE.history, type: "other", dueOffsetDays: 0, dueHour: 23, pointsPossible: 15, summary: "One paragraph reacting to the assigned chapter.", groupId: 2032, groupName: "Responses", groupWeight: 40 },
+  { canvasId: 5, name: "Essay Draft", courseName: COURSE.history, type: "assignment", dueOffsetDays: 2, pointsPossible: 80, estimatedEffortHours: 3, effortBucket: "long", summary: "First draft of the Civil War essay — thesis plus three sources.", groupId: 2031, groupName: "Essays", groupWeight: 60 },
+  { canvasId: 10, name: "Research Paper", courseName: COURSE.history, type: "assignment", dueOffsetDays: 6, pointsPossible: 120, estimatedEffortHours: 4, effortBucket: "long", summary: "8–10 pages with a works-cited page.", groupId: 2031, groupName: "Essays", groupWeight: 60 },
+  { canvasId: 17, name: "Reading Response 1", courseName: COURSE.history, type: "other", dueOffsetDays: -9, pointsPossible: 15, done: true, score: 14, groupId: 2032, groupName: "Responses", groupWeight: 40, summary: "Chapter 1 reaction — graded." },
+  // Literature — points-based (no category weights), nothing graded yet
   { canvasId: 7, name: "Discussion Post", courseName: COURSE.english, type: "other", dueOffsetDays: 4, dueHour: 23, pointsPossible: 20, summary: "Post a short reaction to this week's reading, then reply to at least one classmate before midnight." },
   { canvasId: 8, name: "Vocabulary Quiz", courseName: COURSE.english, type: "quiz", dueOffsetDays: 5, pointsPossible: 20, studyLeadDays: 2 },
-  // Ongoing / undated
   { canvasId: 11, name: "Class Participation", courseName: COURSE.english, type: "other", dueOffsetDays: null, pointsPossible: 30, summary: "Stay engaged in class — ask questions and join discussions. Graded on your contributions across the term." },
 ];
 
@@ -163,6 +175,10 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
       effortBucket: r.effortBucket ?? null,
       summary: r.summary ?? null,
       htmlUrl: null,
+      score: r.score ?? null,
+      groupId: r.groupId ?? null,
+      groupName: r.groupName ?? null,
+      groupWeight: r.groupWeight ?? null,
     };
   };
 
@@ -181,6 +197,15 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
     overloadHours: plan.overloadHours,
     items: activeRows.map((r) => toItem(r, false)),
     completed: doneRows.map((r) => toItem(r, true)),
+    // All three honest grade states, so the demo Courses page shows each: two
+    // real totals, one HIDDEN by the instructor, one with nothing graded yet.
+    courses: [
+      { canvasId: COURSE_ID[COURSE.science], name: COURSE.science, grade: deriveCourseGrade(88, "B+", true), latestAnnouncement: { title: "Lab moved to room 214 this week", postedAt: isoAt(0, 8) } },
+      { canvasId: COURSE_ID[COURSE.math], name: COURSE.math, grade: deriveCourseGrade(92, "A-", true), latestAnnouncement: { title: "Problem Set 6 hint posted", postedAt: isoAt(-1, 16) } },
+      { canvasId: COURSE_ID[COURSE.history], name: COURSE.history, grade: deriveCourseGrade(null, null, true), latestAnnouncement: { title: "Essay rubric updated — please re-read", postedAt: isoAt(-3, 11) } },
+      // No announcement → the card simply omits the row.
+      { canvasId: COURSE_ID[COURSE.english], name: COURSE.english, grade: deriveCourseGrade(null, null, false), latestAnnouncement: null },
+    ],
     events,
     plan,
     atRisk: plan.atRisk.filter((r) => r.kind === "overdue"),
