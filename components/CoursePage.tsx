@@ -59,13 +59,14 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
         {upcoming.length} upcoming · {completed.length} done
       </p>
 
-      <GradeCalculator items={gradeItems} official={grade} />
-
       <div className="mt-7 space-y-7">
         {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger />}
         <Section title="Upcoming" items={upcoming} todayYmd={todayYmd} empty="Nothing upcoming — you're clear." />
         {completed.length > 0 && <Section title="Completed" items={completed} todayYmd={todayYmd} done />}
       </div>
+
+      {/* Grade calculator sits BELOW the assignment list — the urgent work comes first. */}
+      <GradeCalculator items={gradeItems} official={grade} />
     </div>
   );
 }

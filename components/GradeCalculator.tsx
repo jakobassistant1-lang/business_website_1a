@@ -45,7 +45,9 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
     return ([...TARGETS].reverse().find((t) => t.value > cur) ?? TARGETS[0]).value;
   }, [cur]);
   const [target, setTarget] = useState(defaultTarget);
-  const [assume, setAssume] = useState<Map<number, number>>(() => new Map(remaining.map((r) => [r.canvasId, 85])));
+  // Seed the what-if sliders at the current grade ("if you keep this up"), so the
+  // projection opens at today's grade instead of an arbitrary number that drags it down.
+  const [assume, setAssume] = useState<Map<number, number>>(() => new Map(remaining.map((r) => [r.canvasId, Math.round(cur ?? 85)])));
 
   if (gradeables.length === 0) return null;
 

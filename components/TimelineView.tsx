@@ -230,7 +230,10 @@ function WeekGantt({
                         height: 34,
                         background: c,
                         color: fg,
-                        backgroundImage: s.study ? "repeating-linear-gradient(45deg, rgba(255,255,255,0.30) 0 5px, transparent 5px 10px)" : undefined,
+                        // Keep the white label crisp on lighter type-colors (the sky quiz bars) and
+                        // over the study stripes — a soft shadow lifts it off the bar so it never reads gray.
+                        textShadow: "0 1px 2px rgba(0,0,0,0.55)",
+                        backgroundImage: s.study ? "repeating-linear-gradient(45deg, rgba(255,255,255,0.22) 0 5px, transparent 5px 10px)" : undefined,
                       }}
                     >
                       {rank.get(s.canvasId) ? <span className="font-bold">{rank.get(s.canvasId)}. </span> : null}
