@@ -25,6 +25,14 @@ export function addDays(d: Date, n: number): Date {
   return x;
 }
 
+/** Whole days from `from` to `to`, midnight-to-midnight local, rounded — THE
+ *  day-difference rule ("due in N days", plan day indexing) app-wide. One
+ *  implementation so no surface can ever count days differently (single-source
+ *  rule; was privately copied in 6 files before 2026-07-21). */
+export function daysBetween(from: Date, to: Date): number {
+  return Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86_400_000);
+}
+
 export function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

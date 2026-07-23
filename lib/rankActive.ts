@@ -12,18 +12,13 @@ import { rankItems, type MarginalInput } from "./marginalPriority";
 import { DEFAULT_LATE_POLICY, type LatePolicy } from "./latePolicy";
 import { resolveWeight } from "./gradeWeight";
 import { itemType, isStudyType, requiresOnlineSubmission, type ItemType } from "./itemType";
+import { daysBetween } from "./calendarDates";
 import { round1 } from "./round";
 import type { ScoredAssignment } from "./priority";
 
-const DAY = 86_400_000;
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
 function daysUntil(due: Date | null, now: Date): number | null {
   if (!due) return null;
-  return Math.round((startOfDay(due).getTime() - startOfDay(now).getTime()) / DAY);
+  return daysBetween(now, due);
 }
 
 export interface RankableRow {

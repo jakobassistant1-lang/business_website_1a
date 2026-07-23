@@ -14,7 +14,7 @@ import type { CourseGrade } from "@/lib/courseGrade";
 import type { GradeInput } from "@/lib/gradeCalc";
 import type { CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
-import { EffortTag } from "@/components/calendar/parts";
+import { EffortTag, DoneCheck } from "@/components/calendar/parts";
 
 function dueLabel(iso: string | null, todayYmd: string): string {
   if (!iso) return "No due date";
@@ -26,7 +26,7 @@ function dueLabel(iso: string | null, todayYmd: string): string {
   return date;
 }
 
-export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string }) {
+export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd, demo = false }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string; demo?: boolean }) {
   // Do-next ordering — by importance rank, never by due date.
   const rank = new Map(rankedIds.map((id, i) => [id, i] as const));
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
@@ -82,9 +82,9 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
         <GradeCalculator items={gradeItems} official={grade} />
       ) : (
         <div className="mt-7 space-y-7">
-          {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger />}
-          <Section title="Upcoming" items={upcoming} todayYmd={todayYmd} empty="Nothing upcoming — you're clear." />
-          {completed.length > 0 && <Section title="Completed" items={completed} todayYmd={todayYmd} done />}
+          {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger demo={demo} />}
+          <Section title="Upcoming" items={upcoming} todayYmd={todayYmd} empty="Nothing upcoming — you're clear." demo={demo} />
+          {completed.length > 0 && <Section title="Completed" items={completed} todayYmd={todayYmd} done demo={demo} />}
         </div>
       )}
     </div>
@@ -98,6 +98,7 @@ function Section({
   danger,
   done,
   empty,
+  demo,
 }: {
   title: string;
   items: CalendarItem[];
@@ -105,6 +106,7 @@ function Section({
   danger?: boolean;
   done?: boolean;
   empty?: string;
+  demo?: boolean;
 }) {
   return (
     <section>
@@ -116,7 +118,7 @@ function Section({
       ) : (
         <div className="card divide-y divide-line-subtle p-2">
           {items.map((it) => (
-            <Row key={it.canvasId} item={it} todayYmd={todayYmd} done={done} />
+            <Row key={it.canvasId} item={it} todayYmd={todayYmd} done={done} demo={demo} />
           ))}
         </div>
       )}
@@ -124,9 +126,21 @@ function Section({
   );
 }
 
-function Row({ item, todayYmd, done }: { item: CalendarItem; todayYmd: string; done?: boolean }) {
+function Row({ item, todayYmd, done, demo }: { item: CalendarItem; todayYmd: string; done?: boolean; demo?: boolean }) {
   return (
     <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60">
+      {!done ? (
+        <DoneCheck canvasId={item.canvasId} disabled={demo} />
+      ) : item.manuallyDone ? (
+        <DoneCheck canvasId={item.canvasId} checked disabled={demo} />
+      ) : (
+        // Canvas-verified submission — done-ness isn't the student's claim, so no un-check.
+        <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-2 border-success/40 text-success" aria-hidden title="Submitted in Canvas">
+          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 6.5 4.8 9 10 3.5" />
+          </svg>
+        </span>
+      )}
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-[16px] ${done ? "text-muted line-through" : "font-medium text-ink"}`}>{item.name}</span>
         <span className="flex items-center gap-1.5 truncate text-[13px] text-muted">

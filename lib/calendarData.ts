@@ -7,6 +7,7 @@
 // calendar problem can never break the page.
 
 import { prisma } from "./prisma";
+import { isAssignmentDone } from "./assignmentStatus";
 import { type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
 import { generateWeekPlan } from "./weekPlan";
 import { TOP_N, type ScoredAssignment } from "./priority";
@@ -42,6 +43,9 @@ export interface CalendarItem {
   groupId: number | null; // Canvas assignment_group id
   groupName: string | null;
   groupWeight: number | null; // Canvas group_weight (percent)
+  // True when the student checked this off themselves (manualDoneAt) rather than
+  // Canvas reporting a submission — drives the un-checkable filled circle.
+  manuallyDone: boolean;
 }
 
 /** One enrolled course plus its honest grade state (graded / hidden / none) and
@@ -97,8 +101,8 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
   const hours =
     hoursOverride !== undefined && Number.isFinite(hoursOverride) ? hoursOverride : user.defaultHoursPerDay;
 
-  // Same "done" rule as lib/plan.ts: submitted AND not reopened by the instructor.
-  const isDone = (a: AssignmentRow) => a.submittedAt !== null && a.submissionState !== "unsubmitted";
+  // The shared done rule (lib/assignmentStatus): submitted AND not reopened.
+  const isDone = (a: AssignmentRow) => isAssignmentDone(a);
   const submittedRows = rows.filter(isDone);
   const activeRows = rows.filter((a) => !isDone(a));
 
@@ -203,6 +207,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     groupId: a.groupId ?? null,
     groupName: a.groupName ?? null,
     groupWeight: a.groupWeight ?? null,
+    manuallyDone: a.manualDoneAt != null,
   });
 
   // Honest per-course grade. "Graded work" = any assignment Canvas has scored,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { requireUser } from "@/lib/auth";
 import { loadCalendarData, upcomingAssessments } from "@/lib/calendarData";
+import { daysBetween } from "@/lib/calendarDates";
 import { generateStudyHub, type StudyHubItem } from "@/lib/briefing";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ const TTL_MS = 30 * 60_000;
 const MAX = 200;
 
 function relativeDue(iso: string): string {
-  const d = Math.round((new Date(iso).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86_400_000);
+  const d = daysBetween(new Date(), new Date(iso));
   return d < 0 ? "overdue" : d === 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`;
 }
 
