@@ -12,7 +12,7 @@ import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates"
 import { cleanCourse } from "@/lib/courseName";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { TYPE_LABEL, type ItemType } from "@/lib/itemType";
-import { EffortTag, EffortEditor } from "@/components/calendar/parts";
+import { EffortTag, EffortEditor, MarkDoneButton } from "@/components/calendar/parts";
 import type { CanvasRubricCriterion } from "@/lib/canvas";
 
 /** Relative, do-next voice for the due date — matches the rest of the app. */
@@ -33,7 +33,8 @@ function submissionBadge(
   points: number | null,
   submittedAt: string | null,
   iso: string | null,
-  todayYmd: string
+  todayYmd: string,
+  manuallyDone = false
 ): { label: string; tone: Tone } {
   if (state === "graded") {
     const pts = score != null ? `${score}${points != null && points > 0 ? `/${points}` : ""} pts` : "";
@@ -42,6 +43,8 @@ function submissionBadge(
   // Treat a recorded submission time as submitted even if Canvas didn't sync a
   // workflow_state — keeps this badge consistent with the "Completed" sections.
   if (state === "submitted" || state === "pending_review" || submittedAt) return { label: "Submitted", tone: "success" };
+  // The student's own checkoff (no Canvas submission): their word, labeled as such.
+  if (manuallyDone) return { label: "Marked done by you", tone: "success" };
   // Not submitted — is it already late?
   const overdue = iso ? parseYmd(ymd(new Date(iso))).getTime() < parseYmd(todayYmd).getTime() : false;
   return overdue ? { label: "Not submitted — overdue", tone: "danger" } : { label: "Not submitted yet", tone: "warning" };
@@ -62,13 +65,14 @@ export function AssignmentPage(props: {
   submittedAt: string | null;
   submissionScore: number | null;
   summary: string | null;
+  manuallyDone?: boolean; // student's own checkoff (manualDoneAt) — see lib/assignmentStatus
   todayYmd: string;
   // Demo wiring (optional, additive): `demo` skips the live AI/rubric fetches so the
   // page renders purely from props; `onBack` overrides the router for in-demo back.
   demo?: boolean;
   onBack?: () => void;
 }) {
-  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, todayYmd, demo, onBack } = props;
+  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, manuallyDone = false, todayYmd, demo, onBack } = props;
   const router = useRouter();
 
   // AI approach + steps, lazy-fetched. Seed the approach with the stored one-liner
@@ -115,7 +119,7 @@ export function AssignmentPage(props: {
     };
   }, [canvasId, demo]);
 
-  const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, dueAt, todayYmd);
+  const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, dueAt, todayYmd, manuallyDone);
   const hasPlan = Boolean(approach) || steps.length > 0;
 
   // "← Back" returns within the app when there's history, else falls back to the
@@ -145,6 +149,10 @@ export function AssignmentPage(props: {
           <EffortEditor canvasId={canvasId} estimate={estimatedEffortHours ?? null} override={effortOverrideHours ?? null} />
         )}
         <span className={`rounded-full px-3 py-1 ${toneSoft[badge.tone]}`}>{badge.label}</span>
+        {/* Manual checkoff — hidden in demo and once Canvas itself confirms a submission. */}
+        {!demo && !(submittedAt || submissionState === "submitted" || submissionState === "pending_review" || submissionState === "graded") && (
+          <MarkDoneButton canvasId={canvasId} done={manuallyDone} />
+        )}
       </div>
 
       {/* How to approach — the value add: turn a vague task into a first move. */}

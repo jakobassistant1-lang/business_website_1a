@@ -41,6 +41,7 @@ export default async function AssignmentDetailPage({ params }: { params: Promise
       submittedAt={a.submittedAt ? a.submittedAt.toISOString() : null}
       submissionScore={a.submissionScore ?? null}
       summary={a.aiSummary ?? null}
+      manuallyDone={a.manualDoneAt != null}
       todayYmd={ymd(new Date())}
     />
   );

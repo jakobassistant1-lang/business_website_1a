@@ -7,6 +7,7 @@
 // calendar problem can never break the page.
 
 import { prisma } from "./prisma";
+import { isAssignmentDone } from "./assignmentStatus";
 import { type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
 import { generateWeekPlan } from "./weekPlan";
 import { TOP_N, type ScoredAssignment } from "./priority";
@@ -36,6 +37,9 @@ export interface CalendarItem {
   effortBucket: string | null; // "quick" | "medium" | "long"
   summary: string | null;
   htmlUrl: string | null;
+  // True when the student checked this off themselves (manualDoneAt) rather than
+  // Canvas reporting a submission — drives the un-checkable filled circle.
+  manuallyDone: boolean;
 }
 
 export interface CalendarData {
@@ -79,8 +83,8 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
   const hours =
     hoursOverride !== undefined && Number.isFinite(hoursOverride) ? hoursOverride : user.defaultHoursPerDay;
 
-  // Same "done" rule as lib/plan.ts: submitted AND not reopened by the instructor.
-  const isDone = (a: AssignmentRow) => a.submittedAt !== null && a.submissionState !== "unsubmitted";
+  // The shared done rule (lib/assignmentStatus): submitted AND not reopened.
+  const isDone = (a: AssignmentRow) => isAssignmentDone(a);
   const submittedRows = rows.filter(isDone);
   const activeRows = rows.filter((a) => !isDone(a));
 
@@ -181,6 +185,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     effortBucket: a.effortBucket ?? null,
     summary: a.aiSummary ?? null,
     htmlUrl: a.htmlUrl,
+    manuallyDone: a.manualDoneAt != null,
   });
 
   const status = cred?.lastValidationStatus ?? null;

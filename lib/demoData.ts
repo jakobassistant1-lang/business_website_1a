@@ -10,7 +10,7 @@ import { generateWeekPlan } from "./weekPlan";
 import { assessmentTier } from "./studyPlan";
 import { TOP_N } from "./priority";
 import { rankActiveRows, courseTotalPoints } from "./rankActive";
-import { ymd } from "./calendarDates";
+import { ymd, startOfDay } from "./calendarDates";
 import type { CalendarData, CalendarItem } from "./calendarData";
 import type { CalendarEvent } from "./calendar/types";
 import { isStudyType, type ItemType } from "./itemType";
@@ -76,8 +76,7 @@ const ROWS: DemoRow[] = [
 ];
 
 export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarData; todayYmd: string } {
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
+  const today = startOfDay(now);
   const dueDate = (off: number | null, hour = 17): Date | null => {
     if (off === null) return null;
     const d = new Date(today);
@@ -163,6 +162,7 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
       effortBucket: r.effortBucket ?? null,
       summary: r.summary ?? null,
       htmlUrl: null,
+      manuallyDone: false, // demo has no persistence — checkoffs are disabled there
     };
   };
 

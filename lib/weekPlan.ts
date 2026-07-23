@@ -10,6 +10,7 @@
 // Pure + deterministic given `now`. The legacy generatePlan stays for back-compat.
 
 import { round1 } from "./round";
+import { startOfDay, daysBetween } from "./calendarDates";
 import {
   expandAssessment,
   chunkDeliverable,
@@ -19,15 +20,9 @@ import {
 } from "./studyPlan";
 import type { Plan, PlanDay, AtRiskItem, UndatedItem, SchedulerAssignment } from "./scheduler";
 
-const MS_PER_DAY = 86_400_000;
 const EPS = 1e-9;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
 function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
@@ -74,7 +69,7 @@ export function generateWeekPlan(
   const cap = H * DAILY_HEADROOM; // schedule to 90% of the budget (spec §6)
 
   const startDay = startOfDay(now);
-  const dayIndex = (d: Date) => Math.round((startOfDay(d).getTime() - startDay.getTime()) / MS_PER_DAY);
+  const dayIndex = (d: Date) => daysBetween(startDay, d);
 
   const undated: UndatedItem[] = [];
   const overdue: SchedulerAssignment[] = [];

@@ -53,21 +53,10 @@ export function fmtTime(iso: string): string {
 export function fmtDueLong(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
-/** Hours → friendly label: sub-hour shows minutes (so the 20-min study floor
- *  reads as "20m"), otherwise "Nh". Rounds minutes to the nearest 5. */
-export function fmtHours(h: number): string {
-  if (h <= 0) return "0m";
-  const mins = Math.round((h * 60) / 5) * 5;
-  return mins < 60 ? `${mins}m` : `${Math.round(h * 10) / 10}h`;
-}
-
-/** "~2h" / "~30m" from a total estimate; null when there's no usable number.
- *  Routes through fmtHours so anything under an hour reads as minutes (never a
- *  decimal of an hour) — consistent with the preset chips in EffortEditor. */
-export function effortHoursText(hours: number | null | undefined): string | null {
-  if (hours == null || hours <= 0) return null;
-  return `~${fmtHours(hours)}`;
-}
+// Canonical formatting lives in lib/effortFormat (server-safe, shared with API
+// routes); imported for use below and re-exported so component imports keep working.
+import { fmtHours, effortHoursText } from "@/lib/effortFormat";
+export { fmtHours, effortHoursText };
 
 /** One consistent "estimated work" tag, used everywhere an assignment appears
  *  (#14). Always the assignment's TOTAL estimate — never a per-block fragment —
@@ -711,5 +700,109 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
         </div>
       )}
     </div>
+  );
+}
+
+/** Interactive done checkoff — every list row's leading circle. Click fills it
+ *  and the item moves to Completed on every surface at once (the ONE done rule,
+ *  lib/assignmentStatus); click a filled one (manual checks only) to restore.
+ *  Optimistic with revert on failure. Lives inside row <Link>s, so it stops
+ *  propagation — tapping the circle never navigates. `tone="danger"` matches the
+ *  Catch-up rail's red styling. */
+export function DoneCheck({
+  canvasId,
+  checked = false,
+  disabled = false,
+  tone = "default",
+  className = "",
+}: {
+  canvasId: number;
+  checked?: boolean;
+  disabled?: boolean;
+  tone?: "default" | "danger";
+  className?: string;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [local, setLocal] = useState(checked);
+  useEffect(() => setLocal(checked), [checked]);
+  if (disabled) {
+    return <span className={`h-[22px] w-[22px] shrink-0 rounded-full border-2 ${tone === "danger" ? "border-danger/50" : "border-line"} ${className}`} aria-hidden />;
+  }
+  const toggle = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    const next = !local;
+    setLocal(next);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/assignment/done", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: canvasId, done: next }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      router.refresh();
+    } catch {
+      setLocal(!next); // failed — put the circle back the way it was
+    } finally {
+      setBusy(false);
+    }
+  };
+  const idle = tone === "danger" ? "border-danger/50 hover:border-success" : "border-line hover:border-success";
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={busy}
+      aria-label={local ? "Mark as not done" : "Mark as done"}
+      title={local ? "Mark as not done" : "Mark as done"}
+      className={`grid h-[22px] w-[22px] shrink-0 cursor-pointer place-items-center rounded-full border-2 text-success transition ${local ? "border-success bg-success" : idle} ${className}`}
+    >
+      <svg viewBox="0 0 12 12" className={`h-3 w-3 transition-opacity ${local ? "text-white opacity-100" : "opacity-0 hover:opacity-100"}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M2 6.5 4.8 9 10 3.5" />
+      </svg>
+    </button>
+  );
+}
+
+/** "Mark as done" pill for the assignment detail page — same PATCH + refresh as
+ *  DoneCheck, button-shaped with a label so the action is explicit. */
+export function MarkDoneButton({ canvasId, done }: { canvasId: number; done: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [local, setLocal] = useState(done);
+  useEffect(() => setLocal(done), [done]);
+  const toggle = async () => {
+    if (busy) return;
+    const next = !local;
+    setLocal(next);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/assignment/done", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: canvasId, done: next }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      router.refresh();
+    } catch {
+      setLocal(!next);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={busy}
+      className={`rounded-full px-3 py-1 text-[13.5px] font-medium transition ${
+        local ? "bg-success-soft text-success hover:opacity-80" : "border border-line text-muted hover:border-success hover:text-success"
+      }`}
+    >
+      {local ? "✓ Done · undo" : "Mark as done"}
+    </button>
   );
 }

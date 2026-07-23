@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { requireUser } from "@/lib/auth";
 import { loadCalendarData } from "@/lib/calendarData";
+import { effortHoursText } from "@/lib/effortFormat";
+import { startOfDay, ymd, parseYmd } from "@/lib/calendarDates";
 import { generatePeriodBriefing, DEFAULT_PERIOD_COACH_INSTRUCTION, type PeriodTopItem } from "@/lib/briefing";
 import { getSetting, PERIOD_COACH_PROMPT_KEY } from "@/lib/settings";
 
@@ -32,24 +34,16 @@ function cacheSet(key: string, text: string) {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function startOfLocalDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function parseYmd(s: string | null): Date | null {
-  if (!s) return null;
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+/** Null-tolerant wrapper for the ?start= query param around the shared parseYmd. */
+function parseYmdParam(s: string | null): Date | null {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = parseYmd(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 function effortLabel(it: { estimatedEffortHours: number | null; effortBucket: string | null }): string | null {
-  if (it.estimatedEffortHours != null && it.estimatedEffortHours > 0) return `${Math.round(it.estimatedEffortHours * 10) / 10}h`;
-  return it.effortBucket ?? null;
+  // Canonical formatter (lib/effortFormat): sub-hour reads as minutes ("~45m"),
+  // never "0.8h" — the same text students see on every EffortTag in the app.
+  return effortHoursText(it.estimatedEffortHours) ?? it.effortBucket ?? null;
 }
 function dueLabel(iso: string, view: "day" | "week" | "month"): string {
   const d = new Date(iso);
@@ -58,7 +52,7 @@ function dueLabel(iso: string, view: "day" | "week" | "month"): string {
 }
 function rangeLabelFor(view: "day" | "week" | "month", start: Date, end: Date): string {
   if (view === "day") {
-    const today = startOfLocalDay(new Date());
+    const today = startOfDay(new Date());
     if (start.getTime() === today.getTime()) return "today";
     return `${MON[start.getMonth()]} ${start.getDate()}`;
   }
@@ -78,7 +72,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const viewRaw = url.searchParams.get("view");
   const view: "day" | "week" | "month" = viewRaw === "week" || viewRaw === "month" ? viewRaw : "day";
-  const start = parseYmd(url.searchParams.get("start")) ?? startOfLocalDay(new Date());
+  const start = parseYmdParam(url.searchParams.get("start")) ?? startOfDay(new Date());
   const daysRaw = Number(url.searchParams.get("days"));
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(45, Math.floor(daysRaw)) : view === "day" ? 1 : view === "week" ? 7 : 31;
   const end = new Date(start);

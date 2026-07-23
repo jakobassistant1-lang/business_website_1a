@@ -8,6 +8,7 @@
 
 import type { Plan, AtRiskKind } from "./scheduler";
 import { round1 } from "./round";
+import { daysBetween } from "./calendarDates";
 
 // Weights sum to 100 so `score` reads like a 0–100 percentage. Tune here.
 export const W_URGENCY = 40;
@@ -18,13 +19,7 @@ export const POINTS_REF = 100; // a "full credit" assignment; caps impact at 1
 export const SUBMITTED_FACTOR = 0.1; // already-submitted work sinks, never vanishes
 export const TOP_N = 3;
 
-const DAY = 86_400_000;
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
 
 export interface PriorityInput {
   canvasId: number;
@@ -65,7 +60,7 @@ export interface Recommendations {
 }
 
 function daysUntil(dueAtIso: string, now: Date): number {
-  return Math.round((startOfDay(new Date(dueAtIso)).getTime() - startOfDay(now).getTime()) / DAY);
+  return daysBetween(now, new Date(dueAtIso));
 }
 
 function reasonFor(item: PriorityInput, d: number | null): string {

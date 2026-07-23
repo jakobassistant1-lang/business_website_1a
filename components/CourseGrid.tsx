@@ -36,8 +36,11 @@ export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: s
 function CourseCard({ courseCanvasId, courseName, items, rank, todayYmd, anchor }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; rank: Map<number, number>; todayYmd: string; anchor?: string }) {
   const overdue = items.filter((it) => it.status === "overdue").length;
   const normal = items.filter((it) => it.status === "normal");
-  // Do-next: the most important item in this class, not the soonest by date.
-  const next = normal.slice().sort((a, b) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9))[0];
+  // Do-next: the most important RANKED item in this class, not the soonest by
+  // date. Items outside the ranking (AI-screened placeholders like attendance /
+  // participation columns) must never be suggested as something to "do" — a
+  // class whose only remaining items are screened shows "Nothing upcoming".
+  const next = normal.filter((it) => rank.has(it.canvasId)).sort((a, b) => rank.get(a.canvasId)! - rank.get(b.canvasId)!)[0];
 
   return (
     <Link

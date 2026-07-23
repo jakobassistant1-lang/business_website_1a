@@ -13,7 +13,7 @@ import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_LONG, countdownLabel } f
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
 import { deterministicIntensity, type Intensity } from "@/lib/intensity";
-import { Glyph, ICON, fmtTime, fmtHours, EffortTag } from "@/components/calendar/parts";
+import { Glyph, ICON, fmtTime, fmtHours, EffortTag, DoneCheck } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import { shortCourse } from "@/lib/courseName";
@@ -140,8 +140,8 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
 
           <div className="flex flex-col gap-6 lg:flex-row">
             <div className="min-w-0 flex-1 space-y-6">
-              <div data-tour="dash-focus"><FocusTodayCard data={data} todayYmd={todayYmd} list={doNext} /></div>
-              {overdueItems.length > 0 && <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} />}
+              <div data-tour="dash-focus"><FocusTodayCard data={data} todayYmd={todayYmd} list={doNext} demo={demo} /></div>
+              {overdueItems.length > 0 && <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} demo={demo} />}
             </div>
             <aside className="w-full shrink-0 space-y-7 lg:w-96">
               <div data-tour="dash-progress"><ProgressDial done={dueTodayDone} total={dialTotal} /></div>
@@ -279,15 +279,10 @@ function focusRationale(item: CalendarItem, isToday: boolean): string {
   return lead + (isToday ? " — knock it out today." : " — a strong place to start.");
 }
 
-// Empty status disc — mirrors Canvas (fills to a green check there once submitted).
-function StatusDisc() {
-  return <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-line" aria-hidden />;
-}
-
-function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
+function ItemRow({ item, dueLabel, demo = false }: { item: CalendarItem; dueLabel: string; demo?: boolean }) {
   return (
     <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60">
-      <StatusDisc />
+      <DoneCheck canvasId={item.canvasId} disabled={demo} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[16px] font-medium text-ink">{item.name}</span>
         <span className="flex items-center gap-1.5 text-[14px] text-muted">
@@ -304,7 +299,7 @@ function ItemRow({ item, dueLabel }: { item: CalendarItem; dueLabel: string }) {
 
 // ── Focus + what's next: a flush, rounded-bottom violet Focus block (the #1 task)
 // sits edge-to-edge atop a 7-day due list, all in one card. ─────────────────────
-function FocusTodayCard({ data, todayYmd, list }: { data: CalendarData; todayYmd: string; list: CalendarItem[] }) {
+function FocusTodayCard({ data, todayYmd, list, demo = false }: { data: CalendarData; todayYmd: string; list: CalendarItem[]; demo?: boolean }) {
   const topRec = data.recommendations[0];
   const fromRec = topRec ? data.items.find((it) => it.canvasId === topRec.canvasId) : undefined;
   // When there are no forward recommendations (e.g. all active work is undated or
@@ -355,7 +350,7 @@ function FocusTodayCard({ data, todayYmd, list }: { data: CalendarData; todayYmd
         ) : (
           <div className="space-y-0.5">
             {restList.map((it) => (
-              <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} />
+              <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} demo={demo} />
             ))}
           </div>
         )}
@@ -416,7 +411,7 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
 
 // ── Overdue list — opened from the Overdue KPI (it has no card of its own now). ──
 // ── Catch up: overdue work, most-important-first, as an action — not just a count.
-function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: () => void }) {
+function CatchUpCard({ items, onOpenAll, demo = false }: { items: CalendarItem[]; onOpenAll: () => void; demo?: boolean }) {
   const shown = items.slice(0, 3);
   return (
     <div className="card border-danger/30 p-5 sm:p-6">
@@ -434,7 +429,7 @@ function CatchUpCard({ items, onOpenAll }: { items: CalendarItem[]; onOpenAll: (
       <div className="mt-2 space-y-0.5">
         {shown.map((it) => (
           <Link key={it.canvasId} href={itemHref(it.canvasId, it.type, it.status)} className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60">
-            <span className="h-[22px] w-[22px] shrink-0 rounded-full border-2 border-danger/50" aria-hidden />
+            <DoneCheck canvasId={it.canvasId} tone="danger" disabled={demo} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[16px] font-medium text-ink">{it.name}</span>
               <span className="flex items-center gap-1.5 text-[14px] text-muted">

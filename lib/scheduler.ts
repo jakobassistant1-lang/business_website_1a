@@ -6,8 +6,8 @@
 // pushed into `days` and/or `atRisk`) AND by a runtime assertion at the end.
 
 import { round1 } from "./round";
+import { startOfDay, daysBetween } from "./calendarDates";
 
-const MS_PER_DAY = 86_400_000;
 const EPS = 1e-9;
 
 export interface SchedulerAssignment {
@@ -92,11 +92,6 @@ export interface Plan {
   overloadHours: number;
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
 
 function addDays(d: Date, n: number): Date {
   const x = new Date(d);
@@ -153,7 +148,7 @@ export function generatePlan(
       undated.push({ canvasId: a.canvasId, name: a.name, courseName: a.courseName, pointsPossible: a.pointsPossible, htmlUrl: a.htmlUrl });
       continue;
     }
-    const idx = Math.round((startOfDay(a.dueAt).getTime() - startDay.getTime()) / MS_PER_DAY);
+    const idx = daysBetween(startDay, a.dueAt);
     if (idx < 0) {
       overdue.push(a);
     } else if (idx >= days) {

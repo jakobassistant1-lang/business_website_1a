@@ -548,6 +548,7 @@ function DemoDetail({
         completed={completed}
         rankedIds={data.ranked.map((r) => r.canvasId)}
         todayYmd={todayYmd}
+        demo
       />
     );
   }

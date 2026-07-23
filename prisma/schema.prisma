@@ -218,6 +218,10 @@ model Assignment {
   submissionType  String?   // Canvas submission_types, comma-joined (e.g. "online_quiz") — drives the Calendar TYPE glyph
   studyLeadDays   Int?      // per-assignment override of days-ahead to study (null = use the User default by type)
   effortOverrideHours Float? // per-user manual override of the AI effort estimate (null = use the AI estimate); feeds display + scheduling
+  // Student manually checked this off (null = not checked). Feeds the ONE done
+  // rule (lib/assignmentStatus): manual check OR Canvas submission counts as done.
+  // Never written by Canvas sync, so a sync can't un-check it.
+  manualDoneAt    DateTime?
   updatedAt       DateTime  @updatedAt
   // Submission data from Canvas include[]=submission (canvas-mcp integration)
   submittedAt     DateTime?

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { isAssignmentDone } from "./assignmentStatus";
 import { generatePlan, Plan, SchedulerAssignment } from "./scheduler";
 import { rankRecommendations, priorityInputsFromPlan, type ScoredAssignment } from "./priority";
 
@@ -46,12 +47,9 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
       ? hoursOverride
       : user.defaultHoursPerDay;
 
-  // Split submitted vs. active assignments (canvas-mcp integration).
-  // "Done" = has a submission timestamp AND Canvas hasn't reset it. When an
-  // instructor reopens a submission, Canvas keeps the old submitted_at but flips
-  // workflow_state to "unsubmitted"; such rows must stay in the plan, not vanish.
-  const isDone = (a: (typeof rows)[number]) =>
-    a.submittedAt !== null && a.submissionState !== "unsubmitted";
+  // Split submitted vs. active assignments (canvas-mcp integration) using the
+  // shared done rule (lib/assignmentStatus — see its comment for the reopen case).
+  const isDone = (a: (typeof rows)[number]) => isAssignmentDone(a);
   const submittedRows = rows.filter(isDone);
   const activeRows = rows.filter((a) => !isDone(a));
 
