@@ -35,6 +35,15 @@ model User {
   // accounts skip it; the signup paths set it to NULL so genuinely new students
   // get the demo (null → routed to /demo on first entry; set on finish/skip).
   onboardedAt        DateTime? @default(now())
+  // --- Billing (#117): who has paid status. The card itself lives ONLY at
+  // Stripe — we store two pointer ids + one status word + the trial end.
+  // Status vocabulary lives in lib/subscription.ts (single source): grandfathered
+  // (pre-billing accounts, backfilled) | none (no card yet) | trialing | active |
+  // past_due | canceled. Flow: signup → demo → card (/welcome/card) → app.
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?
+  subscriptionStatus   String    @default("none")
+  trialEndsAt          DateTime?
 
   sessions      Session[]
   credential    CanvasCredential?
@@ -119,6 +128,21 @@ model AdminTask {
   // Build numbering is per-board, so the same #1 can exist on each board.
   @@unique([board, ticketNumber])
   @@index([board, status, position])
+}
+
+// Append-only funnel log (#117): the handful of moments that answer "where do
+// strangers drop out?" — signup, demo done, checkout started/completed, Canvas
+// connected, first sync, first plan. Written fire-and-forget (lib/funnel.ts);
+// never blocks a user-facing request. No dashboards — one documented SQL query.
+model FunnelEvent {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  name      String
+  meta      String? // JSON payload (small)
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([userId])
 }
 
 // Global app settings (key/value). Currently holds the editable Gemini briefing

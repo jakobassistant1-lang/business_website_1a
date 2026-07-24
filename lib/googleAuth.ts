@@ -7,6 +7,7 @@
 
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "./prisma";
+import { logEvent } from "./funnel";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -142,7 +143,7 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
   const email = profile.email.trim().toLowerCase();
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return existing;
-  return prisma.user.create({
+  const created = await prisma.user.create({
     data: {
       email,
       password: null, // passwordless — sign-in is via Google
@@ -152,4 +153,6 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
       onboardedAt: null, // brand-new student → show the first-run demo
     },
   });
+  void logEvent("signup_created", created.id, { door: "google" });
+  return created;
 }

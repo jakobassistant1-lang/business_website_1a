@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { signupInviteCode } from "@/lib/signup";
+import { logEvent } from "@/lib/funnel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -65,5 +66,6 @@ export async function POST(req: Request) {
     data: { email, password: await hashPassword(password), fullName, phone, tosAcceptedAt: new Date(), isAdmin: role === "admin", onboardedAt: role === "admin" ? new Date() : null },
   });
   await createSession(user.id);
+  void logEvent("signup_created", user.id, { door: "password" });
   return NextResponse.json({ ok: true, isAdmin: role === "admin" });
 }

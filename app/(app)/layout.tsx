@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdminUser } from "@/lib/admin";
+import { billingEnabled, needsCheckout } from "@/lib/subscription";
 import { prisma } from "@/lib/prisma";
 import { Sidebar } from "@/components/Sidebar";
 import { ConnectionAlert } from "@/components/ConnectionAlert";
@@ -9,6 +10,12 @@ import { ConnectionAlert } from "@/components/ConnectionAlert";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // Card-step resume (#118): a demo-finished student who never completed the
+  // card step can't wander into the app — back to /welcome/card. (Admins and
+  // grandfathered/subscribed accounts pass; full per-request gating is #119.)
+  if (billingEnabled() && !isAdminUser(user) && user.onboardedAt && needsCheckout(user.subscriptionStatus)) {
+    redirect("/welcome/card");
+  }
 
   // Connection health (#65): one cheap indexed lookup so an expired/invalid Canvas
   // token is flagged app-wide with a one-step reconnect, on whatever page they're on.

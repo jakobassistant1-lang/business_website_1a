@@ -97,9 +97,10 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
     if (ending) return;
     setEnding(true);
     destroyTour();
-    await fetch("/api/onboarding/complete", { method: "POST" }).catch(() => {});
-    // Real dashboard; ?welcome=1 triggers the one-time "connect Canvas" nudge.
-    window.location.href = "/dashboard?welcome=1";
+    // The server decides the next stop: with billing on, a new student goes to
+    // the card step (/welcome/card) before the app; otherwise straight in (#118).
+    const body = await fetch("/api/onboarding/complete", { method: "POST" }).then((r) => r.json()).catch(() => null);
+    window.location.href = body?.next ?? "/dashboard?welcome=1";
   }, [ending, destroyTour]);
 
   const startTour = useCallback(() => {
