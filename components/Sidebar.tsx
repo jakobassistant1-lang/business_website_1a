@@ -96,7 +96,7 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
   const menuItemClass = "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white";
 
   return (
-    <aside className={`flex shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 ${collapsed ? "w-16 px-2" : "w-64 px-4"}`}>
+    <aside className={`sticky top-0 flex h-screen shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 ${collapsed ? "w-16 px-2" : "w-64 px-4"}`}>
       <div className={`mb-2 flex items-center px-1 ${collapsed ? "justify-center" : "justify-between"}`}>
         <Link href="/dashboard" className="flex items-center gap-3" title="Navo">
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
@@ -119,7 +119,10 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
         </button>
       )}
 
-      <nav className="mt-4 flex flex-col gap-1">
+      {/* The nav scrolls internally on short viewports; the account block below
+          stays pinned to the bottom of the SCREEN (the aside is viewport-height
+          and sticky — it no longer stretches to page height or rides the scroll). */}
+      <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         {NAV.map((item) => (
           <Link key={item.href} href={item.href} className={linkClass(pathname.startsWith(item.href))} title={item.label}>
             <Icon d={item.icon} />
