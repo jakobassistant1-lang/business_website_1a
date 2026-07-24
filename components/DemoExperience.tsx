@@ -444,7 +444,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
                     <h1 className="text-[28px] font-bold tracking-tight text-ink">Courses</h1>
                     <p className="mt-1 text-[15px] text-muted">Your classes at a glance — open one for its full assignment list.</p>
                     <div className="mt-7">
-                      <CourseGrid data={data} todayYmd={todayYmd} />
+                      <CourseGrid data={data} todayYmd={todayYmd} demo />
                     </div>
                   </div>
                 )}

@@ -200,6 +200,10 @@ model Course {
   currentGrade    String?
   latePolicyKind  String? // "none" | "flat" | "perday" (Gemini-parsed from the syllabus)
   latePolicyValue Float?  // fraction of credit lost (flat: one-time; perday: per day)
+  // Student excluded this course from planning (#60). Null = included. Filters the
+  // assignment load at the ONE chokepoint (lib/calendarData / lib/plan) so ranking,
+  // scheduler, calendar, and briefing all drop it together. Never written by sync.
+  excludedAt      DateTime?
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments   Assignment[]

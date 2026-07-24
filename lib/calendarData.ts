@@ -55,6 +55,9 @@ export interface CourseMeta {
   name: string;
   grade: CourseGrade;
   latestAnnouncement: { title: string; postedAt: string } | null;
+  // Student excluded this course from planning (#60). Its work is filtered out at
+  // the assignment chokepoint; the meta stays so the UI can offer "Include again".
+  excluded: boolean;
 }
 
 export interface CalendarData {
@@ -76,8 +79,10 @@ export interface CalendarData {
 }
 
 type AssignmentRow = Awaited<ReturnType<typeof loadAssignmentRows>>[number];
+// THE exclusion chokepoint (#60): excluded courses' work never enters the pipeline,
+// so ranking, scheduler, calendar, briefing, and study all drop it together.
 function loadAssignmentRows(userId: number) {
-  return prisma.assignment.findMany({ where: { userId }, include: { course: true } });
+  return prisma.assignment.findMany({ where: { userId, course: { excludedAt: null } }, include: { course: true } });
 }
 
 /** The effort to use EVERYWHERE — display and scheduling: a student's manual
@@ -231,6 +236,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
       name: c.name,
       grade: deriveCourseGrade(c.currentScore, c.currentGrade, gradedCourseIds.has(c.canvasId)),
       latestAnnouncement: latestAnnByCourse.get(c.canvasId) ?? null,
+      excluded: c.excludedAt != null,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 

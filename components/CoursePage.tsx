@@ -15,6 +15,7 @@ import type { GradeInput } from "@/lib/gradeCalc";
 import type { CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import { EffortTag, DoneCheck } from "@/components/calendar/parts";
+import { ExcludeCourseAction, ExcludedBanner } from "@/components/CourseExclude";
 
 function dueLabel(iso: string | null, todayYmd: string): string {
   if (!iso) return "No due date";
@@ -26,7 +27,7 @@ function dueLabel(iso: string | null, todayYmd: string): string {
   return date;
 }
 
-export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd, demo = false }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string; demo?: boolean }) {
+export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd, demo = false, courseCanvasId, excludedCourse = false }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string; demo?: boolean; courseCanvasId?: number; excludedCourse?: boolean }) {
   // Do-next ordering — by importance rank, never by due date.
   const rank = new Map(rankedIds.map((id, i) => [id, i] as const));
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
@@ -60,7 +61,14 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
           </>
         )}
         {upcoming.length} upcoming · {completed.length} done
+        {!demo && courseCanvasId != null && !excludedCourse && (
+          <span className="ml-3 inline-block align-baseline">
+            <ExcludeCourseAction courseCanvasId={courseCanvasId} />
+          </span>
+        )}
       </p>
+
+      {excludedCourse && courseCanvasId != null && <ExcludedBanner courseCanvasId={courseCanvasId} />}
 
       {hasGradeables && (
         <div role="tablist" aria-label="Course view" className="mt-5 inline-flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">

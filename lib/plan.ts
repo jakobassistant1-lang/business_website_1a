@@ -39,7 +39,7 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
   const [user, cred, rows] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
     prisma.canvasCredential.findUnique({ where: { userId } }),
-    prisma.assignment.findMany({ where: { userId }, include: { course: true } }),
+    prisma.assignment.findMany({ where: { userId, course: { excludedAt: null } }, include: { course: true } }),
   ]);
 
   const hours =

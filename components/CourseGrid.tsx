@@ -9,6 +9,7 @@ import Link from "next/link";
 import { countdownLabel, relativeDay } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
 import { EffortTag } from "@/components/calendar/parts";
+import { CourseMenu, ExcludedCoursesRow } from "@/components/CourseExclude";
 import { GradePill } from "@/components/GradePill";
 import type { CalendarData, CalendarItem, CourseMeta } from "@/lib/calendarData";
 
@@ -21,7 +22,7 @@ function BellIcon() {
   );
 }
 
-export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
+export function CourseGrid({ data, todayYmd, demo = false }: { data: CalendarData; todayYmd: string; demo?: boolean }) {
   const byCourse = new Map<number, { name: string; items: CalendarItem[] }>();
   for (const it of data.items) {
     const g = byCourse.get(it.courseCanvasId);
@@ -30,22 +31,32 @@ export function CourseGrid({ data, todayYmd }: { data: CalendarData; todayYmd: s
   }
   for (const it of data.completed) if (!byCourse.has(it.courseCanvasId)) byCourse.set(it.courseCanvasId, { name: it.courseName, items: [] });
   const courses = [...byCourse.entries()].sort((a, b) => cleanCourse(a[1].name).localeCompare(cleanCourse(b[1].name)));
+  // Excluded classes have no items (filtered at the data chokepoint) — they live
+  // only in the quiet dashed row below, which is also the undo.
+  const excluded = data.courses.filter((c) => c.excluded);
 
-  if (courses.length === 0) {
+  if (courses.length === 0 && excluded.length === 0) {
     return <div className="card p-10 text-center text-[16px] text-muted">No classes synced yet.</div>;
   }
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
   const metaByCourse = new Map(data.courses.map((c) => [c.canvasId, c] as const));
   return (
-    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-      {courses.map(([id, g], i) => (
-        <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} meta={metaByCourse.get(id)} rank={rank} todayYmd={todayYmd} anchor={i === 0 ? "courses-card" : undefined} />
-      ))}
-    </div>
+    <>
+      {courses.length === 0 ? (
+        <div className="card p-10 text-center text-[16px] text-muted">All your classes are excluded from planning.</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {courses.map(([id, g], i) => (
+            <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} meta={metaByCourse.get(id)} rank={rank} todayYmd={todayYmd} anchor={i === 0 ? "courses-card" : undefined} demo={demo} />
+          ))}
+        </div>
+      )}
+      <ExcludedCoursesRow courses={excluded} demo={demo} />
+    </>
   );
 }
 
-function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, anchor }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; meta: CourseMeta | undefined; rank: Map<number, number>; todayYmd: string; anchor?: string }) {
+function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, anchor, demo }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; meta: CourseMeta | undefined; rank: Map<number, number>; todayYmd: string; anchor?: string; demo?: boolean }) {
   const overdue = items.filter((it) => it.status === "overdue").length;
   const normal = items.filter((it) => it.status === "normal");
   // Do-next: the most important RANKED item in this class, not the soonest by
@@ -75,7 +86,10 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
             )}
           </p>
         </div>
-        {meta && <GradePill grade={meta.grade} />}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {meta && <GradePill grade={meta.grade} />}
+          {!demo && <CourseMenu courseCanvasId={courseCanvasId} />}
+        </span>
       </div>
 
       {next ? (

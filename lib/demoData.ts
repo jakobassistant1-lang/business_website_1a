@@ -200,11 +200,11 @@ export function buildDemoCalendarData(now: Date = new Date()): { data: CalendarD
     // All three honest grade states, so the demo Courses page shows each: two
     // real totals, one HIDDEN by the instructor, one with nothing graded yet.
     courses: [
-      { canvasId: COURSE_ID[COURSE.science], name: COURSE.science, grade: deriveCourseGrade(88, "B+", true), latestAnnouncement: { title: "Lab moved to room 214 this week", postedAt: isoAt(0, 8) } },
-      { canvasId: COURSE_ID[COURSE.math], name: COURSE.math, grade: deriveCourseGrade(92, "A-", true), latestAnnouncement: { title: "Problem Set 6 hint posted", postedAt: isoAt(-1, 16) } },
-      { canvasId: COURSE_ID[COURSE.history], name: COURSE.history, grade: deriveCourseGrade(null, null, true), latestAnnouncement: { title: "Essay rubric updated — please re-read", postedAt: isoAt(-3, 11) } },
+      { canvasId: COURSE_ID[COURSE.science], name: COURSE.science, grade: deriveCourseGrade(88, "B+", true), latestAnnouncement: { title: "Lab moved to room 214 this week", postedAt: isoAt(0, 8) }, excluded: false },
+      { canvasId: COURSE_ID[COURSE.math], name: COURSE.math, grade: deriveCourseGrade(92, "A-", true), latestAnnouncement: { title: "Problem Set 6 hint posted", postedAt: isoAt(-1, 16) }, excluded: false },
+      { canvasId: COURSE_ID[COURSE.history], name: COURSE.history, grade: deriveCourseGrade(null, null, true), latestAnnouncement: { title: "Essay rubric updated — please re-read", postedAt: isoAt(-3, 11) }, excluded: false },
       // No announcement → the card simply omits the row.
-      { canvasId: COURSE_ID[COURSE.english], name: COURSE.english, grade: deriveCourseGrade(null, null, false), latestAnnouncement: null },
+      { canvasId: COURSE_ID[COURSE.english], name: COURSE.english, grade: deriveCourseGrade(null, null, false), latestAnnouncement: null, excluded: false },
     ],
     events,
     plan,

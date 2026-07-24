@@ -17,9 +17,22 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ co
   const data = await loadCalendarData(user.id);
   const active = data.items.filter((it) => it.courseCanvasId === id);
   const completed = data.completed.filter((it) => it.courseCanvasId === id);
-  if (active.length === 0 && completed.length === 0) notFound();
+  // Excluded classes have no items (filtered at the data chokepoint) but must
+  // stay reachable so "Include again" has a home — fall back to the course meta.
+  const meta = data.courses.find((c) => c.canvasId === id);
+  if (active.length === 0 && completed.length === 0 && !meta) notFound();
 
-  const courseName = (active[0] ?? completed[0]).courseName;
-  const grade = data.courses.find((c) => c.canvasId === id)?.grade;
-  return <CoursePage courseName={courseName} grade={grade} active={active} completed={completed} rankedIds={data.ranked.map((r) => r.canvasId)} todayYmd={ymd(new Date())} />;
+  const courseName = (active[0] ?? completed[0])?.courseName ?? meta!.name;
+  return (
+    <CoursePage
+      courseName={courseName}
+      grade={meta?.grade}
+      active={active}
+      completed={completed}
+      rankedIds={data.ranked.map((r) => r.canvasId)}
+      todayYmd={ymd(new Date())}
+      courseCanvasId={id}
+      excludedCourse={meta?.excluded ?? false}
+    />
+  );
 }
