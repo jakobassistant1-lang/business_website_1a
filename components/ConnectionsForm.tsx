@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { normalizeHost } from "@/lib/host";
 import { SchoolPicker } from "@/components/SchoolPicker";
+import { FirstSyncProgress } from "@/components/FirstSyncProgress";
 import type { School } from "@/lib/schools";
 
 interface Initial {
@@ -37,6 +38,9 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
   const [accountName, setAccountName] = useState<string | null>(initial.accountName);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set when THIS visit completed a connect — swaps the static "Go to your plan"
+  // link for the staged first-sync progress (#64), which lands on the dashboard.
+  const [justConnected, setJustConnected] = useState(false);
 
   const pill = status ? STATUS_PILL[status] : null;
   const tokenPageUrl = host ? `https://${host}/profile/settings` : null;
@@ -96,6 +100,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
       setMessage(body.message);
       if (body.status === "valid") {
         setToken("");
+        setJustConnected(true); // kick off the visible first sync (#64)
         setEditing(false); // collapse back to the connected summary
       }
     } catch {
@@ -131,8 +136,9 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
               </div>
             )}
           </dl>
+          {justConnected && <FirstSyncProgress />}
           <div className="mt-4 flex items-center gap-3">
-            <a href="/dashboard" className="btn-primary">Go to your plan →</a>
+            {!justConnected && <a href="/dashboard" className="btn-primary">Go to your plan →</a>}
             <button
               type="button"
               className="btn-ghost"

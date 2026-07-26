@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { normalizeHost, apiBase, validateCredentials } from "@/lib/canvas";
 import { messageFor } from "@/lib/messages";
 import { encryptSecret } from "@/lib/crypto";
+import { logEvent } from "@/lib/funnel";
 
 // FR-4: read the saved connection + its last status (for initial page state).
 export async function GET() {
@@ -66,6 +67,7 @@ export async function POST(req: Request) {
     },
   });
 
+  if (v.status === "valid") void logEvent("canvas_connected", user.id, { host });
   return NextResponse.json({
     status: v.status,
     accountName: v.accountName ?? null,
