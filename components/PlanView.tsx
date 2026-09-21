@@ -65,8 +65,6 @@ export function PlanView({ initial, userName = "" }: { initial: PlanPayload; use
   useEffect(() => {
     if (!payload.connected || didAutoSync.current) return;
     didAutoSync.current = true;
-    if (typeof window !== "undefined" && sessionStorage.getItem("sp_autosynced")) return;
-    sessionStorage.setItem("sp_autosynced", "1");
     void runSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

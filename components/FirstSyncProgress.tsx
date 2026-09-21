@@ -49,7 +49,6 @@ export function FirstSyncProgress() {
         setStage("plan");
         // The dashboard auto-syncs once per browser session — we just did that
         // work, so set its guard (same key) and land on a ready, ranked plan.
-        sessionStorage.setItem("sp_autosynced", "1");
         window.location.href = "/dashboard?welcome=1";
       } catch {
         if (!cancelled) {

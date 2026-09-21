@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useAutoSync } from "@/components/useAutoSync";
 import {
   startOfDay,
   addDays,
@@ -49,7 +49,6 @@ function group<T>(arr: T[], key: (t: T) => string | null): Map<string, T[]> {
 }
 
 export function CalendarView({ data, todayYmd, demo = false, defaultView = "day" }: { data: CalendarData; todayYmd: string; demo?: boolean; defaultView?: View }) {
-  const router = useRouter();
   // "Today" comes from the server (todayYmd) so the SSR'd HTML and the client's
   // first render agree — no hydration mismatch — and it's consistent with the
   // app's server-time day handling.
@@ -59,8 +58,9 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
   const [selected, setSelected] = useState<CalendarItem | null>(null);
   const [peek, setPeek] = useState<Date | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const didAutoSync = useRef(false);
+  // Canvas auto-sync (full on mount when stale, quick refresh on tab return) +
+  // the manual Sync button — one policy, in components/useAutoSync.
+  const { syncing, warning: syncWarning, runManual: runSync } = useAutoSync({ connected: data.connected, syncedAt: data.syncedAt, demo });
 
   const itemsByDay = useMemo(() => {
     const m = group(data.items, (it) => (it.dueAt ? ymd(new Date(it.dueAt)) : null));
@@ -74,26 +74,6 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
     return m;
   }, [data.plan.days]);
   const undated = useMemo(() => data.items.filter((it) => !it.dueAt), [data.items]);
-
-  // Auto-sync once per browser session (≈ on login), same as the old Plan page.
-  useEffect(() => {
-    if (demo) return; // demo runs on mock data — never touch the network
-    if (!data.connected || didAutoSync.current) return;
-    didAutoSync.current = true;
-    if (typeof window !== "undefined" && sessionStorage.getItem("sp_autosynced")) return;
-    if (typeof window !== "undefined") sessionStorage.setItem("sp_autosynced", "1");
-    void runSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function runSync() {
-    if (demo) return; // demo mode: never trigger a real Canvas sync
-    setSyncing(true);
-    await fetch("/api/sync", { method: "POST" }).catch(() => {});
-    await fetch("/api/analyze", { method: "POST" }).catch(() => {});
-    setSyncing(false);
-    router.refresh();
-  }
 
   function navigate(dir: -1 | 1) {
     if (view === "day") setAnchor((a) => addDays(a, dir));
@@ -133,6 +113,12 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
           </button>
         )}
       </div>
+      {syncWarning && (
+        <p className="mb-3 flex items-center gap-2 text-[13px] text-muted">
+          <span aria-hidden className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-muted/60" />
+          {syncWarning}
+        </p>
+      )}
 
       {!data.connected ? (
         <div className="card mt-6 p-8 text-center">

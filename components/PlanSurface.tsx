@@ -65,7 +65,7 @@ export function PlanSurface({ data, todayYmd, demo = false, initialView }: { dat
       </div>
 
       {view === "list" && <PlanList data={data} todayYmd={todayYmd} />}
-      {view === "calendar" && <CalendarView data={data} todayYmd={todayYmd} demo defaultView="week" />}
+      {view === "calendar" && <CalendarView data={data} todayYmd={todayYmd} demo={demo} defaultView="week" />}
       {view === "timeline" && <TimelineView data={data} />}
     </div>
   );
