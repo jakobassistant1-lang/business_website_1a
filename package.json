@@ -19,6 +19,7 @@
     "bcryptjs": "^2.4.3",
     "driver.js": "^1.4.0",
     "isomorphic-dompurify": "^3.18.0",
+    "mammoth": "^1.8.0",
     "next": "^15.5.19",
     "pdf-parse": "^2.4.5",
     "react": "19.0.0",

@@ -28,18 +28,21 @@ import {
   type StudyQuestionsContent,
 } from "@/lib/studyShared";
 import type { CalendarItem } from "@/lib/calendarData";
+import { NotesSection } from "@/components/NotesSection";
 
 type Kind = "plan" | "guide" | "questions";
+type Tab = Kind | "notes"; // "notes" manages your uploads — it is NOT an AI-generated kind
 type Gen<T> = { status: "idle" | "loading" | "ready" | "error"; content: T | null; error: string | null };
 const IDLE: Gen<never> = { status: "idle", content: null, error: null };
 
-const TABS: { id: Kind; label: string }[] = [
+const TABS: { id: Tab; label: string }[] = [
   { id: "plan", label: "How to study" },
   { id: "guide", label: "Study guide" },
   { id: "questions", label: "Practice" },
+  { id: "notes", label: "Your notes" },
 ];
 
-async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; content: T } | { ok: false; error: string }> {
+async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; content: T; cached: boolean } | { ok: false; error: string }> {
   try {
     const res = await fetch("/api/study", {
       method: "POST",
@@ -47,7 +50,7 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
       body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
-    if (res.ok && json?.ok) return { ok: true, content: json.content as T };
+    if (res.ok && json?.ok) return { ok: true, content: json.content as T, cached: json.cached === true };
     return { ok: false, error: typeof json?.error === "string" ? json.error : "failed" };
   } catch {
     return { ok: false, error: "network" };
@@ -71,12 +74,17 @@ export function StudyTools({
   sessions: { date: string; hours: number }[];
   isNextUp: boolean;
 }) {
-  const [tab, setTab] = useState<Kind>("plan");
+  const [tab, setTab] = useState<Tab>("plan");
   const [plan, setPlan] = useState<Gen<StudyPlanContent>>(IDLE);
   const [guide, setGuide] = useState<Gen<StudyGuideContent>>(IDLE);
   const [questions, setQuestions] = useState<Gen<StudyQuestionsContent>>(IDLE);
   const [qType, setQType] = useState<StudyQuestionType>("multiple_choice");
   const [setId, setSetId] = useState(0);
+  const [noteCount, setNoteCount] = useState(0);
+  // Guide/practice are server-cached and don't auto-refresh when notes change, so
+  // we track which kinds are stale (a note was added/deleted since they were made)
+  // and show a regenerate nudge. A FRESH (non-cached) generation clears it.
+  const [stale, setStale] = useState<{ guide: boolean; questions: boolean }>({ guide: false, questions: false });
   // One counter PER kind — a shared counter let one tool's request mark the
   // other's response stale (the "plan never appears" bug).
   const seqs = useRef<Record<Kind, number>>({ plan: 0, guide: 0, questions: 0 });
@@ -96,12 +104,18 @@ export function StudyTools({
       if (res.ok) {
         set({ status: "ready", content: res.content, error: null });
         if (kind === "questions") setSetId((n) => n + 1);
+        // A freshly generated (non-cached) guide/practice already reflects current
+        // notes → no longer stale. A cached serve leaves the flag as-is.
+        if (!res.cached && (kind === "guide" || kind === "questions")) setStale((s) => ({ ...s, [kind]: false }));
       } else {
         set({ status: "error", content: null, error: res.error });
       }
     },
     [assessment.canvasId],
   );
+
+  // A note was added/deleted → both cached generations are now out of date.
+  const markNotesChanged = useCallback(() => setStale({ guide: true, questions: true }), []);
 
   // Lazy-load: generate a tab's content the first time it's opened (questions
   // stay behind their explicit Generate button).
@@ -138,34 +152,36 @@ export function StudyTools({
       </div>
 
       {/* Tabs */}
-      <div className="mt-5 inline-flex gap-1 rounded-full bg-surface-soft p-1" role="tablist" aria-label="Study tools">
+      <div className="mt-5 inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-surface-soft p-1" role="tablist" aria-label="Study tools">
         {TABS.map((t) => (
           <button
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+            className={`shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition ${
               tab === t.id ? "bg-accent text-white" : "text-muted hover:text-ink"
             }`}
           >
-            {t.label}
+            {t.id === "notes" && noteCount > 0 ? `${t.label} · ${noteCount}` : t.label}
           </button>
         ))}
       </div>
 
       <div className="mt-4">
         {tab === "plan" && <PlanSection plan={plan} assessment={assessment} sessions={sessions} totalHours={totalHours} onRetry={() => load("plan")} onRegen={() => load("plan", { force: true })} />}
-        {tab === "guide" && <GuideSection guide={guide} onRetry={() => load("guide")} onRegen={() => load("guide", { force: true })} />}
+        {tab === "guide" && <GuideSection guide={guide} stale={stale.guide} onRetry={() => load("guide")} onRegen={() => load("guide", { force: true })} />}
         {tab === "questions" && (
           <QuestionsSection
             questions={questions}
             qType={qType}
             setQType={setQType}
             setKey={setId}
+            stale={stale.questions}
             onGenerate={(force) => load("questions", { force, questionType: qType })}
           />
         )}
+        {tab === "notes" && <NotesSection canvasId={assessment.canvasId} onNotesChanged={markNotesChanged} onCountChange={setNoteCount} />}
       </div>
     </div>
   );
@@ -211,9 +227,9 @@ function RegenButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function SourceNote({ sparse, sources, excluded = [] }: { sparse: boolean; sources: string[]; excluded?: string[] }) {
+function SourceNote({ sparse, sources, excluded = [], noteCount = 0 }: { sparse: boolean; sources: string[]; excluded?: string[]; noteCount?: number }) {
   const basedOn = !sparse && sources.length > 0;
-  if (!sparse && !basedOn && excluded.length === 0) return null;
+  if (!sparse && !basedOn && excluded.length === 0 && noteCount === 0) return null;
   return (
     <div className="mt-4 space-y-1.5">
       {sparse ? (
@@ -226,12 +242,30 @@ function SourceNote({ sparse, sources, excluded = [] }: { sparse: boolean; sourc
           {sources.length > 5 ? " · …" : ""}
         </p>
       ) : null}
+      {noteCount > 0 && (
+        <p className="text-xs font-medium text-accent">
+          Includes {noteCount} of your own note{noteCount === 1 ? "" : "s"}.
+        </p>
+      )}
       {excluded.length > 0 && (
         <p className="text-xs text-faint">
           Not included (judged off-topic): {excluded.slice(0, 4).join(" · ")}
           {excluded.length > 4 ? " · …" : ""}
         </p>
       )}
+    </div>
+  );
+}
+
+// Shown above a cached guide/practice set after the student adds or removes notes:
+// the generation won't reflect them until regenerated (force).
+function StaleNote({ onRegen, label }: { onRegen: () => void; label: string }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] bg-accent-soft px-4 py-2.5 text-[13px] text-accent">
+      <span>You&apos;ve added or changed notes since this was made. Regenerate to include them.</span>
+      <button onClick={onRegen} className="shrink-0 font-semibold hover:underline">
+        {label}
+      </button>
     </div>
   );
 }
@@ -304,13 +338,14 @@ function PlanSection({
   );
 }
 
-function GuideSection({ guide, onRetry, onRegen }: { guide: Gen<StudyGuideContent>; onRetry: () => void; onRegen: () => void }) {
+function GuideSection({ guide, stale, onRetry, onRegen }: { guide: Gen<StudyGuideContent>; stale: boolean; onRetry: () => void; onRegen: () => void }) {
   return (
     <SectionShell title="Study guide" aside={guide.status === "ready" ? <RegenButton onClick={onRegen} /> : undefined}>
       {guide.status === "loading" && <Skeleton lines={6} />}
       {guide.status === "error" && <ErrorBox code={guide.error} onRetry={onRetry} />}
       {guide.status === "ready" && guide.content && (
         <>
+          {stale && <StaleNote onRegen={onRegen} label="Regenerate" />}
           {guide.content.overview && <p className="text-sm text-muted">{guide.content.overview}</p>}
           <div className="mt-3 space-y-5">
             {guide.content.sections.map((sec, i) => (
@@ -334,7 +369,7 @@ function GuideSection({ guide, onRetry, onRegen }: { guide: Gen<StudyGuideConten
               </div>
             ))}
           </div>
-          <SourceNote sparse={guide.content.sparse} sources={guide.content.sources} excluded={guide.content.excluded} />
+          <SourceNote sparse={guide.content.sparse} sources={guide.content.sources} excluded={guide.content.excluded} noteCount={guide.content.noteCount} />
         </>
       )}
     </SectionShell>
@@ -346,12 +381,14 @@ function QuestionsSection({
   qType,
   setQType,
   setKey,
+  stale,
   onGenerate,
 }: {
   questions: Gen<StudyQuestionsContent>;
   qType: StudyQuestionType;
   setQType: (t: StudyQuestionType) => void;
   setKey: number;
+  stale: boolean;
   onGenerate: (force: boolean) => void;
 }) {
   const [results, setResults] = useState<Record<number, boolean>>({});
@@ -384,6 +421,7 @@ function QuestionsSection({
         {questions.status === "error" && <ErrorBox code={questions.error} onRetry={() => onGenerate(false)} />}
         {ready && (
           <div key={setKey} className="space-y-3.5">
+            {stale && <StaleNote onRegen={() => onGenerate(true)} label="New set" />}
             {questions.content!.questions.map((q, i) => (
               <QuestionCard key={i} q={q} index={i} onResult={(ok) => setResults((r) => ({ ...r, [i]: ok }))} />
             ))}
@@ -392,7 +430,7 @@ function QuestionsSection({
                 {correct} / {questions.content!.questions.length} correct{correct === questions.content!.questions.length ? " — you're ready for this one." : " — review the explanations above, then try a new set."}
               </p>
             )}
-            <SourceNote sparse={questions.content!.sparse} sources={[]} excluded={questions.content!.excluded} />
+            <SourceNote sparse={questions.content!.sparse} sources={[]} excluded={questions.content!.excluded} noteCount={questions.content!.noteCount} />
           </div>
         )}
       </div>
