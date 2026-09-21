@@ -84,15 +84,28 @@ export function TimelineView({ data }: { data: CalendarData }) {
   }, [data.items]);
   const rank = useMemo(() => new Map(data.recommendations.map((r, i) => [r.canvasId, i + 1])), [data.recommendations]);
 
+  // Rows = EVERY enrolled (non-excluded) class, not just the ones with work this
+  // week: classes that have plan blocks first (earliest due first), then the rest
+  // alphabetically. A quiet week for one class must not drop it off the Timeline —
+  // the Courses page lists all of them and these two counts have to agree.
+  // Match is by raw Canvas course name: blocks carry `courseName` (a.course.name)
+  // and CourseMeta.name is the same string (lib/calendarData).
   const courses = useMemo(() => {
+    const excluded = new Set(data.courses.filter((c) => c.excluded).map((c) => c.name));
     const earliest = new Map<string, number>();
     for (const d of data.plan.days)
       for (const b of d.blocks) {
+        if (excluded.has(b.courseName)) continue;
         const t = new Date(b.dueAt).getTime();
         earliest.set(b.courseName, Math.min(earliest.get(b.courseName) ?? Infinity, t));
       }
-    return [...earliest.entries()].sort((a, b) => a[1] - b[1]).map(([name]) => name);
-  }, [data.plan.days]);
+    const scheduled = [...earliest.entries()].sort((a, b) => a[1] - b[1]).map(([name]) => name);
+    const idle = data.courses
+      .filter((c) => !c.excluded && !earliest.has(c.name))
+      .map((c) => c.name)
+      .sort((a, b) => cleanCourse(a).localeCompare(cleanCourse(b)));
+    return [...scheduled, ...idle];
+  }, [data.plan.days, data.courses]);
 
   const weekDays = data.plan.days.slice(0, 7);
   const pick = (canvasId: number) => {
@@ -100,7 +113,9 @@ export function TimelineView({ data }: { data: CalendarData }) {
     if (it) setSelected(it);
   };
   const typeOf = (canvasId: number): ItemType => itemByCanvas.get(canvasId)?.type ?? "assignment";
-  const hasWork = courses.length > 0;
+  // Still keyed off scheduled work (not `courses`), so an empty week keeps showing
+  // the "you're clear" card instead of a grid of empty rows.
+  const hasWork = data.plan.days.some((d) => d.blocks.length > 0);
 
   return (
     <div>
@@ -196,6 +211,11 @@ function WeekGantt({
                 {days.map((_, i) => (
                   <div key={i} className="absolute bottom-0 top-0 border-l border-line-subtle/60" style={{ left: `${(i / N) * 100}%` }} />
                 ))}
+                {/* A class with nothing scheduled still gets its row — one quiet line
+                    instead of an empty lane, so the row count matches the class count. */}
+                {spans.length === 0 && (
+                  <div className="absolute inset-0 flex items-center px-3 text-[13px] text-muted">Nothing scheduled this week</div>
+                )}
                 {/* due-date markers — a type-colored diamond + line so it's clear where
                     each assignment / exam / quiz is actually due */}
                 {spans
