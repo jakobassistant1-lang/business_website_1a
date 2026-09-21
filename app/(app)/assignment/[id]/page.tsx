@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import DOMPurify from "isomorphic-dompurify";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { itemType } from "@/lib/itemType";
@@ -20,9 +19,10 @@ export default async function AssignmentDetailPage({ params }: { params: Promise
   const a = await prisma.assignment.findUnique({ where: { userId_canvasId: { userId: user.id, canvasId } }, include: { course: true } });
   if (!a) notFound();
 
-  // Sanitize the Canvas-supplied HTML before the client renders it via
-  // dangerouslySetInnerHTML — strips <script>, on*= handlers, javascript: URLs, etc.
-  const description = a.description ? DOMPurify.sanitize(a.description) : null;
+  // The Canvas-supplied HTML is passed through RAW. Sanitization happens in the
+  // browser (components/AssignmentPage) — DOMPurify needs a real DOM, and pulling
+  // jsdom into the server bundle broke this route on Vercel (ERR_REQUIRE_ESM).
+  const description = a.description ?? null;
 
   return (
     <AssignmentPage
