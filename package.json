@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --skip-generate && next build",
+    "build": "prisma generate && next build",
     "seed-backlog": "tsx prisma/seed-backlog.ts",
     "start": "next start",
     "db:push": "prisma db push",
