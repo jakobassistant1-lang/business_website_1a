@@ -9,6 +9,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAutoSync } from "@/components/useAutoSync";
+import { UndoToast } from "@/components/UndoToast";
+import { applyToggle, allSettled, clearPending, isSettled, mergePending, prunePending, settle, toastMessage, visibleSlice, UNDO_FAILED_MESSAGE, type PendingMap } from "@/lib/pendingDone";
 import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_LONG, countdownLabel } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
@@ -20,15 +23,27 @@ import { shortCourse } from "@/lib/courseName";
 
 const fmtLongDate = (d: Date) => `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
 
+/** How long a checked-off row stays put with its Undo bar. */
+const UNDO_MS = 6000;
+
+/** The undo plumbing a dashboard row needs, bundled so rows take one prop.
+ *  `held` = the row reads as done (window open OR expired-but-not-yet-gone);
+ *  `toast` = the Undo bar's copy while the window is open, else null. */
+type UndoHandlers = {
+  held: (canvasId: number) => boolean;
+  toast: (canvasId: number) => string | null;
+  onToggled: (item: CalendarItem) => (canvasId: number, done: boolean) => void;
+  onUndo: (canvasId: number) => void;
+  onExpire: (canvasId: number) => void;
+};
+
 export function DashboardView({ data, todayYmd: serverToday, firstName, demo = false }: { data: CalendarData; todayYmd: string; firstName: string; demo?: boolean }) {
-  const router = useRouter();
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
   const [todayYmd, setTodayYmd] = useState(serverToday);
   const [showOverdue, setShowOverdue] = useState(false);
   const [aiPoints, setAiPoints] = useState<string[]>([]);
   const [aiIntensity, setAiIntensity] = useState<Intensity | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const didAutoSync = useRef(false);
 
   useEffect(() => {
     const h = new Date().getHours();
@@ -37,20 +52,9 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
     if (t !== serverToday) setTodayYmd(t);
   }, [serverToday]);
 
-  // Sync Canvas once per browser session (shared key with the Calendar).
-  useEffect(() => {
-    if (demo) return; // demo runs on mock data — never touch the network
-    if (!data.connected || didAutoSync.current) return;
-    didAutoSync.current = true;
-    if (typeof window !== "undefined" && sessionStorage.getItem("sp_autosynced")) return;
-    if (typeof window !== "undefined") sessionStorage.setItem("sp_autosynced", "1");
-    (async () => {
-      await fetch("/api/sync", { method: "POST" }).catch(() => {});
-      await fetch("/api/analyze", { method: "POST" }).catch(() => {});
-      router.refresh();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Canvas auto-sync: full on mount when ≥10 min stale, quick submission refresh
+  // when the tab comes back (the server decides — components/useAutoSync).
+  const { warning: syncWarning } = useAutoSync({ connected: data.connected, syncedAt: data.syncedAt, demo });
 
   // AI summary + Gemini week rating (fail-open: deterministic rating already shows;
   // this upgrades it + fills the summary line when Gemini answers).
@@ -74,6 +78,72 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
     };
   }, [data.connected]);
 
+  // ── "Marked as done" undo window ──────────────────────────────────────────────
+  // Checking a row's circle PATCHes straight away, but the row stays put for a few
+  // seconds under an Undo bar instead of vanishing. The TOAST owns the only clock:
+  // it calls onExpire, which settles the row (still struck out, toast gone) and, once
+  // every held row has settled, refreshes once. Un-settled snapshots are merged back
+  // into the list below, so a refresh from anywhere can't yank a row out mid-window.
+  const router = useRouter();
+  const pendingRef = useRef<PendingMap<CalendarItem>>(new Map());
+  const [pendingDone, setPendingDone] = useState<PendingMap<CalendarItem>>(pendingRef.current);
+  // The ref is the handlers' view of the map (they're captured by callbacks); render
+  // reads the state value. Both move together here and nowhere else.
+  const commitPending = (next: PendingMap<CalendarItem>) => {
+    pendingRef.current = next;
+    setPendingDone(next);
+  };
+  /** Undo / un-click — let the row go right now. */
+  const releaseDone = (id: number) => commitPending(clearPending(pendingRef.current, id));
+  /** The window ran out. Settle (don't delete) so the row keeps reading as done
+   *  while OTHER rows are still mid-window, and refresh only once they all have. */
+  const expireDone = (id: number) => {
+    const cur = pendingRef.current.get(id);
+    if (!cur || cur.settled) return; // gone or already expired — never refresh twice
+    const next = settle(pendingRef.current, id);
+    commitPending(next);
+    if (allSettled(next)) router.refresh();
+  };
+  const undoHandlers: UndoHandlers = {
+    held: (id) => pendingDone.has(id),
+    toast: (id) => toastMessage(pendingDone, id),
+    onToggled: (item) => (id, done) => {
+      // Un-checking inside the window is the same thing as pressing Undo — the
+      // PATCH that put it back has already gone through in DoneCheck.
+      if (!done) return releaseDone(id);
+      commitPending(applyToggle(pendingRef.current, id, true, item));
+    },
+    onUndo: (id) => {
+      const row = pendingRef.current.get(id);
+      releaseDone(id); // the row comes back immediately; the PATCH catches up
+      const failed = () => {
+        // Couldn't undo: the item really is done server-side, so put the row back
+        // under a fresh window saying so rather than refreshing it out from under
+        // the student (which would also fire while other toasts are still open).
+        if (row) commitPending(applyToggle(pendingRef.current, id, true, row.item, UNDO_FAILED_MESSAGE));
+      };
+      fetch("/api/assignment/done", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, done: false }),
+      })
+        .then((res) => {
+          if (!res.ok) failed();
+        })
+        .catch(failed);
+    },
+    onExpire: expireDone,
+  };
+  // After any refresh: forget settled rows the fresh list has dropped. Ones it still
+  // carries stay held, so they stay struck rather than flashing back to normal.
+  useEffect(() => {
+    const next = prunePending(pendingRef.current, data.items);
+    if (next !== pendingRef.current) commitPending(next);
+  }, [data.items]);
+
+  // The list the rows render from: what the server sent ∪ the rows we're holding.
+  const liveItems = mergePending(data.items, pendingDone);
+
   const today = parseYmd(todayYmd);
   const isDueToday = (it: CalendarItem) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd;
 
@@ -89,7 +159,13 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
 
   // Overdue, most-important-first — surfaced as an action, not just a count.
-  const overdueItems = data.items.filter((it) => it.status === "overdue").sort(byRank);
+  const overdueItems = liveItems.filter((it) => it.status === "overdue").sort(byRank);
+  // The KPI and the modal count the same thing the rail shows, minus rows whose undo
+  // window has closed (they're done — they just haven't left the screen yet). Without
+  // this a mid-window auto-sync would drop a held row from data.atRisk and the count
+  // would disagree with the rail underneath it.
+  const overdueCount = overdueItems.filter((it) => !isSettled(pendingDone, it.canvasId)).length;
+  const atRiskLive = data.atRisk.filter((a) => !isSettled(pendingDone, a.canvasId));
 
   // Today's scheduled study sessions (restored to the dashboard).
   const todayStudy = (data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? []).filter((b) => b.study && b.hours > 0 && ymd(new Date(b.dueAt)) >= todayYmd);
@@ -118,6 +194,12 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
           {firstName ? `, ${firstName}` : ""}
         </p>
         <p className="mt-0.5 text-[15px] text-muted">{fmtLongDate(today)}</p>
+        {syncWarning && (
+          <p className="mt-1.5 flex items-center gap-2 text-[13px] text-muted">
+            <span aria-hidden className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-muted/60" />
+            {syncWarning}
+          </p>
+        )}
       </div>
 
       {!data.connected ? (
@@ -129,13 +211,13 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
           {/* KPI bar — quiet at-a-glance status against the page. */}
           <div className="mb-7 flex flex-wrap items-center gap-x-12 gap-y-4 border-b border-line-subtle pb-5">
             <div data-tour="dash-week"><IntensityKpi intensity={intensity} /></div>
-            <OverdueKpi count={data.atRisk.length} onOpen={() => setShowOverdue(true)} />
+            <OverdueKpi count={overdueCount} onOpen={() => setShowOverdue(true)} />
           </div>
 
           <div className="flex flex-col gap-6 lg:flex-row">
             <div className="min-w-0 flex-1 space-y-6">
-              <div data-tour="dash-focus"><FocusTodayCard data={data} todayYmd={todayYmd} demo={demo} /></div>
-              {overdueItems.length > 0 && <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} demo={demo} />}
+              <div data-tour="dash-focus"><FocusTodayCard data={data} items={liveItems} todayYmd={todayYmd} demo={demo} undo={undoHandlers} /></div>
+              {overdueItems.length > 0 && <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} demo={demo} undo={undoHandlers} />}
             </div>
             <aside className="w-full shrink-0 space-y-7 lg:w-96">
               <div data-tour="dash-progress"><ProgressDial done={dueTodayDone} total={dialTotal} /></div>
@@ -146,7 +228,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
         </>
       )}
 
-      {showOverdue && <OverdueModal atRisk={data.atRisk} onClose={() => setShowOverdue(false)} />}
+      {showOverdue && <OverdueModal atRisk={atRiskLive} onClose={() => setShowOverdue(false)} />}
     </div>
   );
 }
@@ -285,29 +367,46 @@ function focusRationale(item: CalendarItem, isToday: boolean): string {
   return lead + (isToday ? " — knock it out today." : " — a strong place to start.");
 }
 
-function ItemRow({ item, dueLabel, demo = false }: { item: CalendarItem; dueLabel: string; demo?: boolean }) {
+// A held (just-checked-off) row keeps its place but reads as finished, with the
+// Undo bar rendered as a SIBLING below the <Link> so its button is never a click
+// inside the row's navigation target. The live region is always mounted and empty
+// when idle — a region that appears with its content wouldn't be announced.
+function UndoSlot({ undo, canvasId }: { undo: UndoHandlers; canvasId: number }) {
+  const message = undo.toast(canvasId);
   return (
-    <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60">
-      <DoneCheck canvasId={item.canvasId} disabled={demo} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[16px] font-medium text-ink">{item.name}</span>
-        <span className="flex items-center gap-1.5 text-[14px] text-muted">
-          <span className="truncate">
-            {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
+    <div role="status" aria-live="polite">
+      {message && <UndoToast message={message} onUndo={() => undo.onUndo(canvasId)} onExpire={() => undo.onExpire(canvasId)} durationMs={UNDO_MS} />}
+    </div>
+  );
+}
+
+function ItemRow({ item, dueLabel, demo = false, undo }: { item: CalendarItem; dueLabel: string; demo?: boolean; undo: UndoHandlers }) {
+  const held = undo.held(item.canvasId);
+  return (
+    <div>
+      <Link href={itemHref(item.canvasId, item.type, item.status)} className={`flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60 ${held ? "opacity-70" : ""}`}>
+        <DoneCheck canvasId={item.canvasId} checked={held} disabled={demo} deferRefresh onToggled={undo.onToggled(item)} />
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-[16px] font-medium ${held ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
+          <span className="flex items-center gap-1.5 text-[14px] text-muted">
+            <span className="truncate">
+              {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
+            </span>
+            <EffortTag hours={item.estimatedEffortHours} className="shrink-0" />
           </span>
-          <EffortTag hours={item.estimatedEffortHours} className="shrink-0" />
         </span>
-      </span>
-      <span className="shrink-0 text-[14px] font-medium text-ink">{dueLabel}</span>
-    </Link>
+        <span className={`shrink-0 text-[14px] font-medium ${held ? "text-muted" : "text-ink"}`}>{dueLabel}</span>
+      </Link>
+      <UndoSlot undo={undo} canvasId={item.canvasId} />
+    </div>
   );
 }
 
 // ── Focus + what's next: a flush, rounded-bottom violet Focus block (the #1 task)
 // sits edge-to-edge atop a 7-day due list, all in one card. ─────────────────────
-function FocusTodayCard({ data, todayYmd, demo = false }: { data: CalendarData; todayYmd: string; demo?: boolean }) {
+function FocusTodayCard({ data, items, todayYmd, demo = false, undo }: { data: CalendarData; items: CalendarItem[]; todayYmd: string; demo?: boolean; undo: UndoHandlers }) {
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
-  const normal = data.items
+  const normal = items
     .filter((it) => it.status === "normal")
     .sort((a, b) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9));
   const topRec = data.recommendations[0];
@@ -319,7 +418,10 @@ function FocusTodayCard({ data, todayYmd, demo = false }: { data: CalendarData; 
   // Beneath the Focus item: the next 3 by importance — OR everything still due
   // TODAY when that's a longer list, so a heavy today never hides behind the cut.
   const dueToday = rest.filter((it) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd);
-  const restList = dueToday.length > 3 ? dueToday : rest.slice(0, 3);
+  // Held rows first, so a refresh mid-window (which drops them from `ranked` and
+  // therefore sorts them last) can't push a row and its Undo bar off the cut.
+  const heavyToday = dueToday.length > 3;
+  const restList = visibleSlice(heavyToday ? dueToday : rest, heavyToday ? dueToday.length : 3, undo.held);
   const isToday = !!focusItem?.dueAt && ymd(new Date(focusItem.dueAt)) === todayYmd;
   const caughtUp = data.atRisk.length === 0;
   const href = focusItem ? itemHref(focusItem.canvasId, focusItem.type, focusItem.status) : null;
@@ -362,7 +464,7 @@ function FocusTodayCard({ data, todayYmd, demo = false }: { data: CalendarData; 
         ) : (
           <div className="space-y-0.5">
             {restList.map((it) => (
-              <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} demo={demo} />
+              <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} demo={demo} undo={undo} />
             ))}
           </div>
         )}
@@ -420,8 +522,8 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
 
 // ── Overdue list — opened from the Overdue KPI (it has no card of its own now). ──
 // ── Catch up: overdue work, most-important-first, as an action — not just a count.
-function CatchUpCard({ items, onOpenAll, demo = false }: { items: CalendarItem[]; onOpenAll: () => void; demo?: boolean }) {
-  const shown = items.slice(0, 3);
+function CatchUpCard({ items, onOpenAll, demo = false, undo }: { items: CalendarItem[]; onOpenAll: () => void; demo?: boolean; undo: UndoHandlers }) {
+  const shown = visibleSlice(items, 3, undo.held); // held rows can't fall off the cut
   return (
     <div className="card p-5 sm:p-6">
       <div className="flex items-baseline justify-between">
@@ -436,21 +538,27 @@ function CatchUpCard({ items, onOpenAll, demo = false }: { items: CalendarItem[]
       </div>
       <p className="mt-1 text-[14px] text-muted">Overdue, most important first — start at the top.</p>
       <div className="mt-2 space-y-0.5">
-        {shown.map((it) => (
-          <Link key={it.canvasId} href={itemHref(it.canvasId, it.type, it.status)} className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60">
-            <DoneCheck canvasId={it.canvasId} tone="warning" disabled={demo} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[16px] font-medium text-ink">{it.name}</span>
-              <span className="flex items-center gap-1.5 text-[14px] text-muted">
-                <span className="truncate">
-                  {TYPE_LABEL[it.type]} · {shortCourse(it.courseName)}
+        {shown.map((it) => {
+          const held = undo.held(it.canvasId);
+          return (
+            <div key={it.canvasId}>
+              <Link href={itemHref(it.canvasId, it.type, it.status)} className={`flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60 ${held ? "opacity-70" : ""}`}>
+                <DoneCheck canvasId={it.canvasId} tone="warning" checked={held} disabled={demo} deferRefresh onToggled={undo.onToggled(it)} />
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-[16px] font-medium ${held ? "text-muted line-through" : "text-ink"}`}>{it.name}</span>
+                  <span className="flex items-center gap-1.5 text-[14px] text-muted">
+                    <span className="truncate">
+                      {TYPE_LABEL[it.type]} · {shortCourse(it.courseName)}
+                    </span>
+                    <EffortTag hours={it.estimatedEffortHours} className="shrink-0" />
+                  </span>
                 </span>
-                <EffortTag hours={it.estimatedEffortHours} className="shrink-0" />
-              </span>
-            </span>
-            <span className="shrink-0 rounded-full bg-warning-soft px-2.5 py-0.5 text-[12px] font-medium text-warning">Past due</span>
-          </Link>
-        ))}
+                <span className="shrink-0 rounded-full bg-warning-soft px-2.5 py-0.5 text-[12px] font-medium text-warning">Past due</span>
+              </Link>
+              <UndoSlot undo={undo} canvasId={it.canvasId} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -708,19 +708,28 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
  *  lib/assignmentStatus); click a filled one (manual checks only) to restore.
  *  Optimistic with revert on failure. Lives inside row <Link>s, so it stops
  *  propagation — tapping the circle never navigates. `tone="danger"` matches the
- *  Catch-up rail's red styling. */
+ *  Catch-up rail's red styling.
+ *
+ *  Two opt-in props let a surface hold the row instead of losing it the instant it's
+ *  checked: `deferRefresh` skips the router.refresh() (the caller decides when to
+ *  refresh) and `onToggled` reports the successful PATCH so the caller can open an
+ *  Undo window. With neither prop this behaves exactly as it always has. */
 export function DoneCheck({
   canvasId,
   checked = false,
   disabled = false,
   tone = "default",
   className = "",
+  onToggled,
+  deferRefresh = false,
 }: {
   canvasId: number;
   checked?: boolean;
   disabled?: boolean;
   tone?: "default" | "danger" | "warning";
   className?: string;
+  onToggled?: (canvasId: number, done: boolean) => void;
+  deferRefresh?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -743,7 +752,8 @@ export function DoneCheck({
         body: JSON.stringify({ id: canvasId, done: next }),
       });
       if (!res.ok) throw new Error(String(res.status));
-      router.refresh();
+      if (!deferRefresh) router.refresh();
+      onToggled?.(canvasId, next);
     } catch {
       setLocal(!next); // failed — put the circle back the way it was
     } finally {
