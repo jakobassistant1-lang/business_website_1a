@@ -120,6 +120,7 @@ const ALLOWLIST = ["app/api/auth/", "app/api/billing/", "app/api/onboarding/", "
 const ALLOWLISTED_FILES = [
   "app/api/account/route.ts",
   "app/api/admin/analysis-prompt/route.ts",
+  "app/api/admin/billing-health/route.ts",
   "app/api/admin/briefing-prompt/route.ts",
   "app/api/admin/period-coach-prompt/route.ts",
   "app/api/admin/study-prompts/route.ts",

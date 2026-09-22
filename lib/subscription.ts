@@ -35,7 +35,13 @@ export function needsCheckout(status: string | null | undefined): boolean {
 /** Master switch: billing flows activate only when BILLING_ENABLED is set on the
  *  environment. Keeps prod inert until live Stripe keys exist (ticket #49). */
 export function billingEnabled(): boolean {
-  const v = (process.env.BILLING_ENABLED ?? "").toLowerCase();
+  return isBillingFlagOn(process.env.BILLING_ENABLED);
+}
+
+/** The one parse of the BILLING_ENABLED value ("1"/"true" → on). Pure, so the
+ *  admin billing-health report reads the flag by the same rule. */
+export function isBillingFlagOn(value: string | undefined): boolean {
+  const v = (value ?? "").toLowerCase();
   return v === "1" || v === "true";
 }
 
