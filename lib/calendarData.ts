@@ -18,6 +18,7 @@ import type { CalendarEvent } from "./calendar/types";
 import { itemType, isStudyType, type ItemType } from "./itemType";
 import { assessmentTier } from "./studyPlan";
 import { deriveCourseGrade, type CourseGrade } from "./courseGrade";
+import { effectiveEffort } from "./effort";
 
 // The planning window is fixed at 7 days (a week), not user-configurable.
 export const PLAN_WINDOW_DAYS = 7;
@@ -85,13 +86,10 @@ function loadAssignmentRows(userId: number) {
   return prisma.assignment.findMany({ where: { userId, course: { excludedAt: null } }, include: { course: true } });
 }
 
-/** The effort to use EVERYWHERE — display and scheduling: a student's manual
- *  override beats the AI estimate. This is the single source; never read
- *  `estimatedEffortHours` raw in a display/schedule path, so a new projection can't
- *  silently bypass the override (the bug fixed in 06ebb2f). Pure + unit-tested. */
-export function effectiveEffort(row: { effortOverrideHours?: number | null; estimatedEffortHours?: number | null }): number | null {
-  return row.effortOverrideHours ?? row.estimatedEffortHours ?? null;
-}
+// The single source of "effort to use" now lives in the client-safe ./effort so
+// the browser-bundled intensity rule can share it; re-exported here because every
+// existing call site (and tests/effectiveEffort.test.ts) imports it from this file.
+export { effectiveEffort };
 
 export async function loadCalendarData(userId: number, hoursOverride?: number): Promise<CalendarData> {
   const [user, cred, rows, courseRows, announcementRows, events] = await Promise.all([

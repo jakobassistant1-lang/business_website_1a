@@ -15,7 +15,7 @@ import { applyToggle, allSettled, clearPending, isSettled, mergePending, prunePe
 import { ymd, parseYmd, WEEKDAYS, WEEKDAYS_FULL, MONTHS_LONG, countdownLabel } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
-import { deterministicIntensity, type Intensity } from "@/lib/intensity";
+import { deterministicIntensity, overdueLoad, type Intensity } from "@/lib/intensity";
 import { Glyph, ICON, fmtTime, fmtHours, EffortTag, DoneCheck } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
@@ -177,12 +177,15 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   const plannedHours = data.plan.days.reduce((s, d) => s + d.allocated, 0);
   const budgetHours = round1(data.hoursPerDay * data.plan.days.length);
   const workHours = round1(plannedHours + data.overloadHours);
+  // Same overdue inputs the server feeds the rating (#62), so the instant baseline
+  // and the /api/dashboard-summary verdict can't disagree about a backlog week.
   const baseIntensity = deterministicIntensity({
     dueThisWeek: dueThisWeek.length,
     examQuiz: examQuizWeek,
     workHours,
     budgetHours,
     overloadHours: data.overloadHours,
+    ...overdueLoad(data.items),
   });
   const intensity = aiIntensity ?? baseIntensity;
 

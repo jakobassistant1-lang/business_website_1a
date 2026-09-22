@@ -5,7 +5,7 @@
 // the Plan page always renders the full plan + recommendations without it.
 
 import type { ScoredAssignment } from "./priority";
-import { deterministicIntensity, type Intensity, type WeekLoad } from "./intensity";
+import { deterministicIntensity, resolveIntensity, type Intensity, type WeekLoad } from "./intensity";
 import { geminiPost, GEMINI_URL, geminiKey } from "./geminiFetch";
 
 const TIMEOUT_MS = 6000;
@@ -263,13 +263,13 @@ export const DASHBOARD_SUMMARY_INSTRUCTION =
   '"points" is 2-3 short, scannable bullets (each a brief phrase, max ~14 words) on what to focus on this week ' +
   "and why — warm and plain-English, with NO leading bullet characters and no markdown. " +
   '"intensity" is your judgment of how demanding THIS WEEK is overall, weighing the number and ' +
-  "importance of items due, the exams/quizzes, and whether the planned work fits the time available. Do not invent " +
-  "assignments, points, or deadlines beyond what is given.";
+  "importance of items due, the exams/quizzes, whether the planned work fits the time available, AND any overdue " +
+  "work — overdue assignments are part of this week's load, so never call the week light or easy while any are " +
+  "outstanding. Do not invent assignments, points, or deadlines beyond what is given.";
 
 export interface DashboardSummaryInput extends WeekLoad {
   firstName: string;
   windowDays: number;
-  atRiskCount: number;
   top: ScoredAssignment[];
 }
 
@@ -280,7 +280,12 @@ const INTENSITIES: readonly Intensity[] = ["easy", "moderate", "hard"];
 export function buildDashboardPrompt(i: DashboardSummaryInput): string {
   const lines = [
     `Student: ${i.firstName || "there"}. Planning window: ${i.windowDays} days.`,
-    `Due this week: ${i.dueThisWeek} (exams/quizzes among them: ${i.examQuiz}). Overdue: ${i.atRiskCount}.`,
+    `Due this week: ${i.dueThisWeek} (exams/quizzes among them: ${i.examQuiz}).`,
+    i.overdueCount > 0
+      ? `Already overdue and still not done: ${i.overdueCount} assignment(s)` +
+        (i.overdueHours > 0 ? ` (~${Math.round(i.overdueHours)}h of catch-up work)` : "") +
+        ". That backlog is part of this week's load — this is NOT a light week."
+      : "Nothing is overdue.",
     `Planned study load: ${Math.round(i.workHours)}h against ~${Math.round(i.budgetHours)}h available` +
       (i.overloadHours >= 1 ? ` (over by ${Math.round(i.overloadHours)}h).` : "."),
   ];
@@ -309,8 +314,10 @@ export async function generateDashboardSummary(
           .map((p) => p.trim().replace(/^[-•*]\s*/, "")) // strip any leading bullet char the model adds anyway
           .slice(0, 3)
       : [];
-    const intensity = INTENSITIES.includes(parsed.intensity as Intensity) ? (parsed.intensity as Intensity) : fallback;
-    return { points, intensity, source: "gemini" };
+    // THE clamp (lib/intensity.resolveIntensity): Gemini's verdict is merged here and
+    // nowhere else, and it can never land below the overdue floor (#62).
+    const verdict = INTENSITIES.includes(parsed.intensity as Intensity) ? (parsed.intensity as Intensity) : null;
+    return { points, intensity: resolveIntensity(verdict, input), source: "gemini" };
   } catch {
     return { points: [], intensity: fallback, source: "fallback" };
   }

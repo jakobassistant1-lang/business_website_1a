@@ -5,7 +5,7 @@ import { loadCalendarData } from "@/lib/calendarData";
 import { ymd } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
 import { generateDashboardSummary } from "@/lib/briefing";
-import { deterministicIntensity, type Intensity } from "@/lib/intensity";
+import { deterministicIntensity, overdueLoad, type Intensity } from "@/lib/intensity";
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +24,27 @@ export async function GET() {
 
   const data = await loadCalendarData(user.id);
 
-  // Week load — mirrors the old "This week" card so the rating matches what the
-  // student would have read there.
+  // Week load — mirrors the "This week" KPI so the rating matches what the student
+  // reads there. Overdue work counts too (#62): rating only the `windowDates` slice
+  // let a week with a pile of overdue assignments come back "easy".
   const windowDates = new Set(data.plan.days.map((d) => d.date));
   const dueThisWeekItems = data.items.filter((it) => it.dueAt && windowDates.has(ymd(new Date(it.dueAt))));
   const examQuiz = dueThisWeekItems.filter((it) => it.type === "exam" || it.type === "quiz").length;
   const planned = data.plan.days.reduce((s, d) => s + d.allocated, 0);
   const budgetHours = round1(data.hoursPerDay * data.plan.days.length);
   const workHours = round1(planned + data.overloadHours);
-  const load = { dueThisWeek: dueThisWeekItems.length, examQuiz, workHours, budgetHours, overloadHours: data.overloadHours };
+  const load = {
+    dueThisWeek: dueThisWeekItems.length,
+    examQuiz,
+    workHours,
+    budgetHours,
+    overloadHours: data.overloadHours,
+    ...overdueLoad(data.items),
+  };
   const top = data.recommendations.slice(0, 3);
 
   // Nothing to brief → deterministic rating, skip the AI call entirely.
-  if (top.length === 0 && load.dueThisWeek === 0) {
+  if (top.length === 0 && load.dueThisWeek === 0 && load.overdueCount === 0) {
     return NextResponse.json({ points: [], intensity: deterministicIntensity(load) });
   }
 
@@ -44,7 +52,7 @@ export async function GET() {
   // Signature includes the prompt-relevant content (firstName + each top item's
   // NAME, not just its id/score), so a rename re-generates instead of serving a
   // 30-min-stale summary that narrates the old name.
-  const sig = JSON.stringify({ u: user.id, n: firstName, ...load, r: data.atRisk.length, t: top.map((t) => `${t.canvasId}:${t.score}:${t.name}`) });
+  const sig = JSON.stringify({ u: user.id, n: firstName, ...load, t: top.map((t) => `${t.canvasId}:${t.score}:${t.name}`) });
   const key = createHash("sha1").update(sig).digest("hex");
   const hit = CACHE.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) {
@@ -54,7 +62,6 @@ export async function GET() {
   const result = await generateDashboardSummary({
     firstName,
     windowDays: data.plan.days.length,
-    atRiskCount: data.atRisk.length,
     top,
     ...load,
   });
