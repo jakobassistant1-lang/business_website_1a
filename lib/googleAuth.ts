@@ -8,6 +8,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "./prisma";
 import { logEvent } from "./funnel";
+import { isUniqueViolation } from "./prismaErrors";
+import { sendWelcomeEmail } from "./welcomeEmail";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -143,16 +145,31 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
   const email = profile.email.trim().toLowerCase();
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return existing;
-  const created = await prisma.user.create({
-    data: {
-      email,
-      password: null, // passwordless — sign-in is via Google
-      fullName: profile.name || email.split("@")[0],
-      tosAcceptedAt: new Date(), // continuing through Google consent = TOS acceptance
-      isAdmin: false,
-      onboardedAt: null, // brand-new student → show the first-run demo
-    },
-  });
+  let created;
+  try {
+    created = await prisma.user.create({
+      data: {
+        email,
+        password: null, // passwordless — sign-in is via Google
+        fullName: profile.name || email.split("@")[0],
+        tosAcceptedAt: new Date(), // continuing through Google consent = TOS acceptance
+        isAdmin: false,
+        onboardedAt: null, // brand-new student → show the first-run demo
+      },
+    });
+  } catch (err) {
+    // Two concurrent callbacks for the same new email (#128): the loser hits the
+    // unique index. Idempotent recovery — re-read the row the winner created and
+    // log in to it, exactly as the auto-link path above would have.
+    if (!isUniqueViolation(err, "email")) throw err;
+    const winner = await prisma.user.findUnique({ where: { email } });
+    if (!winner) throw err;
+    return winner;
+  }
   void logEvent("signup_created", created.id, { door: "google" });
+  // Only this branch actually created the account, so only this branch welcomes.
+  // The auto-link return and the P2002 race-winner re-fetch above both hand back
+  // an EXISTING account — those students were welcomed when they first signed up.
+  void sendWelcomeEmail(created);
   return created;
 }

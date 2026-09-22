@@ -3,26 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { createResetToken } from "@/lib/passwordReset";
 import { sendEmail } from "@/lib/email";
 import { appOrigin } from "@/lib/appUrl";
+import { rateLimit, ipOf } from "@/lib/rateLimit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Best-effort per-IP throttle (same shape as the signup route): a speed-bump
-// against scripted abuse. In-memory → per serverless instance only, not a shared
-// limiter; generous enough that a real user never hits it.
-const RL_WINDOW_MS = 15 * 60_000;
-const RL_MAX = 10;
-const forgotHits = new Map<string, { count: number; resetAt: number }>();
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  if (forgotHits.size > 5000) for (const [k, v] of forgotHits) if (now > v.resetAt) forgotHits.delete(k);
-  const e = forgotHits.get(ip);
-  if (!e || now > e.resetAt) {
-    forgotHits.set(ip, { count: 1, resetAt: now + RL_WINDOW_MS });
-    return false;
-  }
-  e.count += 1;
-  return e.count > RL_MAX;
-}
+// Best-effort per-IP throttle (shared limiter, lib/rateLimit.ts): a speed-bump
+// against scripted abuse; generous enough that a real user never hits it.
+const FORGOT_LIMIT = { limit: 10, windowMs: 15 * 60_000 };
 
 function firstName(fullName: string): string {
   return fullName.trim().split(/\s+/)[0] || "there";
@@ -34,8 +21,7 @@ function firstName(fullName: string): string {
 // route's generic-error philosophy. The exists / Google-only distinction is
 // conveyed ONLY inside the email, which only the inbox owner can read.
 export async function POST(req: Request) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (rateLimited(ip)) {
+  if (!rateLimit("forgot-password", ipOf(req), FORGOT_LIMIT).allowed) {
     return NextResponse.json({ error: "Too many requests — try again in a few minutes." }, { status: 429 });
   }
 

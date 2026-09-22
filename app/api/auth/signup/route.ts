@@ -3,35 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { signupInviteCode } from "@/lib/signup";
+import { rateLimit, ipOf } from "@/lib/rateLimit";
+import { isUniqueViolation } from "@/lib/prismaErrors";
 import { logEvent } from "@/lib/funnel";
+import { sendWelcomeEmail } from "@/lib/welcomeEmail";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Best-effort per-IP throttle. Student signup is open, so this is a speed-bump
-// against scripted mass-creation. In-memory → per serverless instance only (not
-// a shared-store limiter); generous enough that real testers never hit it.
-const RL_WINDOW_MS = 15 * 60_000;
-const RL_MAX = 10;
-const signupHits = new Map<string, { count: number; resetAt: number }>();
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  if (signupHits.size > 5000) for (const [k, v] of signupHits) if (now > v.resetAt) signupHits.delete(k);
-  const e = signupHits.get(ip);
-  if (!e || now > e.resetAt) {
-    signupHits.set(ip, { count: 1, resetAt: now + RL_WINDOW_MS });
-    return false;
-  }
-  e.count += 1;
-  return e.count > RL_MAX;
-}
+// Best-effort per-IP throttle (shared limiter, lib/rateLimit.ts). Student signup
+// is open, so this is a speed-bump against scripted mass-creation; generous
+// enough that real testers never hit it.
+const SIGNUP_LIMIT = { limit: 10, windowMs: 15 * 60_000 };
 
 // FR-1: sign up. Two doors:
 //   • Student — open, NO invite code → a regular account (isAdmin = false).
 //   • Admin   — requires the SIGNUP_INVITE_CODE (first time only) → the account
 //               is remembered as admin (isAdmin = true); later they just log in.
 export async function POST(req: Request) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (rateLimited(ip)) {
+  if (!rateLimit("signup", ipOf(req), SIGNUP_LIMIT).allowed) {
     return NextResponse.json({ error: "Too many sign-ups from here — try again in a few minutes." }, { status: 429 });
   }
 
@@ -61,11 +50,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ errors: { email: "An account with this email already exists." } }, { status: 409 });
   }
 
-  const user = await prisma.user.create({
-    // New students get the first-run demo (onboardedAt null → /demo); admins skip it.
-    data: { email, password: await hashPassword(password), fullName, phone, tosAcceptedAt: new Date(), isAdmin: role === "admin", onboardedAt: role === "admin" ? new Date() : null },
-  });
+  let user;
+  try {
+    user = await prisma.user.create({
+      // New students get the first-run demo (onboardedAt null → /demo); admins skip it.
+      data: { email, password: await hashPassword(password), fullName, phone, tosAcceptedAt: new Date(), isAdmin: role === "admin", onboardedAt: role === "admin" ? new Date() : null },
+    });
+  } catch (err) {
+    // Double-submit race (#128): two concurrent signups for the same email both
+    // pass the findUnique above; the loser hits the unique index. Same 409 as
+    // the pre-check so the client copy is unchanged — never a 500.
+    if (isUniqueViolation(err, "email")) {
+      return NextResponse.json({ errors: { email: "An account with this email already exists." } }, { status: 409 });
+    }
+    throw err;
+  }
   await createSession(user.id);
   void logEvent("signup_created", user.id, { door: "password" });
+  // Fire-and-forget: a brand-new account gets exactly one welcome email. Never
+  // awaited and never throws (lib/welcomeEmail), so a mail outage can't slow or
+  // fail the signup response. Not reached on the 409/429 paths above.
+  void sendWelcomeEmail(user, new URL(req.url).origin);
   return NextResponse.json({ ok: true, isAdmin: role === "admin" });
 }
