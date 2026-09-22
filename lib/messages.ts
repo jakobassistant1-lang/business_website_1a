@@ -4,6 +4,7 @@ export type CanvasStatus =
   | "bad_domain"
   | "unreachable"
   | "insufficient_scope"
+  | "throttled" // Canvas rate limit (403 "Rate Limit Exceeded" / 429) — transient, never a token problem
   | "error";
 
 /** User-visible messages per the FR-5 failure matrix. */
@@ -19,6 +20,8 @@ export function messageFor(status: CanvasStatus, httpCode?: number): string {
       return "Canvas isn't responding right now. Try again shortly.";
     case "insufficient_scope":
       return "Your token connected but lacks permission to read courses/assignments. Re-issue a token with full read access.";
+    case "throttled":
+      return "Canvas is busy right now (rate limit). Please try again in a minute.";
     case "error":
     default:
       return `Validation failed${httpCode ? ` (HTTP ${httpCode})` : ""}. Please retry.`;

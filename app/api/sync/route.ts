@@ -33,7 +33,7 @@ const ROUTE_DEADLINE_MS = 50_000;
 // The maps are per-process: on Vercel they only coalesce within a warm instance.
 // That's best-effort by design — a duplicate run is wasteful, never wrong.
 
-const STATUSES: ReadonlySet<string> = new Set(["valid", "invalid_token", "bad_domain", "unreachable", "insufficient_scope", "error"]);
+const STATUSES: ReadonlySet<string> = new Set(["valid", "invalid_token", "bad_domain", "unreachable", "insufficient_scope", "throttled", "error"]);
 
 /** Race a run against the route's own deadline: the timeout answers with a
  *  stale-but-safe result (cache kept, FR-7) tagged `skipped: "timeout"` so the

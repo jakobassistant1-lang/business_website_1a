@@ -125,8 +125,8 @@ describe("runSync quick mode", () => {
     expect(courseUpsert).not.toHaveBeenCalled();
     expect(courseFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ userId: 1, excludedAt: null }) }));
     expect(vAssignments).toHaveBeenCalledTimes(2); // one per course row
-    expect(vAssignments).toHaveBeenCalledWith("canvas.test", "raw-token", 101);
-    expect(vAssignments).toHaveBeenCalledWith("canvas.test", "raw-token", 102);
+    expect(vAssignments).toHaveBeenCalledWith("canvas.test", "raw-token", 101, expect.any(Number)); // 4th = the run's deadline (#123)
+    expect(vAssignments).toHaveBeenCalledWith("canvas.test", "raw-token", 102, expect.any(Number));
 
     expect(r).toMatchObject({ ok: true, status: "valid", message: "Refreshed submissions.", failedCourses: [], mode: "quick" });
     expect(r.syncedAt).toBe(PREV.toISOString()); // quick never advances the FULL-sync stamp

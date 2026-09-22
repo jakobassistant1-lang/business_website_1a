@@ -50,6 +50,13 @@ describe("skip response", () => {
     expect(body.message).toMatch(/token was rejected/);
     expect(vRun).not.toHaveBeenCalled();
   });
+  it("E2 (#123): fresh-but-throttled connection echoes 'throttled' (inert, neutral) — never 'Up to date', never a token verdict", async () => {
+    vCred.mockResolvedValue({ syncedAt: new Date(Date.now() - 60_000), lastValidationStatus: "throttled" });
+    const body = await (await post({ trigger: "mount" })).json();
+    expect(body).toMatchObject({ ok: false, status: "throttled", skipped: "fresh" });
+    expect(body.message).toMatch(/Canvas is busy right now/);
+    expect(vRun).not.toHaveBeenCalled();
+  });
   it("no body → manual → full run even when fresh", async () => {
     vCred.mockResolvedValue({ syncedAt: new Date(), lastValidationStatus: "valid" });
     vRun.mockResolvedValue({ ok: true, status: "valid", message: "Sync complete.", syncedAt: null, failedCourses: [], mode: "full" });

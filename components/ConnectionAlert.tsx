@@ -9,6 +9,9 @@ const NEEDS_RECONNECT = new Set(["invalid_token", "insufficient_scope"]);
  *  offers a one-step reconnect. Renders nothing for a healthy connection or a merely
  *  transiently-stale one — only a real token/scope problem the student must fix. */
 export function ConnectionAlert({ status }: { status: string | null }) {
+  // "throttled" (#123, a rate-limited Canvas) is transient like unreachable/error:
+  // renders nothing here — the plan's neutral "Stale data" pill and the sync
+  // warning line already say so, and the next sync retries on its own.
   if (!status || !NEEDS_RECONNECT.has(status)) return null;
   const msg =
     status === "insufficient_scope"

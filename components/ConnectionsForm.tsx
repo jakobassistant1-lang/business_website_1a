@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { normalizeHost } from "@/lib/host";
+import { relativeTime } from "@/lib/calendarDates";
 import { SchoolPicker } from "@/components/SchoolPicker";
 import { FirstSyncProgress } from "@/components/FirstSyncProgress";
 import type { School } from "@/lib/schools";
@@ -12,6 +13,10 @@ interface Initial {
   hasToken: boolean;
   status: string | null;
   accountName: string | null;
+  /** Last completed full Canvas sync (ISO), null until the first one lands. */
+  syncedAt: string | null;
+  /** Last time the stored token was checked against Canvas (ISO). */
+  lastValidatedAt: string | null;
 }
 
 const STATUS_PILL: Record<string, { text: string; tone: Tone }> = {
@@ -20,6 +25,7 @@ const STATUS_PILL: Record<string, { text: string; tone: Tone }> = {
   bad_domain: { text: "Bad domain", tone: "danger" },
   unreachable: { text: "Unreachable", tone: "danger" },
   insufficient_scope: { text: "Insufficient scope", tone: "danger" },
+  throttled: { text: "Canvas busy", tone: "neutral" }, // rate-limited: inert, retries on its own
   error: { text: "Error", tone: "danger" },
 };
 
@@ -118,12 +124,18 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         <p className="mt-1 text-sm text-muted">Link the Canvas account Navo reads your coursework from.</p>
 
         <div className="card mt-6 max-w-xl p-6">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-1 flex items-center justify-between">
             <span className="text-sm font-medium text-ink">Canvas</span>
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft.success}`}>
               Connected{accountName ? ` · ${accountName}` : ""}
             </span>
           </div>
+          {/* Freshness, quietly: the "last synced" time students lost when PlanView
+              was retired. Relative text moves by the minute, so let hydration differ. */}
+          <p className="mb-4 text-right text-[13px] text-muted" suppressHydrationWarning>
+            {initial.syncedAt ? `Last synced ${relativeTime(initial.syncedAt)}` : "Never synced yet"}
+            {initial.lastValidatedAt ? ` · Checked ${relativeTime(initial.lastValidatedAt)}` : ""}
+          </p>
           <dl className="space-y-1.5 text-sm">
             <div className="flex justify-between gap-3">
               <dt className="text-muted">School</dt>
@@ -261,7 +273,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         )}
 
         {message && (
-          <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${status === "valid" ? toneSoft.success : toneSoft.danger}`}>
+          <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${status === "valid" ? toneSoft.success : status === "throttled" ? toneSoft.neutral : toneSoft.danger}`}>
             {message}
           </p>
         )}
