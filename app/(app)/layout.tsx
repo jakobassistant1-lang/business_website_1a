@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdminUser } from "@/lib/admin";
-import { accessDecision, billingEnabled, DECISION_PATH } from "@/lib/subscription";
+import { accessDecision, billingEnabled, DECISION_PATH, isTrialing } from "@/lib/subscription";
 import { prisma } from "@/lib/prisma";
 import { Sidebar } from "@/components/Sidebar";
 import { ConnectionAlert } from "@/components/ConnectionAlert";
+import { TrialBanner } from "@/components/TrialBanner";
+import { CancelScheduledNote } from "@/components/CancelScheduledNote";
 
 // FR-2.4: any app route requires auth.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -29,6 +31,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar userName={user.fullName} userEmail={user.email} isAdmin={isAdminUser(user)} />
       <main className="min-w-0 flex-1 px-6 py-8 lg:px-10 lg:py-10">
         <ConnectionAlert status={cred?.lastValidationStatus ?? null} />
+        <TrialBanner user={user} isAdmin={isAdminUser(user)} />
+        <CancelScheduledNote enabled={billingEnabled()} trialing={isTrialing(user.subscriptionStatus)} cancelAtPeriodEnd={user.cancelAtPeriodEnd} currentPeriodEnd={user.currentPeriodEnd} />
         {children}
       </main>
     </div>

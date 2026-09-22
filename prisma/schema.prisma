@@ -44,6 +44,11 @@ model User {
   stripeSubscriptionId String?
   subscriptionStatus   String    @default("none")
   trialEndsAt          DateTime?
+  // #109 (webhooks): end of the current paid period, and whether the student
+  // asked to cancel at that date (Stripe portal default). Access continues until
+  // currentPeriodEnd; the customer.subscription.deleted webhook flips status.
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
 
   sessions      Session[]
   credential    CanvasCredential?
@@ -143,6 +148,15 @@ model FunnelEvent {
 
   @@index([name, createdAt])
   @@index([userId])
+}
+
+// Processed Stripe webhook event ids (#109 idempotency): Stripe retries and
+// can deliver an event more than once; the first insert wins, a duplicate id
+// is acknowledged (200) and skipped. Rows are tiny and never read back.
+model StripeEvent {
+  id         String   @id
+  type       String
+  receivedAt DateTime @default(now())
 }
 
 // Global app settings (key/value). Currently holds the editable Gemini briefing

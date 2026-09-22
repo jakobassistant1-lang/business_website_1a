@@ -136,6 +136,7 @@ const ALLOWLISTED_FILES = [
   "app/api/billing/checkout-session/route.ts",
   "app/api/billing/confirm/route.ts",
   "app/api/billing/portal/route.ts",
+  "app/api/billing/webhook/route.ts", // #109: no cookie at all — Stripe signs the raw body
   "app/api/onboarding/complete/route.ts",
 ];
 

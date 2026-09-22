@@ -4,6 +4,7 @@ import { isAdminUser } from "@/lib/admin";
 import { billingEnabled, needsCheckout } from "@/lib/subscription";
 import { priceDisplay, trialDaysFor } from "@/lib/stripe";
 import { CheckoutEmbed } from "@/components/CheckoutEmbed";
+import { formatDateHuman } from "@/lib/calendarDates";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function CardPage() {
   // First-timers get the free week; a returning (canceled) subscriber is charged
   // today — the SAME rule Stripe is given (trialDaysFor), so copy and charge agree.
   const trialDays = trialDaysFor(user);
-  const chargeDate = new Date(Date.now() + (trialDays ?? 0) * 86_400_000).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const chargeDate = formatDateHuman(Date.now() + (trialDays ?? 0) * 86_400_000, { weekday: true });
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">

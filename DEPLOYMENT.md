@@ -45,6 +45,10 @@ From your machine, with the Neon URL:
 DATABASE_URL="postgresql://...neon...?sslmode=require" npx prisma db push
 ```
 
+> **Order matters for billing (#109):** this `db push` (the `StripeEvent` table +
+> `User.currentPeriodEnd` / `User.cancelAtPeriodEnd` columns) must run BEFORE
+> registering the Stripe webhook endpoint; until then verified events answer 503.
+>
 > Re-run this same command whenever `prisma/schema.prisma` changes. The admin
 > board's task cards (title, description, contributor/creator initials, due date,
 > category + ticket-size tags) add **nullable** columns to `AdminTask`, so the

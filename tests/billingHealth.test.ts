@@ -99,12 +99,19 @@ describe("accountCheck", () => {
 });
 
 describe("portalCheck", () => {
-  it("passes with an active config allowing payment-method update; notes cancel state", () => {
-    const c = portalCheck([{ active: true, is_default: true, features: { payment_method_update: { enabled: true }, subscription_cancel: { enabled: false } } }]);
+  it("passes only with an active config allowing payment-method update AND cancel at period end (#109)", () => {
+    const c = portalCheck([{ active: true, is_default: true, features: { payment_method_update: { enabled: true }, subscription_cancel: { enabled: true, mode: "at_period_end" } } }]);
     expect(c.ok).toBe(true);
-    expect(c.detail).toContain("cancel disabled");
+    expect(c.detail).toContain("cancel at period end enabled");
     expect(c.detail).toContain("default config");
-    expect(portalCheck([{ active: true, features: { payment_method_update: { enabled: true }, subscription_cancel: { enabled: true } } }]).detail).toContain("cancel enabled");
+  });
+  it("fails when cancel is disabled, or enabled but immediate (would cut access before currentPeriodEnd)", () => {
+    const off = portalCheck([{ active: true, features: { payment_method_update: { enabled: true }, subscription_cancel: { enabled: false } } }]);
+    expect(off.ok).toBe(false);
+    expect(off.detail).toContain("cancel disabled");
+    const now = portalCheck([{ active: true, features: { payment_method_update: { enabled: true }, subscription_cancel: { enabled: true, mode: "immediately" } } }]);
+    expect(now.ok).toBe(false);
+    expect(now.detail).toContain("not at_period_end");
   });
   it("fails without payment-method update, without active configs, or with null", () => {
     expect(portalCheck([{ active: true, features: { payment_method_update: { enabled: false } } }]).ok).toBe(false);

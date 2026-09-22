@@ -13,6 +13,21 @@ export function fmtDateUTC(d: Date | string | number): string {
   return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+/** Billing dates the student reads ("Free trial ends Monday, October 6") — one
+ *  formatter for /account, the in-app cancel note and the card page's charge
+ *  date. Pinned to America/New_York for now (Stripe's timestamps are UTC
+ *  instants; rendering them in the server's zone would drift on Vercel). A
+ *  per-user timezone is a follow-up. */
+export const BILLING_TIME_ZONE = "America/New_York";
+export function formatDateHuman(d: Date | string | number, opts: { weekday?: boolean } = {}): string {
+  return new Date(d).toLocaleDateString("en-US", {
+    ...(opts.weekday ? { weekday: "long" } : {}),
+    month: "long",
+    day: "numeric",
+    timeZone: BILLING_TIME_ZONE,
+  });
+}
+
 export function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -97,6 +112,31 @@ export function relativeDay(postedAtIso: string, todayYmd: string): string {
   if (days === 1) return "Yesterday";
   if (days <= 6) return `${days}d ago`;
   return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+}
+
+/** Human "time since" at clock granularity — "just now" / "12 min ago" /
+ *  "3 hours ago" / "yesterday" / "4 days ago", then a short date ("Mar 5", with
+ *  the year when it isn't the current one). THE relative-timestamp rule for
+ *  freshness lines (the Connections "Last synced …" line); `relativeDay` stays
+ *  the day-granularity one for posted dates — don't add a third. Pure: pass
+ *  `now` in tests. The text changes by the minute, so a server render and a
+ *  hydration a second later can disagree — render it with
+ *  `suppressHydrationWarning`. Future timestamps clamp to "just now"; an
+ *  unparseable value reads "unknown". */
+export function relativeTime(iso: string, now: Date = new Date()): string {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "unknown";
+  const ms = now.getTime() - then.getTime();
+  if (ms < 60_000) return "just now";
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(ms / 86_400_000);
+  if (days === 1) return "yesterday";
+  if (days <= 6) return `${days} days ago`;
+  const date = `${MONTHS_SHORT[then.getMonth()]} ${then.getDate()}`;
+  return then.getFullYear() === now.getFullYear() ? date : `${date}, ${then.getFullYear()}`;
 }
 
 export function rangeLabel(view: "day" | "week" | "month", anchor: Date, now: Date): string {

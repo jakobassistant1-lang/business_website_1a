@@ -7,6 +7,13 @@ import { useRouter } from "next/navigation";
 
 /** "Update payment method" → POST /api/billing/portal → Stripe's hosted portal. */
 export function UpdatePaymentButton() {
+  return <PortalButton label="Update payment method" />;
+}
+
+/** The one portal opener (#109): POST /api/billing/portal → Stripe's hosted
+ *  Billing Portal (update card, cancel at period end, keep plan). `label` is
+ *  the only thing that differs between the past-due screen and /account. */
+export function PortalButton({ label }: { label: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +44,7 @@ export function UpdatePaymentButton() {
   return (
     <div>
       <button type="button" onClick={open} disabled={busy} className="btn-primary">
-        {busy ? "Opening…" : "Update payment method"}
+        {busy ? "Opening…" : label}
       </button>
       {error && <p className="mt-3 text-[14px] text-danger">{error}</p>}
     </div>

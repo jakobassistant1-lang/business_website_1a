@@ -8,6 +8,7 @@ import { prisma } from "./prisma";
 
 export type FunnelEventName =
   | "signup_created"
+  | "welcome_sent"
   | "demo_completed"
   | "checkout_started"
   | "checkout_completed"
@@ -16,6 +17,8 @@ export type FunnelEventName =
   | "first_sync_failed"
   | "first_plan_rendered"
   | "trial_converted"
+  | "payment_failed"
+  | "cancel_scheduled"
   | "canceled";
 
 type MinimalClient = { funnelEvent: { create(args: { data: { userId: number | null; name: string; meta: string | null } }): Promise<unknown> } };

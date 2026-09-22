@@ -5,7 +5,8 @@
 // and only throws if a billing call is actually attempted without configuration.
 import Stripe from "stripe";
 import { prisma } from "./prisma";
-import { isBillingFlagOn } from "./subscription";
+import { isBillingFlagOn, TRIAL_DAYS, needsCheckout, type SubscriptionStatus } from "./subscription";
+import type { FunnelEventName } from "./funnel";
 
 let client: Stripe | null = null;
 export function stripe(): Stripe {
@@ -89,14 +90,17 @@ export async function createPortalSession(
  *  restarting) is charged today — "restart by paying again", not another trial.
  *  Returns undefined (not 0) so the Stripe param is omitted entirely. */
 export function trialDaysFor(user: { stripeSubscriptionId: string | null }): number | undefined {
-  return user.stripeSubscriptionId ? undefined : 7;
+  return user.stripeSubscriptionId ? undefined : TRIAL_DAYS;
 }
 
-/** The portal's return_url: the past-due screen on our trusted origin, tagged
- *  so the screen can show its "card updated? reload" hint. That screen
- *  reconciles with Stripe and redirects to / once the account is healthy. */
-export function portalReturnUrl(base: string): string {
-  return `${base.replace(/\/+$/, "")}/billing/past-due?from=portal`;
+/** The portal's return_url on our trusted origin, tagged `from=portal` so the
+ *  landing screen can show its "changes may take a minute" hint. A past-due
+ *  student returns to the past-due screen (which reconciles with Stripe and
+ *  redirects to / once healthy); everyone else (#109 manage/cancel) returns to
+ *  the billing card on /account. */
+export function portalReturnUrl(base: string, target: "past_due" | "account" = "past_due"): string {
+  const path = target === "account" ? "/account" : "/billing/past-due";
+  return `${base.replace(/\/+$/, "")}${path}?from=portal`;
 }
 
 /** The past-due page's write rule: the mapped fields, or null when Stripe's
@@ -109,6 +113,25 @@ export function reconcileFields(
   const mapped = statusFromStripeSubscription(s);
   if (!mapped || mapped.subscriptionStatus === user.subscriptionStatus) return null;
   return mapped;
+}
+
+/** /account's on-return reconcile (#109), the past-due rule plus the period
+ *  and cancel fields: status through reconcileFields, then currentPeriodEnd /
+ *  cancelAtPeriodEnd / trialEndsAt from the same retrieved subscription. null =
+ *  unknown state or nothing differs from what's stored (no write). */
+export function reconcileBillingFields(
+  user: { subscriptionStatus: string | null | undefined; trialEndsAt: Date | null; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean },
+  s: StripeSubscriptionShape,
+): { subscriptionStatus: SubscriptionStatus; trialEndsAt: Date | null; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean } | null {
+  const mapped = statusFromStripeSubscription(s);
+  if (!mapped) return null;
+  const period = periodFields(s);
+  const same = (a: Date | null, b: Date | null) => (a?.getTime() ?? null) === (b?.getTime() ?? null);
+  const statusChanged = reconcileFields(user, s) !== null;
+  if (!statusChanged && same(user.trialEndsAt, mapped.trialEndsAt) && same(user.currentPeriodEnd, period.currentPeriodEnd) && user.cancelAtPeriodEnd === period.cancelAtPeriodEnd) {
+    return null;
+  }
+  return { subscriptionStatus: mapped.subscriptionStatus, trialEndsAt: mapped.trialEndsAt, ...period };
 }
 
 /** Map a Stripe subscription's status to our vocabulary (#119 past-due
@@ -164,6 +187,212 @@ export function subscriptionFieldsFromSession(session: {
     subscriptionStatus: mapped.subscriptionStatus,
     trialEndsAt: mapped.trialEndsAt,
   };
+}
+
+// ---- webhooks (#109): pure event → outcome mapping ------------------------
+// The route (app/api/billing/webhook) verifies the signature, records the event
+// id, loads the user and (for a few event types) the subscription, then applies
+// whatever these helpers return. Every Stripe status still passes through the
+// ONE table, statusFromStripeSubscription — nothing here maps a status itself.
+
+/** The subscription shape we read from events and retrievals. Stripe's basil
+ *  API moved current_period_end onto the subscription items; older webhook API
+ *  versions still put it on the subscription — both are read. */
+export type StripeSubscriptionShape = {
+  id: string;
+  status: string;
+  trial_end?: number | null;
+  cancel_at_period_end?: boolean | null;
+  current_period_end?: number | null;
+  items?: { data?: { current_period_end?: number | null }[] | null } | null;
+  customer?: string | { id: string } | null;
+  metadata?: Record<string, string> | null;
+};
+
+export type WebhookEvent = {
+  id?: string;
+  type: string;
+  data: { object: any; previous_attributes?: Record<string, unknown> | null };
+};
+
+export type WebhookOutcome = {
+  userId: number | null;
+  /** For the route's fallback lookup (User.stripeCustomerId) when metadata carries no userId. */
+  customerId: string | null;
+  data: Partial<{
+    subscriptionStatus: SubscriptionStatus;
+    trialEndsAt: Date | null;
+    currentPeriodEnd: Date | null;
+    cancelAtPeriodEnd: boolean;
+    stripeSubscriptionId: string;
+    stripeCustomerId: string;
+  }>;
+  funnel?: FunnelEventName;
+  ignored?: string;
+};
+
+/** What the route already knows when it applies an event: the user row the
+ *  event resolved to (null = not found) and, for event types whose object
+ *  carries only a subscription id, the retrieved subscription. */
+export type WebhookContext = {
+  user: { id: number; stripeSubscriptionId: string | null; subscriptionStatus: string | null } | null;
+  subscription?: StripeSubscriptionShape | null;
+};
+
+/** Event types the route RETRIEVES the subscription for before mapping. Never
+ *  map a status from an event snapshot: webhooks arrive out of order, and a
+ *  delayed `updated(active)` landing after `deleted` would resurrect a canceled
+ *  account. The retrieved object is Stripe's current truth. (`deleted` is the
+ *  exception — a deleted subscription cannot come back as active.) */
+export const EVENTS_NEEDING_SUBSCRIPTION: ReadonlySet<string> = new Set([
+  "checkout.session.completed",
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "invoice.payment_failed",
+  "invoice.paid",
+  "invoice.payment_succeeded",
+]);
+
+function idOf(ref: string | { id: string } | null | undefined): string | null {
+  if (!ref) return null;
+  return typeof ref === "string" ? ref : ref.id ?? null;
+}
+
+function parseUserId(meta: Record<string, string> | null | undefined): number | null {
+  const raw = meta?.userId;
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** The invoice's subscription id: pre-basil `invoice.subscription`, basil
+ *  `invoice.parent.subscription_details.subscription`. */
+function invoiceSubscriptionId(inv: any): string | null {
+  return idOf(inv?.subscription) ?? idOf(inv?.parent?.subscription_details?.subscription);
+}
+
+/** Who an event is about, read from the event alone: our userId (from the
+ *  metadata we stamp on sessions and subscriptions), the Stripe customer id
+ *  (fallback lookup), and the subscription id (for retrieval / matching). */
+export function subjectFromEvent(event: WebhookEvent): { userId: number | null; customerId: string | null; subscriptionId: string | null } {
+  const o = event.data.object ?? {};
+  if (event.type.startsWith("invoice.")) {
+    const meta = o.parent?.subscription_details?.metadata ?? o.subscription_details?.metadata ?? null;
+    return { userId: parseUserId(meta), customerId: idOf(o.customer), subscriptionId: invoiceSubscriptionId(o) };
+  }
+  if (event.type === "checkout.session.completed") {
+    return { userId: parseUserId(o.metadata), customerId: idOf(o.customer), subscriptionId: idOf(o.subscription) };
+  }
+  if (event.type.startsWith("customer.subscription.")) {
+    return { userId: parseUserId(o.metadata), customerId: idOf(o.customer), subscriptionId: typeof o.id === "string" ? o.id : null };
+  }
+  return { userId: parseUserId(o.metadata), customerId: idOf(o.customer), subscriptionId: null };
+}
+
+/** Period fields shared by every subscription-shaped outcome. */
+function periodFields(sub: StripeSubscriptionShape): { currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean } {
+  const end = sub.current_period_end ?? sub.items?.data?.[0]?.current_period_end ?? null;
+  return { currentPeriodEnd: end ? new Date(end * 1000) : null, cancelAtPeriodEnd: sub.cancel_at_period_end === true };
+}
+
+/** Funnel milestone for a status transition, decided from the DB's previous
+ *  status so the FIRST event to observe it logs it and later ones don't. */
+function transitionFunnel(prev: string | null | undefined, next: SubscriptionStatus): FunnelEventName | undefined {
+  if (prev === next) return undefined;
+  if (next === "active" && prev === "trialing") return "trial_converted";
+  if (next === "past_due") return "payment_failed";
+  if (next === "canceled") return "canceled";
+  return undefined;
+}
+
+/** THE webhook rule: one event (+ what the route knows) → fields to write, a
+ *  funnel milestone, or a reason to ignore. Pure; never touches Stripe or the DB. */
+export function outcomeFromEvent(event: WebhookEvent, ctx: WebhookContext = { user: null }): WebhookOutcome {
+  const { userId, customerId, subscriptionId } = subjectFromEvent(event);
+  const base: WebhookOutcome = { userId, customerId, data: {} };
+  const ignore = (why: string): WebhookOutcome => ({ ...base, ignored: why });
+  const user = ctx.user;
+  const o = event.data.object ?? {};
+
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const sub = ctx.subscription ?? (o.subscription && typeof o.subscription === "object" ? (o.subscription as StripeSubscriptionShape) : null);
+      if (!sub) return ignore("subscription not expanded");
+      const fields = subscriptionFieldsFromSession({ ...o, subscription: sub });
+      if (!fields) return ignore("session not complete or subscription not live");
+      return { ...base, data: { ...fields, ...periodFields(sub) }, funnel: "checkout_completed" };
+    }
+
+    case "customer.subscription.created":
+    case "customer.subscription.updated": {
+      // Status comes from the RETRIEVED subscription (current truth), never the
+      // event snapshot — see EVENTS_NEEDING_SUBSCRIPTION.
+      const sub = ctx.subscription;
+      if (!sub) return ignore("subscription not retrieved");
+      if (sub.id !== subscriptionId) return ignore("retrieved subscription does not match the event");
+      const mapped = statusFromStripeSubscription(sub);
+      if (!mapped) return ignore(`unmapped subscription status: ${sub.status}`);
+      // A restart (none/canceled) adopts the new subscription; otherwise only
+      // events for the subscription on file may write (a late event for an
+      // old subscription must not touch the new one).
+      if (user?.stripeSubscriptionId && user.stripeSubscriptionId !== sub.id && !needsCheckout(user.subscriptionStatus)) {
+        return ignore("event for a subscription that is not the one on file");
+      }
+      const period = periodFields(sub);
+      const prevCancel = event.data.previous_attributes?.cancel_at_period_end;
+      const funnel =
+        period.cancelAtPeriodEnd && prevCancel === false ? "cancel_scheduled" : transitionFunnel(user?.subscriptionStatus, mapped.subscriptionStatus);
+      const stripeCustomerId = idOf(sub.customer);
+      return {
+        ...base,
+        data: { ...mapped, ...period, stripeSubscriptionId: sub.id, ...(stripeCustomerId ? { stripeCustomerId } : {}) },
+        funnel,
+      };
+    }
+
+    case "customer.subscription.deleted": {
+      const sub = o as StripeSubscriptionShape;
+      if (user?.stripeSubscriptionId && user.stripeSubscriptionId !== sub.id) return ignore("deleted subscription is not the one on file");
+      // The event itself is the fact (Stripe's object says "canceled" too) —
+      // still mapped through the one table so the vocabulary has one owner.
+      const mapped = statusFromStripeSubscription({ status: "canceled", trial_end: null });
+      if (!mapped) return ignore("unmapped");
+      return {
+        ...base,
+        data: { subscriptionStatus: mapped.subscriptionStatus, trialEndsAt: null, currentPeriodEnd: null, cancelAtPeriodEnd: false },
+        funnel: transitionFunnel(user?.subscriptionStatus, mapped.subscriptionStatus),
+      };
+    }
+
+    case "invoice.payment_failed": {
+      if (!subscriptionId) return ignore("invoice has no subscription");
+      if (!user?.stripeSubscriptionId || user.stripeSubscriptionId !== subscriptionId) return ignore("invoice subscription does not match the one on file");
+      // Stripe has already moved the subscription to past_due (or, if a retry
+      // succeeded / it was canceled meanwhile, elsewhere): write what it says NOW.
+      const sub = ctx.subscription;
+      if (!sub) return ignore("subscription not retrieved");
+      const mapped = statusFromStripeSubscription(sub);
+      if (!mapped) return ignore(`unmapped subscription status: ${sub.status}`);
+      return { ...base, data: { ...mapped, ...periodFields(sub) }, funnel: transitionFunnel(user.subscriptionStatus, mapped.subscriptionStatus) };
+    }
+
+    case "invoice.paid":
+    case "invoice.payment_succeeded": {
+      if (!subscriptionId) return ignore("invoice has no subscription");
+      if (!user?.stripeSubscriptionId || user.stripeSubscriptionId !== subscriptionId) return ignore("invoice subscription does not match the one on file");
+      const sub = ctx.subscription;
+      if (!sub) return ignore("subscription not retrieved");
+      const mapped = statusFromStripeSubscription(sub);
+      if (!mapped || mapped.subscriptionStatus !== "active") return ignore(`subscription not active (${sub.status})`);
+      return { ...base, data: { ...mapped, ...periodFields(sub) }, funnel: transitionFunnel(user.subscriptionStatus, mapped.subscriptionStatus) };
+    }
+
+    case "customer.subscription.trial_will_end":
+      return { ...base, ignored: "trial_will_end (handled by #121)", funnel: undefined };
+
+    default:
+      return ignore(`unhandled event type: ${event.type}`);
+  }
 }
 
 // ---- admin billing-health (read-only Stripe setup verification) ----------
@@ -242,14 +471,16 @@ export function accountCheck(
   ];
 }
 
-/** The Billing Portal (#119 past-due "update card") needs at least one active
- *  configuration that lets a customer update their payment method. */
+/** The Billing Portal needs at least one active configuration that lets a
+ *  customer update their payment method (#119 past-due) AND cancel at the end
+ *  of the billing period (#109 one-click cancel; `mode: "at_period_end"` is
+ *  what keeps access until currentPeriodEnd — "immediately" would break it). */
 export function portalCheck(
   configs:
     | {
         active: boolean;
         is_default?: boolean;
-        features?: { subscription_cancel?: { enabled?: boolean }; payment_method_update?: { enabled?: boolean } };
+        features?: { subscription_cancel?: { enabled?: boolean; mode?: string }; payment_method_update?: { enabled?: boolean } };
       }[]
     | null,
 ): HealthCheck {
@@ -257,11 +488,15 @@ export function portalCheck(
   if (!configs) return { name, ok: false, detail: "unavailable" };
   const active = configs.filter((c) => c.active);
   if (active.length === 0) return { name, ok: false, detail: "no active configuration" };
-  const usable = active.filter((c) => c.features?.payment_method_update?.enabled === true);
-  if (usable.length === 0) return { name, ok: false, detail: `${active.length} active, none allow payment-method update` };
-  const cancel = usable.some((c) => c.features?.subscription_cancel?.enabled === true);
+  const updatable = active.filter((c) => c.features?.payment_method_update?.enabled === true);
+  if (updatable.length === 0) return { name, ok: false, detail: `${active.length} active, none allow payment-method update` };
+  const usable = updatable.filter((c) => c.features?.subscription_cancel?.enabled === true && c.features.subscription_cancel.mode === "at_period_end");
+  if (usable.length === 0) {
+    const anyCancel = updatable.some((c) => c.features?.subscription_cancel?.enabled === true);
+    return { name, ok: false, detail: anyCancel ? "cancel enabled but not at_period_end" : "payment-method update enabled; cancel disabled" };
+  }
   const dflt = usable.some((c) => c.is_default) ? "default config" : "non-default config";
-  return { name, ok: true, detail: `payment-method update enabled (${dflt}); cancel ${cancel ? "enabled" : "disabled"}` };
+  return { name, ok: true, detail: `payment-method update enabled; cancel at period end enabled (${dflt})` };
 }
 
 /** Payment Method Domain for the Embedded Checkout host: the domain must be
