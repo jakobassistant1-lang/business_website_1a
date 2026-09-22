@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock the DB so find-or-create can be unit-tested without Postgres.
+vi.mock("@/lib/email", () => ({ sendEmail: vi.fn(async () => ({ ok: true })) }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { user: { findUnique: vi.fn(), create: vi.fn() } },
 }));
