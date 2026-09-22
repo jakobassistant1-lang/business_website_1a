@@ -9,6 +9,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+// Type only (erased at build): the terms are computed on the server — the price
+// comes from Stripe and the trial length from TRIAL_DAYS, never from this file.
+import type { TrialTerms } from "@/lib/subscription";
 
 type Role = "student" | "admin";
 type Mode = "login" | "signup";
@@ -16,7 +19,7 @@ type Mode = "login" | "signup";
 const STUDENT_ICON = "M22 10L12 5 2 10l10 5 10-5Zm-4 3.5V17c0 1.5-3 2.5-6 2.5s-6-1-6-2.5v-3.5";
 const ADMIN_ICON = "M4 5h16v14H4zM9 5v14M15 5v14";
 
-export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice }: { initialMode: Mode; inviteConfigured: boolean; googleEnabled: boolean; notice?: string }) {
+export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice, trialTerms }: { initialMode: Mode; inviteConfigured: boolean; googleEnabled: boolean; notice?: string; trialTerms?: TrialTerms | null }) {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -70,6 +73,17 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice 
         </button>
       </div>
       <div className="card p-6">
+        {role === "student" && mode === "signup" && trialTerms && (
+          <p className="mb-5 rounded-lg bg-surface-soft px-3 py-2.5 text-[13px] leading-relaxed text-muted">
+            {trialTerms.price ? (
+              <>
+                Free for {trialTerms.trialDays} days, then {trialTerms.price}. Cancel anytime — you won&apos;t be charged until your trial ends.
+              </>
+            ) : (
+              <>Free for {trialTerms.trialDays} days, then a small monthly fee. Cancel anytime.</>
+            )}
+          </p>
+        )}
         {role === "student" && googleEnabled && (
           <div className="mb-5">
             <a
