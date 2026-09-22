@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
 import { effortHoursText } from "@/lib/effortFormat";
 import { startOfDay, ymd, parseYmd } from "@/lib/calendarDates";
@@ -66,7 +66,7 @@ function rangeLabelFor(view: "day" | "week" | "month", start: Date, end: Date): 
 // AI "study coach" game plan for the selected period. Always degrades: returns
 // text=null whenever the AI is unavailable, so the view renders without it.
 export async function GET(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const url = new URL(req.url);

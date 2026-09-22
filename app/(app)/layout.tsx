@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdminUser } from "@/lib/admin";
-import { billingEnabled, needsCheckout } from "@/lib/subscription";
+import { accessDecision, billingEnabled, DECISION_PATH } from "@/lib/subscription";
 import { prisma } from "@/lib/prisma";
 import { Sidebar } from "@/components/Sidebar";
 import { ConnectionAlert } from "@/components/ConnectionAlert";
@@ -10,12 +10,12 @@ import { ConnectionAlert } from "@/components/ConnectionAlert";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  // Card-step resume (#118): a demo-finished student who never completed the
-  // card step can't wander into the app — back to /welcome/card. (Admins and
-  // grandfathered/subscribed accounts pass; full per-request gating is #119.)
-  if (billingEnabled() && !isAdminUser(user) && user.onboardedAt && needsCheckout(user.subscriptionStatus)) {
-    redirect("/welcome/card");
-  }
+  // Per-request access gate (#119): decided from User.subscriptionStatus on
+  // every request (sessions never expire server-side), through the ONE rule in
+  // lib/subscription. Admins/grandfathered/trialing/active pass; everyone else
+  // goes to exactly one destination (demo, card, past-due, canceled).
+  const decision = accessDecision(user, billingEnabled(), isAdminUser(user));
+  if (decision !== "allow") redirect(DECISION_PATH[decision]);
 
   // Connection health (#65): one cheap indexed lookup so an expired/invalid Canvas
   // token is flagged app-wide with a one-step reconnect, on whatever page they're on.

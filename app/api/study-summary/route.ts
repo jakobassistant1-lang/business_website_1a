@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { loadCalendarData, upcomingAssessments } from "@/lib/calendarData";
 import { daysBetween } from "@/lib/calendarDates";
 import { generateStudyHub, type StudyHubItem } from "@/lib/briefing";
@@ -23,7 +23,7 @@ function relativeDue(iso: string): string {
 // when the AI is unavailable or there's nothing upcoming (the page renders fine
 // without it — fail-open, same as the dashboard summary).
 export async function GET() {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const data = await loadCalendarData(user.id);

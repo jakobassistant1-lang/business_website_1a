@@ -19,8 +19,8 @@ describe("subscription status vocabulary", () => {
     expect(hasAppAccess("weird-future-value")).toBe(false);
     expect(needsCheckout("weird-future-value")).toBe(true);
   });
-  it("only 'none' needs checkout", () => {
-    for (const s of SUBSCRIPTION_STATUSES) expect(needsCheckout(s)).toBe(s === "none");
+  it("'none' and 'canceled' need checkout (#119: a canceled student restarts by paying again)", () => {
+    for (const s of SUBSCRIPTION_STATUSES) expect(needsCheckout(s)).toBe(s === "none" || s === "canceled");
   });
 });
 

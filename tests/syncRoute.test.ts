@@ -8,17 +8,17 @@ vi.mock("next/server", async (importOriginal) => {
   const real = await importOriginal<typeof import("next/server")>();
   return { ...real, after: vi.fn((task: unknown) => (typeof task === "function" ? task() : task)) };
 });
-vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }));
+vi.mock("@/lib/access", () => ({ requireActiveUser: vi.fn() })); // #119: sync is a data route → gated
 vi.mock("@/lib/prisma", () => ({ prisma: { canvasCredential: { findUnique: vi.fn() } } }));
 vi.mock("@/lib/sync", () => ({ runSync: vi.fn() }));
 
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { runSync } from "@/lib/sync";
 import { POST } from "@/app/api/sync/route";
 
 type Fn = ReturnType<typeof vi.fn>;
-const vUser = requireUser as unknown as Fn;
+const vUser = requireActiveUser as unknown as Fn;
 const vCred = prisma.canvasCredential.findUnique as unknown as Fn;
 const vRun = runSync as unknown as Fn;
 

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 
 // Settings: study budget (hours/day) + how far ahead to study for exams/quizzes.
 export async function PATCH(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

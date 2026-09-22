@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requirePageAccess } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
 import { ymd } from "@/lib/calendarDates";
 import { CoursePage } from "@/components/CoursePage";
@@ -9,10 +9,10 @@ export const dynamic = "force-dynamic";
 // /class/[courseId] — the full assignment list for one class, opened from the
 // dashboard's "By class" overview cards.
 export default async function ClassDetailPage({ params }: { params: Promise<{ courseId: string }> }) {
+  const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
   const { courseId } = await params;
   const id = Number(courseId);
-  const user = await getCurrentUser(); // layout guarantees auth
-  if (!user || !Number.isFinite(id)) notFound();
+  if (!Number.isFinite(id)) notFound();
 
   const data = await loadCalendarData(user.id);
   const active = data.items.filter((it) => it.courseCanvasId === id);

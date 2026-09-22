@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { transcribeImages, type TranscribeImage } from "@/lib/notesExtract";
 import { MAX_FILE_BYTES, MAX_IMAGES_PER_NOTE, ownsAssessment } from "@/lib/studentNotes";
 
@@ -13,7 +13,7 @@ const IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/heic
 // transcription. Returns the TEXT for the student to review; does NOT persist.
 // Saving happens via POST /api/notes (sourceKind: "image") after the review step.
 export async function POST(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const form = await req.formData().catch(() => null);

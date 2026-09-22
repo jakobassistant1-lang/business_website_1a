@@ -6,7 +6,9 @@
 import { useEffect, useRef, useState } from "react";
 import { loadStripe, type StripeEmbeddedCheckout } from "@stripe/stripe-js";
 
-export function CheckoutEmbed({ publishableKey }: { publishableKey: string }) {
+// `trialDays` (from trialDaysFor) is 0 for a returning subscriber paying today —
+// the copy must not promise a trial that isn't being granted.
+export function CheckoutEmbed({ publishableKey, trialDays }: { publishableKey: string; trialDays: number }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -37,7 +39,7 @@ export function CheckoutEmbed({ publishableKey }: { publishableKey: string }) {
           onComplete: async () => {
             setConfirming(true);
             const c = await fetch(`/api/billing/confirm?session_id=${encodeURIComponent(body.sessionId)}`).then((r) => r.json()).catch(() => null);
-            window.location.href = c?.next ?? "/dashboard?welcome=1";
+            window.location.href = c?.next ?? (trialDays ? "/dashboard?welcome=1" : "/dashboard");
           },
         });
         if (cancelled) { checkout.destroy(); return; }
@@ -48,10 +50,10 @@ export function CheckoutEmbed({ publishableKey }: { publishableKey: string }) {
     }
     boot();
     return () => { cancelled = true; checkout?.destroy(); };
-  }, [publishableKey, attempt]);
+  }, [publishableKey, attempt, trialDays]);
 
   if (confirming) {
-    return <p className="p-8 text-center text-[15px] text-muted">Setting up your trial…</p>;
+    return <p className="p-8 text-center text-[15px] text-muted">{trialDays ? "Setting up your trial…" : "Setting up your subscription…"}</p>;
   }
   if (error) {
     return (

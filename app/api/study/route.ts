@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { decryptSecret } from "@/lib/crypto";
 import { itemType, isStudyType } from "@/lib/itemType";
 import { loadCalendarData } from "@/lib/calendarData";
@@ -31,7 +31,7 @@ type Kind = "plan" | "guide" | "questions";
 // generation for one assessment. Single mutation-style endpoint because even a
 // "read" may generate (and persist) content.
 export async function POST(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

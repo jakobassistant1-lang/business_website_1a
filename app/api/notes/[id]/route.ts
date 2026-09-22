@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { MAX_NOTE_CHARS } from "@/lib/studentNotes";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ const parseId = (v: string): number | null => {
 
 // PATCH /api/notes/[id] — rename (title) and/or edit text. Ownership-checked.
 export async function PATCH(req: Request, ctx: Ctx) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const id = parseId((await ctx.params).id);
   if (!id) return NextResponse.json({ error: "bad_request" }, { status: 400 });
@@ -42,7 +42,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
 // DELETE /api/notes/[id] — ownership-scoped via deleteMany (only the caller's row).
 export async function DELETE(_req: Request, ctx: Ctx) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const id = parseId((await ctx.params).id);
   if (!id) return NextResponse.json({ error: "bad_request" }, { status: 400 });

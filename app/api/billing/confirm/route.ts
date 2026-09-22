@@ -28,9 +28,12 @@ export async function GET(req: Request) {
     const fields = subscriptionFieldsFromSession(session as Parameters<typeof subscriptionFieldsFromSession>[0]);
     if (!fields) return NextResponse.json({ complete: false });
 
+    // Read BEFORE the write: a returning subscriber (restart, paying today) skips
+    // the first-run welcome nudge; a first-timer gets it.
+    const returning = Boolean(user.stripeSubscriptionId);
     await prisma.user.update({ where: { id: user.id }, data: fields });
-    void logEvent("checkout_completed", user.id, { sessionId, status: fields.subscriptionStatus });
-    return NextResponse.json({ complete: true, next: "/dashboard?welcome=1" });
+    void logEvent("checkout_completed", user.id, { sessionId, status: fields.subscriptionStatus, returning });
+    return NextResponse.json({ complete: true, next: returning ? "/dashboard" : "/dashboard?welcome=1" });
   } catch (e) {
     console.error("billing confirm failed", e);
     return NextResponse.json({ error: "Couldn't confirm your subscription. Refresh to retry." }, { status: 500 });

@@ -46,23 +46,87 @@ export async function getOrCreateCustomer(user: { id: number; email: string; ful
   return customer.id;
 }
 
-/** Embedded Checkout session: subscription mode, 7-day trial, completion handled
- *  in-page (no redirect — the funnel never leaves app.navolearning.com). */
-export async function createTrialCheckoutSession(user: { id: number; email: string; fullName: string; stripeCustomerId: string | null }) {
+/** Embedded Checkout session: subscription mode, completion handled in-page (no
+ *  redirect — the funnel never leaves app.navolearning.com). The free week is
+ *  for first-timers only (trialDaysFor): a canceled student restarting pays today. */
+export async function createTrialCheckoutSession(user: { id: number; email: string; fullName: string; stripeCustomerId: string | null; stripeSubscriptionId: string | null }) {
   const customer = await getOrCreateCustomer(user);
+  const trialDays = trialDaysFor(user);
   const session = await stripe().checkout.sessions.create({
     ui_mode: "embedded",
     mode: "subscription",
     customer,
     line_items: [{ price: priceId(), quantity: 1 }],
-    subscription_data: { trial_period_days: 7, metadata: { userId: String(user.id) } },
+    subscription_data: { ...(trialDays ? { trial_period_days: trialDays } : {}), metadata: { userId: String(user.id) } },
     metadata: { userId: String(user.id) },
     redirect_on_completion: "never",
   });
   return { clientSecret: session.client_secret!, sessionId: session.id };
 }
 
+/** Stripe Billing Portal session (#119): where a past-due student updates the
+ *  card on file. Stripe hosts the page; we only hand back its URL. */
+export async function createPortalSession(
+  user: { id: number; email: string; fullName: string; stripeCustomerId: string | null },
+  returnUrl: string,
+): Promise<string> {
+  const customer = await getOrCreateCustomer(user);
+  const session = await stripe().billingPortal.sessions.create({ customer, return_url: returnUrl });
+  return session.url;
+}
+
 // ---- pure helpers (unit-tested) ----
+
+/** The one trial rule (#119): 7 free days only for an account that has NEVER
+ *  had a subscription. Anyone with a subscription id on file (canceled, then
+ *  restarting) is charged today — "restart by paying again", not another trial.
+ *  Returns undefined (not 0) so the Stripe param is omitted entirely. */
+export function trialDaysFor(user: { stripeSubscriptionId: string | null }): number | undefined {
+  return user.stripeSubscriptionId ? undefined : 7;
+}
+
+/** The portal's return_url: the past-due screen on our trusted origin, tagged
+ *  so the screen can show its "card updated? reload" hint. That screen
+ *  reconciles with Stripe and redirects to / once the account is healthy. */
+export function portalReturnUrl(base: string): string {
+  return `${base.replace(/\/+$/, "")}/billing/past-due?from=portal`;
+}
+
+/** The past-due page's write rule: the mapped fields, or null when Stripe's
+ *  state is unknown OR already what we have stored (nothing to write). Keeps
+ *  the status comparison in lib, out of the page. */
+export function reconcileFields(
+  user: { subscriptionStatus: string | null | undefined },
+  s: { status: string; trial_end?: number | null },
+): ReturnType<typeof statusFromStripeSubscription> {
+  const mapped = statusFromStripeSubscription(s);
+  if (!mapped || mapped.subscriptionStatus === user.subscriptionStatus) return null;
+  return mapped;
+}
+
+/** Map a Stripe subscription's status to our vocabulary (#119 past-due
+ *  reconcile — the stand-in for webhooks #109). null = unknown state, don't
+ *  write anything (incomplete, paused, …). */
+export function statusFromStripeSubscription(s: {
+  status: string;
+  trial_end?: number | null;
+}): { subscriptionStatus: "active" | "trialing" | "past_due" | "canceled"; trialEndsAt: Date | null } | null {
+  const trialEndsAt = s.trial_end ? new Date(s.trial_end * 1000) : null;
+  switch (s.status) {
+    case "active":
+      return { subscriptionStatus: "active", trialEndsAt };
+    case "trialing":
+      return { subscriptionStatus: "trialing", trialEndsAt };
+    case "past_due":
+    case "unpaid":
+      return { subscriptionStatus: "past_due", trialEndsAt };
+    case "canceled":
+    case "incomplete_expired":
+      return { subscriptionStatus: "canceled", trialEndsAt };
+    default:
+      return null;
+  }
+}
 
 /** Does this checkout session belong to this user? Confirm must refuse foreign
  *  session ids — a session id is not a capability. */
@@ -71,7 +135,10 @@ export function sessionBelongsTo(session: { metadata?: Record<string, string> | 
 }
 
 /** Map a completed session (+expanded subscription) to our User billing fields.
- *  Returns null unless the session is genuinely complete with a subscription. */
+ *  Returns null unless the session is complete AND its subscription is live
+ *  (trialing/active) — derived through the ONE Stripe→ours mapping below. A
+ *  Checkout session stays "complete" forever, so a canceled/past_due student
+ *  replaying an old session_id must get nothing written (#119 replay hole). */
 export function subscriptionFieldsFromSession(session: {
   status?: string | null;
   customer?: string | { id: string } | null;
@@ -82,10 +149,12 @@ export function subscriptionFieldsFromSession(session: {
   if (!sub || typeof sub === "string") return null;
   const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
   if (!customerId) return null;
+  const mapped = statusFromStripeSubscription(sub);
+  if (!mapped || (mapped.subscriptionStatus !== "trialing" && mapped.subscriptionStatus !== "active")) return null;
   return {
     stripeCustomerId: customerId,
     stripeSubscriptionId: sub.id,
-    subscriptionStatus: sub.status === "active" ? "active" : "trialing",
-    trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
+    subscriptionStatus: mapped.subscriptionStatus,
+    trialEndsAt: mapped.trialEndsAt,
   };
 }

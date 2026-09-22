@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { loadPlan } from "@/lib/plan";
 import { generateBriefing, DEFAULT_BRIEFING_INSTRUCTION } from "@/lib/briefing";
 import { getSetting, BRIEFING_PROMPT_KEY } from "@/lib/settings";
@@ -34,7 +34,7 @@ function cacheSet(key: string, text: string) {
 // returns `recommendations` (the deterministic logic); `text` is null whenever
 // the AI is unavailable, so the UI degrades gracefully.
 export async function GET(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const hoursRaw = new URL(req.url).searchParams.get("hours");

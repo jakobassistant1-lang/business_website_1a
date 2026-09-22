@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
 import { ymd } from "@/lib/calendarDates";
 import { round1 } from "@/lib/round";
@@ -19,7 +19,7 @@ const MAX = 200;
 // GET /api/dashboard-summary — { points, intensity }. `points` is [] when the
 // AI is unavailable; `intensity` ALWAYS resolves (deterministic fallback).
 export async function GET() {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const data = await loadCalendarData(user.id);

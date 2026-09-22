@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requirePageAccess } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
 import { studySessionsFor } from "@/lib/study";
 import { StudyTools } from "@/components/StudyTools";
@@ -10,12 +10,12 @@ export const dynamic = "force-dynamic";
 // cards or the "Study" buttons across the app. A test that isn't an upcoming
 // quiz/exam anymore (done, past due, unknown id) falls back to the hub.
 export default async function StudyToolsPage({ params }: { params: Promise<{ canvasId: string }> }) {
+  const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
   const { canvasId } = await params;
   const id = /^[0-9]+$/.test(canvasId) ? Number(canvasId) : null;
   if (id === null) redirect("/study");
 
-  const user = await getCurrentUser(); // (app)/layout guarantees auth
-  const data = await loadCalendarData(user!.id);
+  const data = await loadCalendarData(user.id);
   if (!data.connected) redirect("/study");
 
   // A study target is any active (not-done) quiz/exam — matching the hub's

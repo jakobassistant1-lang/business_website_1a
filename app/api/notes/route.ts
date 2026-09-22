@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { MAX_NOTES_PER_TEST, MAX_NOTE_CHARS, ownsAssessment } from "@/lib/studentNotes";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // GET /api/notes?canvasId= — the student's notes for one test. Includes `text` so
 // the UI's "View extracted text" disclosure needs no extra round-trip.
 export async function GET(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const canvasId = Number(new URL(req.url).searchParams.get("canvasId"));
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 // POST /api/notes — create a note from pasted (or reviewed-transcription) TEXT.
 // Body: { canvasId, title?, text, sourceKind?, imageCount? }
 export async function POST(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

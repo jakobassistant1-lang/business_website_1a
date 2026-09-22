@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
+import { requirePageAccess } from "@/lib/access";
 import { getSetting, BRIEFING_PROMPT_KEY, ANALYSIS_PROMPT_KEY, PERIOD_COACH_PROMPT_KEY, STUDY_PROMPT_KEYS } from "@/lib/settings";
 import { DEFAULT_BRIEFING_INSTRUCTION, DEFAULT_PERIOD_COACH_INSTRUCTION } from "@/lib/briefing";
 import { DEFAULT_ANALYSIS_INSTRUCTION } from "@/lib/analysis";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 // Admin-only AI settings (the /admin route group already gates non-admins).
 export default async function AiSettingsPage() {
+  await requirePageAccess(); // #119 gate, re-run per page (admins are exempt inside accessDecision)
   const admin = await getAdminUser();
   if (!admin) notFound();
 

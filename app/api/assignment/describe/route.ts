@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { itemType } from "@/lib/itemType";
 import { generateAssignmentDescription } from "@/lib/briefing";
@@ -15,7 +15,7 @@ const MAX = 300;
 // of the assignment. Prefers the stored AI summary; falls back to generating one.
 // Fails open: returns text=null whenever the AI is unavailable.
 export async function GET(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const id = Number(new URL(req.url).searchParams.get("id"));

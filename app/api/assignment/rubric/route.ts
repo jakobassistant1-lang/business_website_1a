@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 import { fetchAssignmentRubric, type CanvasRubricCriterion } from "@/lib/canvas";
@@ -15,7 +15,7 @@ const TTL_MS = 30 * 60_000;
 const MAX = 300;
 
 export async function GET(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const canvasId = Number(new URL(req.url).searchParams.get("id"));

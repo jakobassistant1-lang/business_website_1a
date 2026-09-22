@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth";
+import { requirePageAccess } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
 import { ymd } from "@/lib/calendarDates";
 import { CourseGrid } from "@/components/CourseGrid";
@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 // /courses — the by-class overview, promoted from a dashboard toggle to its own
 // discoverable surface. Cards link into each course's full list at /class/[id].
 export default async function CoursesPage() {
-  const user = await getCurrentUser(); // layout guarantees auth
-  const data = await loadCalendarData(user!.id);
+  const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
+  const data = await loadCalendarData(user.id);
 
   return (
     <div className="mx-auto max-w-7xl">

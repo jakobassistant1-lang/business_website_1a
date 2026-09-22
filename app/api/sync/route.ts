@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { runSync, type SyncResult } from "@/lib/sync";
 import { syncDecision, parseTrigger, type SyncMode } from "@/lib/syncPolicy";
@@ -50,7 +50,7 @@ function withDeadline(run: Promise<SyncResult>, fallback: SyncResult): Promise<S
 // browser — decides whether to run nothing, a quick submission refresh, or a full
 // sync (lib/syncPolicy), so a long-lived tab can't get stuck un-synced.
 export async function POST(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const trigger = parseTrigger(await req.json().catch(() => null));

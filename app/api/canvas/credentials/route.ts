@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { normalizeHost, apiBase, validateCredentials } from "@/lib/canvas";
 import { messageFor } from "@/lib/messages";
 import { encryptSecret } from "@/lib/crypto";
@@ -8,7 +8,7 @@ import { logEvent } from "@/lib/funnel";
 
 // FR-4: read the saved connection + its last status (for initial page state).
 export async function GET() {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const cred = await prisma.canvasCredential.findUnique({ where: { userId: user.id } });
@@ -26,7 +26,7 @@ export async function GET() {
 
 // FR-4/FR-5: save credentials (overwrite single record), then validate.
 export async function POST(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requirePageAccess } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { itemType } from "@/lib/itemType";
 import { ymd } from "@/lib/calendarDates";
@@ -11,10 +11,10 @@ export const dynamic = "force-dynamic";
 // "how to approach" + sub-steps, the Canvas description, and (best-effort) rubric.
 // The AI plan and the rubric are both fetched CLIENT-side (so neither blocks SSR).
 export default async function AssignmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
   const { id } = await params;
   const canvasId = Number(id);
-  const user = await getCurrentUser(); // layout guarantees auth
-  if (!user || !Number.isFinite(canvasId) || canvasId <= 0) notFound();
+  if (!Number.isFinite(canvasId) || canvasId <= 0) notFound();
 
   const a = await prisma.assignment.findUnique({ where: { userId_canvasId: { userId: user.id, canvasId } }, include: { course: true } });
   if (!a) notFound();

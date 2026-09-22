@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { decryptSecret } from "@/lib/crypto";
 import { isNotionConfigured, searchNotionPages, fetchNotionPageText } from "@/lib/notion";
 import { MAX_NOTES_PER_TEST, MAX_NOTE_CHARS, ownsAssessment } from "@/lib/studentNotes";
@@ -10,7 +10,7 @@ export const maxDuration = 60; // walking a large Notion page can take a few sec
 
 // GET /api/notes/notion?q= — Notion connection status + the user's pages (search).
 export async function GET(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isNotionConfigured()) return NextResponse.json({ ok: true, configured: false, connected: false });
 
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
 // POST /api/notes/notion — import a Notion page into a test's notes.
 // Body: { canvasId, pageId, title }
 export async function POST(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

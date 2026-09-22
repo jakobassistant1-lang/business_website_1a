@@ -37,6 +37,7 @@ export function useAutoSync(opts: { connected: boolean; syncedAt: string | null;
   const inFlight = useRef(false); // never overlap two runs from this tab
   const didMount = useRef(false);
   const hiddenAt = useRef<number | null>(null);
+  const bounced = useRef(false); // at most one hard reload per mount on a 401
 
   const run = useCallback(
     async (trigger: SyncTrigger, analyze: boolean) => {
@@ -49,7 +50,17 @@ export function useAutoSync(opts: { connected: boolean; syncedAt: string | null;
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ trigger }),
         });
-        if (res.status === 401) return; // session expired: the layout redirects to login on the next navigation — not a Canvas problem
+        if (res.status === 401) {
+          // Not a Canvas problem: the session is gone OR the account is now
+          // blocked by billing (#119 — past_due/canceled/unpaid). Client-side
+          // <Link> navigations don't re-run the (app) layout gate, so force one
+          // full load of / which re-runs it and lands on the right screen.
+          if (!bounced.current) {
+            bounced.current = true;
+            window.location.assign("/");
+          }
+          return;
+        }
         const body = res.ok ? ((await res.json().catch(() => null)) as SyncResponse | null) : null;
         if (!body || typeof body !== "object") {
           // 5xx / gateway timeout / unparseable: the sync didn't happen. Say so

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAdminUser } from "@/lib/admin";
+import { requirePageAccess } from "@/lib/access";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { loadKanbanTasks } from "@/lib/adminTasks";
 import { ensureOnboardingBacklogSeeded } from "@/lib/onboardingSeed";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 // (404); this re-resolves the user for their name (free — getCurrentUser is
 // request-cached) and keeps a defensive check.
 export default async function AdminPage() {
+  await requirePageAccess(); // #119 gate, re-run per page (admins are exempt inside accessDecision)
   const admin = await getAdminUser();
   if (!admin) notFound();
 

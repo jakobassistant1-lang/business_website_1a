@@ -33,6 +33,17 @@ describe("subscriptionFieldsFromSession", () => {
     expect(f?.subscriptionStatus).toBe("active");
     expect(f?.trialEndsAt).toBeNull();
   });
+  it("REPLAY GUARD (#119): a complete session whose subscription is no longer live writes nothing", () => {
+    // Checkout sessions stay "complete" forever; a canceled/past_due student
+    // re-sending an old session_id must not be handed "trialing".
+    for (const status of ["canceled", "past_due", "unpaid", "incomplete_expired", "incomplete", "paused"]) {
+      expect(subscriptionFieldsFromSession({ ...complete, subscription: { id: "sub_456", status, trial_end: null } })).toBeNull();
+    }
+  });
+  it("derives status through the ONE Stripe→ours mapping (trialing/active only)", () => {
+    expect(subscriptionFieldsFromSession({ ...complete, subscription: { id: "sub_456", status: "trialing", trial_end: null } })?.subscriptionStatus).toBe("trialing");
+    expect(subscriptionFieldsFromSession({ ...complete, subscription: { id: "sub_456", status: "active", trial_end: null } })?.subscriptionStatus).toBe("active");
+  });
   it("returns null for incomplete, unexpanded, or customer-less sessions", () => {
     expect(subscriptionFieldsFromSession({ ...complete, status: "open" })).toBeNull();
     expect(subscriptionFieldsFromSession({ ...complete, subscription: "sub_456" })).toBeNull();

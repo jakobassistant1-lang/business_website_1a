@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
-import { getSessionToken, requireUser } from "@/lib/auth";
+import { getSessionToken } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { appOrigin, buildAuthUrl, isGoogleConfigured, signState } from "@/lib/googleCalendar/auth";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 // GET — start the OAuth flow: set a CSRF state cookie, redirect to Google.
 export async function GET(req: Request) {
   const base = appOrigin(new URL(req.url).origin);
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.redirect(`${base}/login`);
   if (!isGoogleConfigured()) return NextResponse.redirect(`${base}/connections?google=unconfigured`);
 

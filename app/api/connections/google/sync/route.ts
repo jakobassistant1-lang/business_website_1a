@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { syncCalendar } from "@/lib/googleCalendar/calendar";
 import { CalendarError } from "@/lib/calendar/types";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // POST — re-sync the next 30 days of events. Returns a typed, known reason on
 // failure so the UI can recover gracefully (HTTP 200 except rate limits).
 export async function POST() {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const { synced } = await syncCalendar(user.id);

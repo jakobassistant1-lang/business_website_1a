@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { extractNoteText } from "@/lib/notesExtract";
 import { MAX_FILE_BYTES, MAX_NOTES_PER_TEST, MAX_NOTE_CHARS, ownsAssessment } from "@/lib/studentNotes";
 
@@ -13,7 +13,7 @@ const FAIL_STATUS: Record<string, number> = { unsupported: 415, empty: 422, scan
 
 // POST /api/notes/file — multipart { file, canvasId } → extract text → store.
 export async function POST(req: Request) {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const form = await req.formData().catch(() => null);

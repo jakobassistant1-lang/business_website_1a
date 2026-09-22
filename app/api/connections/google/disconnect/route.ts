@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 import { revokeToken } from "@/lib/googleCalendar/auth";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // POST — one-click disconnect: revoke the token at Google (best-effort), then
 // delete the connection (cascade removes the synced events).
 export async function POST() {
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const conn = await prisma.googleCalendarConnection.findUnique({ where: { userId: user.id } });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getSessionToken, requireUser } from "@/lib/auth";
+import { getSessionToken } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { appOrigin, exchangeCodeForTokens, fetchGoogleEmail, verifyState } from "@/lib/googleCalendar/auth";
 import { encryptSecret } from "@/lib/crypto";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const base = appOrigin(url.origin);
-  const user = await requireUser();
+  const user = await requireActiveUser();
   if (!user) return NextResponse.redirect(`${base}/login`);
 
   const code = url.searchParams.get("code");
