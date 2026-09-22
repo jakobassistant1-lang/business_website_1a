@@ -28,6 +28,10 @@ export default async function ConnectionsPage() {
           hasToken: !!cred,
           status: cred?.lastValidationStatus ?? null,
           accountName: cred?.accountName ?? null,
+          // Freshness line under the status chip (#13/#19 regression): the literal
+          // "last synced" time only survived in the retired PlanView.
+          syncedAt: cred?.syncedAt ? cred.syncedAt.toISOString() : null,
+          lastValidatedAt: cred?.lastValidatedAt ? cred.lastValidatedAt.toISOString() : null,
         }}
       />
       <Suspense fallback={null}>
