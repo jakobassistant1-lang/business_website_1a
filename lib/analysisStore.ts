@@ -14,9 +14,17 @@ import {
  * the results (effort + bucket + summary) back to the rows. Fails OPEN: on no
  * key / error nothing is written, rows stay on the flat-effort fallback. Steady
  * state (everything analyzed) makes ZERO Gemini calls — the content hash check
- * short-circuits before the network.
+ * short-circuits before the network (the `todo.length === 0` early return below).
+ *
+ * `remaining` (#129) is how many of this user's rows STILL need analysis after
+ * this batch, by the same `needsAnalysis` predicate that selected the work — one
+ * call only ever clears MAX_BATCH of them, so the client drains in bounded rounds
+ * until `done`. Rows the model didn't answer for stay counted (they are still
+ * un-analyzed), so the count never lies about the backlog.
  */
-export async function runAnalysis(userId: number): Promise<{ analyzed: number; skipped: number; ok: boolean }> {
+export async function runAnalysis(
+  userId: number,
+): Promise<{ analyzed: number; skipped: number; ok: boolean; remaining: number; done: boolean }> {
   const rows = await prisma.assignment.findMany({ where: { userId }, include: { course: true } });
 
   const analyzable: AnalyzableRow[] = rows.map((r) => ({
@@ -30,12 +38,16 @@ export async function runAnalysis(userId: number): Promise<{ analyzed: number; s
     analysisHash: r.analysisHash,
   }));
 
-  const todo = selectUnanalyzed(analyzable).slice(0, MAX_BATCH);
-  if (todo.length === 0) return { analyzed: 0, skipped: rows.length, ok: true };
+  const pending = selectUnanalyzed(analyzable);
+  const todo = pending.slice(0, MAX_BATCH);
+  // Nothing to do → answer the cheap, truthful "done" without touching Gemini.
+  if (todo.length === 0) return { analyzed: 0, skipped: rows.length, ok: true, remaining: 0, done: true };
 
   const instruction = (await getSetting(ANALYSIS_PROMPT_KEY)) || DEFAULT_ANALYSIS_INSTRUCTION;
   const res = await analyzeAssignments(todo, instruction);
-  if (!res.ok) return { analyzed: 0, skipped: rows.length, ok: false };
+  // AI unavailable → nothing written; the backlog is unchanged and the client's
+  // `analyzed === 0` check ends the drain (fail open, no retry storm).
+  if (!res.ok) return { analyzed: 0, skipped: rows.length, ok: false, remaining: pending.length, done: false };
 
   const inputById = new Map(todo.map((t) => [t.canvasId, t]));
   let analyzed = 0;
@@ -62,5 +74,6 @@ export async function runAnalysis(userId: number): Promise<{ analyzed: number; s
       /* skip a bad row, keep the batch going */
     }
   }
-  return { analyzed, skipped: rows.length - analyzed, ok: true };
+  const remaining = Math.max(0, pending.length - analyzed);
+  return { analyzed, skipped: rows.length - analyzed, ok: true, remaining, done: remaining === 0 };
 }

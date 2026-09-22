@@ -10,12 +10,40 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { syncDecision, type SyncTrigger } from "@/lib/syncPolicy";
+// The cap + the drain rule only — @/lib/analysisLoop has NO imports of its own,
+// so nothing server-side (node crypto, prisma, the Gemini fetch) reaches the bundle.
+import { MAX_ANALYZE_ROUNDS, shouldContinue, type AnalyzeRoundResponse } from "@/lib/analysisLoop";
 
 /** A tab hidden/unfocused for at least this long asks for a quick refresh when
  *  it comes back (long enough to have submitted something in Canvas). */
 const FOCUS_AFTER_HIDDEN_MS = 60_000;
 
 const UNREACHABLE = "Couldn't reach Canvas just now — showing the last good data.";
+
+/** Breather between drain rounds so a big backlog doesn't hammer the AI route. */
+const ANALYZE_ROUND_PAUSE_MS = 300;
+
+/** Drain the analysis backlog in BOUNDED rounds (#129). One POST analyzes one
+ *  batch (~40), so a returning user with a big backlog used to arrive at a plan
+ *  that was only partly ranked — and stayed that way until the next sync. Same
+ *  loop shape as FirstSyncProgress: at most MAX_ANALYZE_ROUNDS POSTs per page
+ *  visit, stopping as soon as the server says `done` / analyzed nothing. Any
+ *  non-OK response or thrown fetch ends it SILENTLY (fail-open, as before) — the
+ *  plan renders on flat-effort defaults, no warning, no retry storm. Never
+ *  refreshes the router itself: the ONE refresh is the caller's, after the loop. */
+async function drainAnalysis(): Promise<void> {
+  for (let round = 0; round < MAX_ANALYZE_ROUNDS; round++) {
+    let body: AnalyzeRoundResponse | null = null;
+    try {
+      const res = await fetch("/api/analyze", { method: "POST" });
+      body = res.ok ? ((await res.json().catch(() => null)) as AnalyzeRoundResponse | null) : null;
+    } catch {
+      return;
+    }
+    if (!shouldContinue(round, body)) return;
+    await new Promise((r) => setTimeout(r, ANALYZE_ROUND_PAUSE_MS));
+  }
+}
 
 interface SyncResponse {
   ok?: unknown;
@@ -44,6 +72,16 @@ export function useAutoSync(opts: { connected: boolean; syncedAt: string | null;
       if (inFlight.current) return;
       inFlight.current = true;
       setSyncing(true);
+      // Released exactly ONCE per run: either early (before the drain, see below)
+      // or in the finally. The guard matters — a later run may already own the
+      // flags by then, and this run's finally must not stop ITS spinner.
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        inFlight.current = false;
+        setSyncing(false);
+      };
       try {
         const res = await fetch("/api/sync", {
           method: "POST",
@@ -79,15 +117,20 @@ export function useAutoSync(opts: { connected: boolean; syncedAt: string | null;
         // Nothing new landed (server says fresh / joined a run / timed out) →
         // no analysis pass and no RSC re-render; the warning above still stands.
         if (body.skipped) return;
+        // The Canvas sync is DONE here — everything below is AI work. Free the
+        // button and the in-flight guard first: the drain can run ~75s worst case
+        // (6 rounds x a 12s Gemini call + pauses), and neither the Calendar's Sync
+        // spinner should spin that long nor a focus refresh be dropped meanwhile.
+        release();
         // Effort/summary analysis of anything new — only after a mount/manual
         // sync; a focus refresh is submissions-only and shouldn't spend an AI call.
-        if (analyze) await fetch("/api/analyze", { method: "POST" }).catch(() => {});
+        // Drains a backlog over several bounded rounds (#129), then ONE refresh.
+        if (analyze) await drainAnalysis();
         router.refresh();
       } catch {
         setWarning(UNREACHABLE); // network failure: cache stays on screen (FR-7)
       } finally {
-        inFlight.current = false;
-        setSyncing(false);
+        release();
       }
     },
     [router],

@@ -9,6 +9,11 @@ import { geminiPost, salvageJsonObjects, GEMINI_URL, geminiKey } from "./geminiF
 const TIMEOUT_MS = 12000;
 export const MAX_BATCH = 40;
 
+// The bounded client drain (#129) lives in its own dependency-free module so the
+// "use client" components can import the cap WITHOUT pulling this file's node
+// `crypto` import into the browser bundle. Re-exported here for server callers.
+export { MAX_ANALYZE_ROUNDS, shouldContinue, type AnalyzeRoundResponse } from "./analysisLoop";
+
 // Editable from /admin/ai (stored under ANALYSIS_PROMPT_KEY); this is the fallback.
 export const DEFAULT_ANALYSIS_INSTRUCTION =
   "You are Navo's workload estimator. For EACH assignment given, estimate how long a typical " +

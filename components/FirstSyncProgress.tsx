@@ -8,6 +8,7 @@
 // of #129). Failure paths stay honest: sync errors show guidance + retry; AI
 // errors don't block (the plan renders with defaults — fail-open by design).
 import { useEffect, useRef, useState } from "react";
+import { MAX_ANALYZE_ROUNDS, shouldContinue, type AnalyzeRoundResponse } from "@/lib/analysisLoop";
 
 type Stage = "sync" | "analyze" | "plan";
 const LABELS: Record<Stage, string> = {
@@ -16,7 +17,10 @@ const LABELS: Record<Stage, string> = {
   plan: "Building your plan",
 };
 const ORDER: Stage[] = ["sync", "analyze", "plan"];
-const MAX_ANALYZE_ROUNDS = 6; // 6 × 40 assignments — bounded, never spins forever
+// The cap AND the stop rule live in lib/analysisLoop (#129) — one rule, two call
+// sites (here and useAutoSync). This loop is the first-run one: no pause between
+// rounds (the user is watching a spinner) and no refresh at the end (it hard-
+// navigates to the dashboard instead).
 
 export function FirstSyncProgress() {
   const [stage, setStage] = useState<Stage>("sync");
@@ -42,9 +46,11 @@ export function FirstSyncProgress() {
         }
         setStage("analyze");
         for (let i = 0; i < MAX_ANALYZE_ROUNDS; i++) {
-          const a = await fetch("/api/analyze", { method: "POST" }).then((r) => r.json()).catch(() => null);
+          const a: AnalyzeRoundResponse | null = await fetch("/api/analyze", { method: "POST" })
+            .then((r) => r.json())
+            .catch(() => null);
           if (cancelled) return;
-          if (!a?.ok || !a?.analyzed) break; // done, or AI unavailable → fail open
+          if (!shouldContinue(i, a)) break; // done / nothing analyzed / AI unavailable → fail open
         }
         setStage("plan");
         // The dashboard auto-syncs once per browser session — we just did that
