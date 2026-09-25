@@ -86,6 +86,54 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+/* === PHONE / TOUCH FOUNDATIONS (ticket #39, docs/mobile-ux-plan.md §4) === */
+html {
+  -webkit-text-size-adjust: 100%; /* iOS: no auto text inflation on rotate */
+}
+button,
+a {
+  touch-action: manipulation; /* no 300ms double-tap-zoom delay on taps */
+}
+/* iOS Safari zooms the page when a focused control's text is under 16px. Below
+   `md` every text control renders at 16px — `!important` so a `text-sm`/`text-xs`
+   utility on the element can't reintroduce the zoom. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea,
+  .field {
+    font-size: 16px !important;
+  }
+}
+/* `hover-reveal`: convention for controls that today hide behind
+   `opacity-0 hover:opacity-100` / `group-hover:opacity-100` — add this class too
+   so devices with no hover (touch) always show them. Kept outside @layer so it
+   is emitted even before any component uses it. */
+@media (hover: none) {
+  .hover-reveal {
+    opacity: 1;
+  }
+}
+/* Shared modal surface (components/Sheet.tsx): slides up as a bottom sheet on
+   phones, fades in as a dialog at md+. Both are skipped under reduced motion. */
+@keyframes sheetUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes sheetFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.sheet-backdrop { animation: sheetFade var(--dur-base) var(--ease-out) both; }
+.sheet-panel    { animation: sheetUp var(--dur-slow) var(--ease-out) both; }
+@media (min-width: 768px) {
+  .sheet-panel { animation-name: sheetFade; animation-duration: var(--dur-base); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-backdrop,
+  .sheet-panel { animation: none; }
+}
+
 /* Subtle ambient gradient for auth screens (violet glow on the canvas). */
 .auth-bg {
   background:
@@ -118,6 +166,17 @@ body {
   }
 }
 
+@layer utilities {
+  /* Minimum touch target (Apple HIG 44pt). Put on every phone-tappable control. */
+  .tap {
+    @apply min-h-11 min-w-11;
+  }
+  /* Bottom safe-area (iPhone home indicator) for fixed bottom surfaces. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 /* When Canvas reports an assignment submitted, its row flashes the accent and
    then settles into the grey "done" state (paired with .animate-done-glow). */
 @keyframes doneGlow {
@@ -142,7 +201,7 @@ body {
   border: 1px solid rgb(var(--line) / 0.7);
   border-radius: 0.875rem;
   box-shadow: var(--shadow-demo);
-  max-width: 320px;
+  max-width: min(320px, calc(100vw - 32px));
   animation: spDemoPop var(--dur-base) var(--ease-out) both;
 }
 @keyframes spDemoPop { from { opacity: 0; } to { opacity: 1; } }
