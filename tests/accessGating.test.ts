@@ -119,6 +119,7 @@ const ALLOWLIST = ["app/api/auth/", "app/api/billing/", "app/api/onboarding/", "
  *  added here deliberately — it cannot inherit the exemption by location. */
 const ALLOWLISTED_FILES = [
   "app/api/account/route.ts",
+  "app/api/account/email-preview/route.ts", // own-inbox preview send; a blocked user may still preview
   "app/api/admin/analysis-prompt/route.ts",
   "app/api/admin/billing-health/route.ts",
   "app/api/admin/briefing-prompt/route.ts",
