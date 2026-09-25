@@ -5,7 +5,7 @@
 // and only throws if a billing call is actually attempted without configuration.
 import Stripe from "stripe";
 import { prisma } from "./prisma";
-import { isBillingFlagOn, TRIAL_DAYS, needsCheckout, type SubscriptionStatus } from "./subscription";
+import { isBillingFlagOn, TRIAL_DAYS, needsCheckout, isTrialing, type SubscriptionStatus } from "./subscription";
 import type { FunnelEventName } from "./funnel";
 
 let client: Stripe | null = null;
@@ -229,15 +229,24 @@ export type WebhookOutcome = {
   }>;
   funnel?: FunnelEventName;
   ignored?: string;
+  /** A transactional email the route should fire-and-forget (#121): no data
+   *  write, just a send. Only "trial_ending" exists today. */
+  email?: "trial_ending";
 };
 
 /** What the route already knows when it applies an event: the user row the
  *  event resolved to (null = not found) and, for event types whose object
  *  carries only a subscription id, the retrieved subscription. */
 export type WebhookContext = {
-  user: { id: number; stripeSubscriptionId: string | null; subscriptionStatus: string | null } | null;
+  user: { id: number; stripeSubscriptionId: string | null; subscriptionStatus: string | null; cancelAtPeriodEnd?: boolean | null } | null;
   subscription?: StripeSubscriptionShape | null;
+  /** Epoch ms "now" for time-sensitive rules (trial_will_end); defaults to Date.now(). */
+  now?: number;
 };
+
+/** The trial-ending email is pointless (and misleading) once the end is this
+ *  close: a trial ended immediately, or the event arrived late. */
+export const TRIAL_ENDING_MIN_LEAD_MS = 24 * 60 * 60 * 1000;
 
 /** Event types the route RETRIEVES the subscription for before mapping. Never
  *  map a status from an event snapshot: webhooks arrive out of order, and a
@@ -387,8 +396,28 @@ export function outcomeFromEvent(event: WebhookEvent, ctx: WebhookContext = { us
       return { ...base, data: { ...mapped, ...periodFields(sub) }, funnel: transitionFunnel(user.subscriptionStatus, mapped.subscriptionStatus) };
     }
 
-    case "customer.subscription.trial_will_end":
-      return { ...base, ignored: "trial_will_end (handled by #121)", funnel: undefined };
+    case "customer.subscription.trial_will_end": {
+      // #121: the trial-ending email. Writes NOTHING — the status flip comes
+      // from `updated`/`invoice.paid` at the real trial end. The date in the
+      // email is read from the event SNAPSHOT (`trial_end`), not a retrieval:
+      // it is informational copy, no status is mapped from it, and a trial's
+      // end does not move between Stripe firing this event (3 days out) and
+      // us receiving it — so the extra Stripe call buys nothing and this type
+      // deliberately stays out of EVENTS_NEEDING_SUBSCRIPTION.
+      const sub = o as StripeSubscriptionShape;
+      if (user?.stripeSubscriptionId && user.stripeSubscriptionId !== sub.id) return ignore("trial_will_end: not the subscription on file");
+      // Only a trialing account gets it (isTrialing — never a raw comparison).
+      if (!isTrialing(user?.subscriptionStatus)) return ignore("trial_will_end: account is not trialing");
+      // Already canceled at period end (DB or the event itself) → nothing will
+      // be charged, so a "here's what you'll be charged" email would be false.
+      if (user?.cancelAtPeriodEnd || sub.cancel_at_period_end === true) return ignore("trial_will_end: cancel already scheduled");
+      // No email after the fact: without a trial_end there is no honest date,
+      // and inside the last 24h (trial ended immediately, or a late delivery)
+      // "ends in a few days" would already be false.
+      if (!sub.trial_end) return ignore("trial_will_end: no trial_end on the event");
+      if (sub.trial_end * 1000 - (ctx.now ?? Date.now()) < TRIAL_ENDING_MIN_LEAD_MS) return ignore("trial_will_end: too close to the end");
+      return { ...base, data: {}, email: "trial_ending" };
+    }
 
     default:
       return ignore(`unhandled event type: ${event.type}`);

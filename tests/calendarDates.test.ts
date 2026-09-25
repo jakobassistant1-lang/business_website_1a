@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { weekStart, monthGrid, rangeForView, daysInMonth, ymd, addDays, relativeDay } from "@/lib/calendarDates";
+import { weekStart, monthGrid, rangeForView, daysInMonth, ymd, addDays, relativeDay, formatDateHuman, formatDateTimeHuman } from "@/lib/calendarDates";
 
 describe("calendarDates", () => {
   it("weekStart returns the Monday on/before the date", () => {
@@ -47,5 +47,19 @@ describe("relativeDay", () => {
 
   it("clamps a future post to Today", () => {
     expect(relativeDay(iso(2026, 5, 26), today)).toBe("Today");
+  });
+});
+
+describe("formatDateTimeHuman — the exact billing cutoff (America/New_York, en-US)", () => {
+  it("renders weekday, month, day, then the time with an ET label", () => {
+    // 2025-10-10T06:00:00Z is 2:00 AM EDT — the date alone would already be wrong for a Pacific student.
+    expect(formatDateTimeHuman(Date.UTC(2025, 9, 10, 6, 0))).toBe("Friday, October 10 at 2:00 AM ET");
+    expect(formatDateTimeHuman(new Date(1_760_000_000 * 1000))).toBe("Thursday, October 9 at 4:53 AM ET");
+  });
+  it("agrees with formatDateHuman on the day (same zone) and accepts a Date, an ISO string or epoch ms", () => {
+    const d = new Date("2025-01-15T04:30:00Z"); // 11:30 PM EST on the 14th
+    expect(formatDateTimeHuman(d)).toBe("Tuesday, January 14 at 11:30 PM ET");
+    expect(formatDateTimeHuman(d)).toContain(formatDateHuman(d, { weekday: true }));
+    expect(formatDateTimeHuman(d.toISOString())).toBe(formatDateTimeHuman(d.getTime()));
   });
 });

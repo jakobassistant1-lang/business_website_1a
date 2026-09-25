@@ -3,7 +3,9 @@ import { requireUser } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { appOrigin } from "@/lib/appUrl";
 import { rateLimit } from "@/lib/rateLimit";
+import { TRIAL_DAYS } from "@/lib/subscription";
 import { welcomeEmail, firstNameOf, type BuiltEmail } from "@/lib/welcomeEmail";
+import { trialEndingEmail, trialEndingPrice } from "@/lib/trialEndingEmail";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +16,23 @@ export const dynamic = "force-dynamic";
 // this can't be used as an open relay. Plain requireUser (allowlisted in
 // tests/accessGating.test.ts): a blocked user may still preview to their own inbox.
 // No funnel event — a preview is not a real welcome.
+//
+// Templates: "welcome" (#50) and "trial_ending" (#121). The trial-ending preview
+// uses the previewer's own trialEndsAt when set, else now + TRIAL_DAYS, and the
+// same Stripe price read (with the same neutral fallback) as the real send; the
+// builder formats the cutoff (date + time + zone) exactly as the webhook send does.
 
-const TEMPLATES: Record<string, (user: { fullName: string | null }, origin: string) => BuiltEmail> = {
+type PreviewUser = { fullName: string | null; trialEndsAt?: Date | null };
+
+const TEMPLATES: Record<string, (user: PreviewUser, origin: string) => BuiltEmail | Promise<BuiltEmail>> = {
   welcome: (user, origin) => welcomeEmail({ firstName: firstNameOf(user.fullName), appUrl: appOrigin(origin) }),
+  trial_ending: async (user, origin) =>
+    trialEndingEmail({
+      firstName: firstNameOf(user.fullName),
+      price: await trialEndingPrice(),
+      trialEnd: user.trialEndsAt ?? new Date(Date.now() + TRIAL_DAYS * 86_400_000),
+      appUrl: appOrigin(origin),
+    }),
 };
 
 export async function POST(req: Request) {
@@ -36,7 +52,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { subject, html, text } = build(user, new URL(req.url).origin);
+  const { subject, html, text } = await build(user, new URL(req.url).origin);
   const { ok } = await sendEmail({ to: user.email, subject, text, html });
   return NextResponse.json({ ok, to: user.email, subject });
 }

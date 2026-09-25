@@ -17,9 +17,11 @@ vi.mock("@/lib/stripe", async (importOriginal) => {
   return { ...real, stripe: vi.fn(), createPortalSession: vi.fn() };
 });
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }));
+vi.mock("@/lib/trialEndingEmail", () => ({ sendTrialEndingEmail: vi.fn(async () => undefined) }));
 
 import { prisma } from "@/lib/prisma";
-import { stripe, createPortalSession, outcomeFromEvent, subjectFromEvent, portalReturnUrl, reconcileBillingFields, EVENTS_NEEDING_SUBSCRIPTION, type WebhookEvent } from "@/lib/stripe";
+import { sendTrialEndingEmail } from "@/lib/trialEndingEmail";
+import { stripe, createPortalSession, outcomeFromEvent, subjectFromEvent, portalReturnUrl, reconcileBillingFields, EVENTS_NEEDING_SUBSCRIPTION, TRIAL_ENDING_MIN_LEAD_MS, type WebhookEvent } from "@/lib/stripe";
 import { requireUser } from "@/lib/auth";
 import { billingCardState, canManageBilling, SUBSCRIPTION_STATUSES } from "@/lib/subscription";
 import { POST as webhookPOST } from "@/app/api/billing/webhook/route";
@@ -33,6 +35,7 @@ const vEvCreate = prisma.stripeEvent.create as unknown as Fn;
 const vEvDelete = prisma.stripeEvent.delete as unknown as Fn;
 const vFind = prisma.user.findUnique as unknown as Fn;
 const vUpdate = prisma.user.update as unknown as Fn;
+const vTrialEmail = sendTrialEndingEmail as unknown as Fn;
 
 const T = 1_760_000_000; // a unix timestamp
 const ev = (type: string, object: Record<string, unknown>, previous_attributes?: Record<string, unknown>): WebhookEvent => ({
@@ -224,11 +227,55 @@ describe("outcomeFromEvent — the event → outcome table", () => {
     expect(outcomeFromEvent(ev("invoice.paid", invoice()), { user: onFile("trialing", "sub_other"), subscription: sub() }).ignored).toMatch(/does not match/);
   });
 
-  it("customer.subscription.trial_will_end → no status change, funnel undefined, ignored 'handled by #121'", () => {
-    const o = outcomeFromEvent(ev("customer.subscription.trial_will_end", sub({ status: "trialing" })), { user: onFile("trialing") });
+  // #121: trial_will_end writes nothing; it asks the route for the trial-ending email.
+  // Stripe fires it 3 days before trial_end, so "now" is pinned 3 days before T.
+  const NOW = (T - 3 * 86_400) * 1000;
+  const twe = (over: Record<string, unknown> = {}) => ev("customer.subscription.trial_will_end", sub({ status: "trialing", trial_end: T, ...over }));
+  it("customer.subscription.trial_will_end for a trialing account → no data write, no funnel, email: trial_ending", () => {
+    const o = outcomeFromEvent(twe(), { user: onFile("trialing"), now: NOW });
+    expect(o.ignored).toBeUndefined();
     expect(o.data).toEqual({});
     expect(o.funnel).toBeUndefined();
-    expect(o.ignored).toBe("trial_will_end (handled by #121)");
+    expect(o.email).toBe("trial_ending");
+  });
+  it("trial_will_end when a cancel is already scheduled (DB flag OR the event's cancel_at_period_end) → ignored, no email", () => {
+    expect(outcomeFromEvent(twe(), { user: { ...onFile("trialing"), cancelAtPeriodEnd: true }, now: NOW }).ignored).toBe("trial_will_end: cancel already scheduled");
+    expect(outcomeFromEvent(twe({ cancel_at_period_end: true }), { user: onFile("trialing"), now: NOW }).ignored).toBe("trial_will_end: cancel already scheduled");
+    expect(outcomeFromEvent(twe({ cancel_at_period_end: true }), { user: onFile("trialing"), now: NOW }).email).toBeUndefined();
+  });
+  it("trial_will_end for a non-trialing account (active, past_due, canceled, none, grandfathered, unknown) → ignored, no email", () => {
+    for (const s of ["active", "past_due", "canceled", "none", "grandfathered", "weird"]) {
+      const o = outcomeFromEvent(twe(), { user: onFile(s), now: NOW });
+      expect(o.ignored).toBe("trial_will_end: account is not trialing");
+      expect(o.email).toBeUndefined();
+      expect(o.data).toEqual({});
+    }
+    expect(outcomeFromEvent(twe(), { user: null, now: NOW }).ignored).toBe("trial_will_end: account is not trialing"); // no user context at all
+  });
+  it("trial_will_end for a subscription that is not the one on file → ignored", () => {
+    expect(outcomeFromEvent(twe({ id: "sub_old" }), { user: onFile("trialing", "sub_new"), now: NOW }).ignored).toBe("trial_will_end: not the subscription on file");
+  });
+  it("trial_will_end inside the last 24h (trial ended immediately, or a late delivery) → ignored 'too close to the end'; exactly 24h out still sends", () => {
+    expect(TRIAL_ENDING_MIN_LEAD_MS).toBe(24 * 60 * 60 * 1000);
+    const lastDay = T * 1000 - TRIAL_ENDING_MIN_LEAD_MS + 1;
+    expect(outcomeFromEvent(twe(), { user: onFile("trialing"), now: lastDay }).ignored).toBe("trial_will_end: too close to the end");
+    expect(outcomeFromEvent(twe(), { user: onFile("trialing"), now: T * 1000 }).ignored).toBe("trial_will_end: too close to the end"); // ended right now
+    expect(outcomeFromEvent(twe(), { user: onFile("trialing"), now: (T + 3600) * 1000 }).ignored).toBe("trial_will_end: too close to the end"); // already over
+    expect(outcomeFromEvent(twe(), { user: onFile("trialing"), now: T * 1000 - TRIAL_ENDING_MIN_LEAD_MS }).email).toBe("trial_ending");
+  });
+  it("trial_will_end without a trial_end on the event → ignored (no honest date to print); `now` defaults to the wall clock", () => {
+    expect(outcomeFromEvent(twe({ trial_end: null }), { user: onFile("trialing"), now: NOW }).ignored).toBe("trial_will_end: no trial_end on the event");
+    // T (Oct 2025) is in the past for the real clock → the guard trips without an explicit now.
+    expect(outcomeFromEvent(twe(), { user: onFile("trialing") }).ignored).toBe("trial_will_end: too close to the end");
+    const future = Math.floor(Date.now() / 1000) + 3 * 86_400;
+    expect(outcomeFromEvent(twe({ trial_end: future }), { user: onFile("trialing") }).email).toBe("trial_ending");
+  });
+  it("trial_will_end never needs a Stripe retrieval — the snapshot's trial_end is the date", () => {
+    expect(EVENTS_NEEDING_SUBSCRIPTION.has("customer.subscription.trial_will_end")).toBe(false);
+  });
+  it("no other outcome carries an email", () => {
+    expect(outcomeFromEvent(ev("customer.subscription.updated", sub()), { user: onFile("active"), subscription: sub() }).email).toBeUndefined();
+    expect(outcomeFromEvent(ev("customer.subscription.deleted", sub({ status: "canceled" })), { user: onFile("active") }).email).toBeUndefined();
   });
   it("any other event type → ignored", () => {
     for (const type of ["charge.succeeded", "customer.created", "payment_intent.succeeded", "invoice.finalized"]) {
@@ -362,10 +409,92 @@ describe("POST /api/billing/webhook", () => {
     expect(vUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ subscriptionStatus: "trialing", stripeSubscriptionId: "sub_1" }) }));
   });
   it("ignored outcomes answer 200 with the reason and write nothing", async () => {
-    constructEvent.mockReturnValue(ev("customer.subscription.trial_will_end", sub({ status: "trialing" })));
+    constructEvent.mockReturnValue(ev("invoice.finalized", { customer: "cus_1" }));
     vFind.mockResolvedValue(onFile("trialing"));
-    expect(await (await post("{}")).json()).toEqual({ received: true, ignored: "trial_will_end (handled by #121)" });
+    expect(await (await post("{}")).json()).toEqual({ received: true, ignored: "unhandled event type: invoice.finalized" });
     expect(vUpdate).not.toHaveBeenCalled();
+    expect(vTrialEmail).not.toHaveBeenCalled();
+  });
+
+  // --- #121: the trial-ending email ---
+  const trialUser = (over: Record<string, unknown> = {}) => ({
+    ...onFile("trialing"),
+    email: "ada@school.test",
+    fullName: "Ada Lovelace",
+    cancelAtPeriodEnd: false,
+    trialEndsAt: new Date(T * 1000),
+    ...over,
+  });
+  // The route judges "too close to the end" against the wall clock, so the event's trial_end must be in the future.
+  const T_FUTURE = Math.floor(Date.now() / 1000) + 3 * 86_400;
+  const trialWillEnd = (over: Record<string, unknown> = {}) => ev("customer.subscription.trial_will_end", sub({ status: "trialing", trial_end: T_FUTURE, ...over }));
+
+  it("trial_will_end for a trialing user → exactly one AWAITED trial-ending send (user + event snapshot + request origin + event meta), no write, no retrieval, 200", async () => {
+    constructEvent.mockReturnValue(trialWillEnd());
+    vFind.mockResolvedValue(trialUser());
+    let settled = false;
+    vTrialEmail.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      settled = true;
+    });
+    const res = await post("{}");
+    expect(settled).toBe(true); // the response waited for the send — a frozen `void` would lose it
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true, email: "trial_ending" });
+    expect(vTrialEmail).toHaveBeenCalledTimes(1);
+    const [user, snapshot, origin, meta] = vTrialEmail.mock.calls[0] as [Record<string, unknown>, Record<string, unknown>, string, Record<string, unknown>];
+    expect(user).toEqual(expect.objectContaining({ id: 7, email: "ada@school.test", fullName: "Ada Lovelace" }));
+    expect(snapshot).toEqual(expect.objectContaining({ id: "sub_1", trial_end: T_FUTURE }));
+    expect(origin).toBe("http://x");
+    expect(meta).toEqual({ eventId: "evt_1", type: "customer.subscription.trial_will_end", source: "webhook" });
+    expect(vUpdate).not.toHaveBeenCalled();
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(prisma.funnelEvent.create).not.toHaveBeenCalled(); // the sender logs trial_ending_sent itself, only on ok
+  });
+  it("trial_will_end whose trial_end is already within 24h (or past) → no send, 200 ignored", async () => {
+    constructEvent.mockReturnValue(trialWillEnd({ trial_end: T }));
+    vFind.mockResolvedValue(trialUser());
+    expect(await (await post("{}")).json()).toEqual({ received: true, ignored: "trial_will_end: too close to the end" });
+    expect(vTrialEmail).not.toHaveBeenCalled();
+  });
+  it("trial_will_end loads the user with the fields the email needs (email, fullName, cancelAtPeriodEnd, trialEndsAt)", async () => {
+    constructEvent.mockReturnValue(trialWillEnd());
+    vFind.mockResolvedValue(trialUser());
+    await post("{}");
+    expect(vFind).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ email: true, fullName: true, cancelAtPeriodEnd: true, trialEndsAt: true, subscriptionStatus: true }) }),
+    );
+  });
+  it("trial_will_end for a user who already scheduled a cancel → no send, 200 ignored", async () => {
+    constructEvent.mockReturnValue(trialWillEnd());
+    vFind.mockResolvedValue(trialUser({ cancelAtPeriodEnd: true }));
+    const res = await post("{}");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true, ignored: "trial_will_end: cancel already scheduled" });
+    expect(vTrialEmail).not.toHaveBeenCalled();
+    expect(vUpdate).not.toHaveBeenCalled();
+  });
+  it("trial_will_end for a non-trialing user → no send, 200 ignored", async () => {
+    constructEvent.mockReturnValue(trialWillEnd());
+    vFind.mockResolvedValue(trialUser({ subscriptionStatus: "active" }));
+    const res = await post("{}");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true, ignored: "trial_will_end: account is not trialing" });
+    expect(vTrialEmail).not.toHaveBeenCalled();
+  });
+  it("duplicate delivery of trial_will_end → no second send (the StripeEvent id gate)", async () => {
+    constructEvent.mockReturnValue(trialWillEnd());
+    vFind.mockResolvedValue(trialUser());
+    expect(await (await post("{}")).json()).toEqual({ received: true, email: "trial_ending" });
+    vEvCreate.mockRejectedValue(Object.assign(new Error("Unique constraint failed"), { code: "P2002" }));
+    expect(await (await post("{}")).json()).toEqual({ received: true, duplicate: true });
+    expect(vTrialEmail).toHaveBeenCalledTimes(1);
+  });
+  it("trial_will_end for an unknown user → no send", async () => {
+    constructEvent.mockReturnValue(trialWillEnd());
+    vFind.mockResolvedValue(null);
+    expect(await (await post("{}")).json()).toEqual({ received: true, ignored: "user not found" });
+    expect(vTrialEmail).not.toHaveBeenCalled();
   });
   it("processing crash → 500 { error: processing_failed } AND the StripeEvent row is removed, so Stripe's retry reprocesses (nothing silently lost)", async () => {
     constructEvent.mockReturnValue(ev("customer.subscription.updated", sub()));
@@ -416,6 +545,16 @@ describe("grep guard: the webhook route's trust boundary", () => {
     expect(/subscriptionStatus\s*[!=:]==?/.test(src)).toBe(false);
     expect(src.includes('"past_due"')).toBe(false);
     expect(src.includes('"canceled"')).toBe(false);
+    expect(src.includes('"trialing"')).toBe(false);
+  });
+  it("AWAITS the trial-ending email (never `void`: the StripeEvent row is already committed, so a send frozen after the response is lost for good)", () => {
+    expect(src.includes("await sendTrialEndingEmail(")).toBe(true);
+    expect(src.includes("void sendTrialEndingEmail(")).toBe(false);
+  });
+  it("AWAITS every funnel insert (no `void logEvent` — a detached insert is dropped when the function freezes after the response)", () => {
+    expect(/void\s+logEvent\(/.test(src)).toBe(false);
+    expect(src.includes("await logEvent(")).toBe(true);
+    expect(src.match(/logEvent\(/g)?.length).toBe(1); // the one funnel call; the email logs its own inside the sender
   });
 });
 

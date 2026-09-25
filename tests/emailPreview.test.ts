@@ -7,30 +7,42 @@ import { readFileSync } from "fs";
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }));
 vi.mock("@/lib/email", () => ({ sendEmail: vi.fn(async () => ({ ok: true })) }));
 vi.mock("@/lib/funnel", () => ({ logEvent: vi.fn(async () => undefined) }));
+vi.mock("@/lib/stripe", () => ({ priceDisplay: vi.fn(async () => "$4.99/month") }));
 
 import { requireUser } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { logEvent } from "@/lib/funnel";
+import { priceDisplay } from "@/lib/stripe";
 import { WELCOME_SUBJECT } from "@/lib/welcomeEmail";
+import { trialEndingSubject, TRIAL_ENDING_PRICE_FALLBACK } from "@/lib/trialEndingEmail";
+import { formatDateTimeHuman } from "@/lib/calendarDates";
+import { TRIAL_DAYS } from "@/lib/subscription";
 import { POST } from "@/app/api/account/email-preview/route";
 
 type Fn = ReturnType<typeof vi.fn>;
 const authed = requireUser as unknown as Fn;
 const send = sendEmail as unknown as Fn;
 const log = logEvent as unknown as Fn;
+const price = priceDisplay as unknown as Fn;
 
 const APP = "https://app.navolearning.test";
 const ROUTE = "app/api/account/email-preview/route.ts";
+const PRICE = "$4.99/month";
+const T = 1_760_000_000; // → "Thursday, October 9" in the billing time zone
 
-const userOf = (id: number) => ({ id, email: `student${id}@example.edu`, fullName: "Ada Lovelace" });
+const userOf = (id: number, over: { trialEndsAt?: Date | null } = {}) => ({ id, email: `student${id}@example.edu`, fullName: "Ada Lovelace", ...over });
 
 const post = (body: unknown) =>
   POST(new Request("http://x/api/account/email-preview", { method: "POST", body: JSON.stringify(body) }));
+
+/** The one message the mocked sender was handed. */
+const sent = () => send.mock.calls[0][0] as { to: string; subject: string; text: string; html?: string };
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("APP_URL", APP);
   send.mockResolvedValue({ ok: true });
+  price.mockResolvedValue(PRICE);
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -68,6 +80,53 @@ describe("POST /api/account/email-preview", () => {
     expect(msg.text).toContain(`${APP}/`);
     expect(msg.html).toContain(`href="${APP}/"`);
     expect(log).not.toHaveBeenCalled(); // a preview is not a real welcome
+  });
+
+  it("trial_ending: sends the production template with the previewer's own trialEndsAt and the Stripe price", async () => {
+    const u = userOf(110, { trialEndsAt: new Date(T * 1000) });
+    authed.mockResolvedValue(u);
+    const res = await post({ template: "trial_ending" });
+    expect(res.status).toBe(200);
+    const subject = trialEndingSubject(u.trialEndsAt as Date);
+    expect(subject).toBe("Your Navo trial ends Thursday, October 9 — here's what happens next");
+    expect(await res.json()).toEqual({ ok: true, to: u.email, subject });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(sent().to).toBe(u.email);
+    expect(sent().subject).toBe(subject);
+    expect(sent().text).toContain("Hi Ada,");
+    expect(sent().text).toContain("Your free Navo trial ends Thursday, October 9 at 4:53 AM ET."); // the exact cutoff, via formatDateTimeHuman
+    expect(sent().text).toContain(PRICE);
+    expect(sent().html).toContain(`href="${APP}/dashboard"`);
+    expect(sent().html).toContain(`href="${APP}/account"`);
+    expect(price).toHaveBeenCalledTimes(1);
+    expect(log).not.toHaveBeenCalled(); // a preview is not a real send
+  });
+
+  it("trial_ending: without a trialEndsAt on file the cutoff is now + TRIAL_DAYS", async () => {
+    authed.mockResolvedValue(userOf(111, { trialEndsAt: null }));
+    const before = Date.now();
+    const res = await post({ template: "trial_ending" });
+    expect(res.status).toBe(200);
+    const expectedEnd = before + TRIAL_DAYS * 86_400_000;
+    expect((await res.json()).subject).toBe(trialEndingSubject(expectedEnd));
+    // The minute may tick between `before` and the route's Date.now(); accept either rendering.
+    const cutoffs = [formatDateTimeHuman(expectedEnd), formatDateTimeHuman(Date.now() + TRIAL_DAYS * 86_400_000)];
+    expect(cutoffs.some((c) => sent().text.includes(`Your free Navo trial ends ${c}.`))).toBe(true);
+  });
+
+  it("trial_ending: Stripe unreachable → the neutral price fallback, still sends", async () => {
+    price.mockRejectedValue(new Error("stripe down"));
+    authed.mockResolvedValue(userOf(112, { trialEndsAt: new Date(T * 1000) }));
+    const res = await post({ template: "trial_ending" });
+    expect(res.status).toBe(200);
+    expect(sent().text).toContain(TRIAL_ENDING_PRICE_FALLBACK);
+    expect(sent().text).not.toMatch(/\$\s?\d/);
+  });
+
+  it("welcome never reads the price (no Stripe call for a template that has no price)", async () => {
+    authed.mockResolvedValue(userOf(113));
+    await post({ template: "welcome" });
+    expect(price).not.toHaveBeenCalled();
   });
 
   it("reports ok:false when the provider fails", async () => {

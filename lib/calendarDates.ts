@@ -28,6 +28,15 @@ export function formatDateHuman(d: Date | string | number, opts: { weekday?: boo
   });
 }
 
+/** An exact billing cutoff the student reads ("Friday, October 10 at 2:00 AM ET")
+ *  — for moments where the DATE alone is unsafe: a 06:00Z trial end renders as
+ *  "October 10" but has already passed for a Pacific student at 11:30 PM on the
+ *  9th. Same zone as formatDateHuman so the two never disagree on the day. */
+export function formatDateTimeHuman(d: Date | string | number): string {
+  const time = new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: BILLING_TIME_ZONE });
+  return `${formatDateHuman(d, { weekday: true })} at ${time} ET`;
+}
+
 export function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);

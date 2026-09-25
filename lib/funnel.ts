@@ -9,6 +9,7 @@ import { prisma } from "./prisma";
 export type FunnelEventName =
   | "signup_created"
   | "welcome_sent"
+  | "trial_ending_sent"
   | "demo_completed"
   | "checkout_started"
   | "checkout_completed"
