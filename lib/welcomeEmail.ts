@@ -8,8 +8,9 @@
 // Two rules, both load-bearing:
 //   1. `welcomeEmail()` is pure — subject/html/text from a first name + base URL —
 //      so the copy is testable without touching the network.
-//   2. `sendWelcomeEmail()` NEVER throws and is never awaited by a route (`void`):
-//      a Resend outage, a DNS hiccup or a bad template must not cost us a signup.
+//   2. `sendWelcomeEmail()` NEVER throws, and routes always `await` it (#111):
+//      Vercel freezes the function after the response, so a `void` send is lost.
+//      A Resend outage, a DNS hiccup or a bad template must not cost us a signup.
 //
 // Transactional, not marketing: one message, sent once, about the account the
 // student just created — so there is deliberately no unsubscribe link.
@@ -82,7 +83,8 @@ export function welcomeEmail({ firstName, appUrl }: { firstName: string; appUrl:
 }
 
 /**
- * Fire-and-forget welcome send. Call it with `void` — never `await` it in a route.
+ * Welcome send. Always `await` it in a route (#111 — a `void` call is dropped when
+ * Vercel freezes the function after the response); it never throws.
  * Swallows EVERYTHING (build errors, provider errors, a rejected fetch): email
  * failure must never surface to the student or fail the signup response.
  * `welcome_sent` is logged only when the send reports ok.

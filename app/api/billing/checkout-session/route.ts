@@ -19,7 +19,7 @@ export async function POST() {
   }
   try {
     const { clientSecret, sessionId } = await createTrialCheckoutSession(user);
-    void logEvent("checkout_started", user.id, { sessionId });
+    await logEvent("checkout_started", user.id, { sessionId });
     return NextResponse.json({ clientSecret, sessionId });
   } catch (e) {
     console.error("checkout-session failed", e);

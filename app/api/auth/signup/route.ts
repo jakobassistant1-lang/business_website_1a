@@ -66,10 +66,11 @@ export async function POST(req: Request) {
     throw err;
   }
   await createSession(user.id);
-  void logEvent("signup_created", user.id, { door: "password" });
-  // Fire-and-forget: a brand-new account gets exactly one welcome email. Never
-  // awaited and never throws (lib/welcomeEmail), so a mail outage can't slow or
+  await logEvent("signup_created", user.id, { door: "password" });
+  // A brand-new account gets exactly one welcome email. AWAITED (#111): Vercel
+  // freezes the function once the response is returned, so a `void` send would be
+  // silently dropped. It never throws (lib/welcomeEmail), so a mail outage can't
   // fail the signup response. Not reached on the 409/429 paths above.
-  void sendWelcomeEmail(user, new URL(req.url).origin);
+  await sendWelcomeEmail(user, new URL(req.url).origin);
   return NextResponse.json({ ok: true, isAdmin: role === "admin" });
 }

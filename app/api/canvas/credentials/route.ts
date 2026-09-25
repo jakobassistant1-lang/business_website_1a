@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     },
   });
 
-  if (v.status === "valid") void logEvent("canvas_connected", user.id, { host });
+  if (v.status === "valid") await logEvent("canvas_connected", user.id, { host });
   return NextResponse.json({
     status: v.status,
     accountName: v.accountName ?? null,

@@ -32,7 +32,7 @@ const P2002 = Object.assign(new Error("Unique constraint failed on the fields: (
   meta: { target: ["email"] },
 });
 
-/** Let the fire-and-forget `void sendWelcomeEmail(...)` chain settle. */
+/** Let any pending microtasks settle (the send is awaited by callers since #111; kept as a belt-and-braces flush). */
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const post = (body: unknown, ip: string) =>

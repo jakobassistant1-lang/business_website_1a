@@ -17,7 +17,7 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!user.onboardedAt) {
     await prisma.user.update({ where: { id: user.id }, data: { onboardedAt: new Date() } });
-    void logEvent("demo_completed", user.id);
+    await logEvent("demo_completed", user.id);
   }
   return NextResponse.json({ ok: true, next: postDemoDestination(user.subscriptionStatus, billingEnabled(), isAdminUser(user)) });
 }

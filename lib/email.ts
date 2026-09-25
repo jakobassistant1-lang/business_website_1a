@@ -9,6 +9,11 @@
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
+/** Hard cap on one Resend call. Senders are awaited in routes (#111), so a hung
+ *  provider must never stall a signup or a webhook for long — on timeout the send
+ *  just reports `{ ok: false }`. */
+export const EMAIL_TIMEOUT_MS = 5000;
+
 export type EmailMessage = {
   to: string;
   subject: string;
@@ -43,6 +48,7 @@ export async function sendEmail(msg: EmailMessage): Promise<{ ok: boolean }> {
         text: msg.text,
         ...(msg.html ? { html: msg.html } : {}),
       }),
+      signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.error(`[email] Resend send failed (${res.status})`);
@@ -50,6 +56,10 @@ export async function sendEmail(msg: EmailMessage): Promise<{ ok: boolean }> {
     }
     return { ok: true };
   } catch (err) {
+    if ((err as { name?: string } | null)?.name === "TimeoutError") {
+      console.error(`[email] Resend timed out after ${EMAIL_TIMEOUT_MS}ms`);
+      return { ok: false };
+    }
     console.error("[email] Resend send threw", err);
     return { ok: false };
   }

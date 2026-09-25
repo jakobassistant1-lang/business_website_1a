@@ -166,10 +166,12 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile) {
     if (!winner) throw err;
     return winner;
   }
-  void logEvent("signup_created", created.id, { door: "google" });
+  // Awaited (#111): the callback route awaits this function, so both inserts land
+  // before the response — a `void` write is dropped when Vercel freezes the function.
+  await logEvent("signup_created", created.id, { door: "google" });
   // Only this branch actually created the account, so only this branch welcomes.
   // The auto-link return and the P2002 race-winner re-fetch above both hand back
   // an EXISTING account — those students were welcomed when they first signed up.
-  void sendWelcomeEmail(created);
+  await sendWelcomeEmail(created);
   return created;
 }

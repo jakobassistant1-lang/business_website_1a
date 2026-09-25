@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, EMAIL_TIMEOUT_MS } from "@/lib/email";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -52,5 +52,34 @@ describe("sendEmail — via Resend (configured)", () => {
 
     const res = await sendEmail({ to: "a@b.com", subject: "Hi", text: "hello" });
     expect(res).toEqual({ ok: false });
+  });
+});
+
+describe("sendEmail — timeout (#111: senders are awaited in routes)", () => {
+  it("caps a hung Resend call at EMAIL_TIMEOUT_MS and resolves { ok: false }", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_test");
+    vi.stubEnv("EMAIL_FROM", "Navo <noreply@navolearning.com>");
+    // A fetch that never answers on its own — only the abort signal can end it.
+    const fetchSpy = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    // Keep the test fast: assert the real constant is requested, but hand back a 10ms signal.
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => realTimeout(10));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const started = Date.now();
+    const res = await sendEmail({ to: "a@b.com", subject: "Hi", text: "hello" });
+
+    expect(res).toEqual({ ok: false });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(EMAIL_TIMEOUT_MS).toBe(5000);
+    expect(timeoutSpy).toHaveBeenCalledWith(EMAIL_TIMEOUT_MS);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(errSpy.mock.calls.some((c) => String(c[0]).includes("[email] Resend timed out"))).toBe(true);
   });
 });
