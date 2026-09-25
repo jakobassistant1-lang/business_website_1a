@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { normalizeHost } from "@/lib/host";
 import { relativeTime } from "@/lib/calendarDates";
@@ -47,6 +47,27 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
   // Set when THIS visit completed a connect — swaps the static "Go to your plan"
   // link for the staged first-sync progress (#64), which lands on the dashboard.
   const [justConnected, setJustConnected] = useState(false);
+  // "Paste" affordance for the token field (#39): shown only where the async
+  // Clipboard read API exists (feature-checked after mount so SSR markup is
+  // identical); silently absent otherwise — typing/long-press paste still works.
+  const [canPaste, setCanPaste] = useState(false);
+  // Set when a Paste attempt got nothing (denied, failed, or an empty clipboard).
+  const [pasteFailed, setPasteFailed] = useState(false);
+  useEffect(() => {
+    setCanPaste(typeof navigator !== "undefined" && typeof navigator.clipboard?.readText === "function");
+  }, []);
+
+  async function pasteToken() {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (!text) throw new Error("empty clipboard");
+      setToken(text);
+      setPasteFailed(false);
+    } catch {
+      // Denied / failed / empty — say so calmly; a manual paste still works.
+      setPasteFailed(true);
+    }
+  }
 
   const pill = status ? STATUS_PILL[status] : null;
   const tokenPageUrl = host ? `https://${host}/profile/settings` : null;
@@ -123,7 +144,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
         <p className="mt-1 text-sm text-muted">Link the Canvas account Navo reads your coursework from.</p>
 
-        <div className="card mt-6 max-w-xl p-6">
+        <div className="card mt-6 max-w-xl p-5 sm:p-6">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-sm font-medium text-ink">Canvas</span>
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${toneSoft.success}`}>
@@ -149,11 +170,11 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
             )}
           </dl>
           {justConnected && <FirstSyncProgress />}
-          <div className="mt-4 flex items-center gap-3">
-            {!justConnected && <a href="/dashboard" className="btn-primary">Go to your plan →</a>}
+          <div className="mt-4 flex items-center gap-3 max-md:flex-wrap">
+            {!justConnected && <a href="/dashboard" className="btn-primary max-md:tap">Go to your plan →</a>}
             <button
               type="button"
-              className="btn-ghost"
+              className="btn-ghost max-md:tap"
               onClick={() => { setEditing(true); setStep(host ? "get-token" : "choose-school"); setStatus(null); setMessage(null); }}
             >
               Change connection
@@ -171,8 +192,9 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
       <p className="mt-1 text-sm text-muted">
         Pick your school and we’ll walk you through linking Canvas — it takes about a minute.
       </p>
+      <p className="mt-1 text-[13px] text-muted md:hidden">Easier on a laptop? Log in there and connect once — it carries over.</p>
 
-      <div className="card mt-6 max-w-xl p-6">
+      <div className="card mt-6 max-w-xl p-5 sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <span className="text-sm font-medium text-ink">Canvas</span>
           {pill && (
@@ -197,6 +219,10 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   id="host"
                   className="field"
                   placeholder="school.instructure.com"
+                  inputMode="url"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={manualHost}
                   onChange={(e) => setManualHost(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); continueManual(); } }}
@@ -205,11 +231,11 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   Just the address — we add https:// for you. It usually ends in “.instructure.com”.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <button type="button" className="btn-primary" onClick={continueManual}>Continue</button>
+              <div className="flex items-center gap-3 max-md:flex-wrap">
+                <button type="button" className="btn-primary max-md:tap max-sm:w-full" onClick={continueManual}>Continue</button>
                 <button
                   type="button"
-                  className="text-sm font-medium text-accent hover:underline"
+                  className="text-sm font-medium text-accent hover:underline max-md:tap max-md:inline-flex max-md:items-center"
                   onClick={() => { setMode("picker"); setMessage(null); }}
                 >
                   ← Back to school list
@@ -219,11 +245,11 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
           )
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg bg-surface-soft px-3 py-2 text-sm">
+            <div className="flex items-center justify-between rounded-lg bg-surface-soft px-3 py-2 text-sm max-md:gap-2 max-md:py-1 max-md:pr-1">
               <span className="truncate text-ink">{schoolName ?? host}</span>
               <button
                 type="button"
-                className="shrink-0 text-xs font-medium text-accent hover:underline"
+                className="shrink-0 text-xs font-medium text-accent hover:underline max-md:tap max-md:px-2"
                 onClick={changeSchool}
               >
                 Change
@@ -243,7 +269,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   href={tokenPageUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-primary mt-3 inline-flex"
+                  className="btn-primary mt-3 inline-flex max-md:tap max-sm:w-full"
                 >
                   Open Canvas to get your token ↗
                 </a>
@@ -252,21 +278,35 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
 
             <div>
               <label className="label" htmlFor="token">Paste your access token</label>
-              <input
-                id="token"
-                type="password"
-                className="field"
-                placeholder={initial.hasToken ? "•••••••• (paste again to update)" : "Paste your Canvas token"}
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                autoComplete="off"
-              />
+              <div className="flex gap-2">
+                <input
+                  id="token"
+                  type="password"
+                  className="field min-w-0 flex-1"
+                  placeholder={initial.hasToken ? "•••••••• (paste again to update)" : "Paste your Canvas token"}
+                  value={token}
+                  onChange={(e) => { setToken(e.target.value); setPasteFailed(false); }}
+                  autoComplete="off"
+                />
+                {/* Phones only: desktop browsers expose readText too, but there
+                    Ctrl/Cmd+V is the natural paste. */}
+                {canPaste && (
+                  <button type="button" className="tap btn-ghost shrink-0 md:hidden" onClick={pasteToken}>
+                    Paste
+                  </button>
+                )}
+              </div>
+              {pasteFailed && (
+                <p className="mt-1 text-[13px] text-muted md:hidden" role="status">
+                  Couldn&apos;t read the clipboard — long-press the field and Paste.
+                </p>
+              )}
               <p className="mt-1 text-xs text-muted">
                 Your token is encrypted and only used to read your Canvas coursework.
               </p>
             </div>
 
-            <button type="submit" className="btn-primary" disabled={busy}>
+            <button type="submit" className="btn-primary max-md:tap max-sm:w-full" disabled={busy}>
               {busy ? "Validating…" : "Connect Canvas"}
             </button>
           </form>
@@ -281,7 +321,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         {connectedAtStart && (
           <button
             type="button"
-            className="mt-4 block text-sm font-medium text-muted hover:underline"
+            className="mt-4 block text-sm font-medium text-muted hover:underline max-md:tap max-md:flex max-md:items-center"
             onClick={() => { setEditing(false); setMessage(null); }}
           >
             Cancel

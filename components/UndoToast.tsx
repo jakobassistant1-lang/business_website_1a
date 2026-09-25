@@ -10,6 +10,12 @@
 // The caller owns the aria-live region (a persistent role="status" wrapper in the
 // row) so screen readers announce this bar when it appears; it deliberately doesn't
 // declare a nested one of its own.
+//
+// `clock={false}` makes a passive mirror: it shows the same bar but never arms
+// the timer. The dashboard renders a row in BOTH its phone and desktop lists (CSS
+// picks which is visible, #39), so only the copy on the visible side runs the
+// clock — otherwise a hidden copy would expire the window while the student
+// hovers the visible one.
 
 import { useEffect, useRef, useState } from "react";
 
@@ -18,11 +24,13 @@ export function UndoToast({
   onUndo,
   onExpire,
   durationMs = 6000,
+  clock = true,
 }: {
   message: string;
   onUndo: () => void;
   onExpire: () => void;
   durationMs?: number;
+  clock?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -35,7 +43,7 @@ export function UndoToast({
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || !clock) return;
     startedAt.current = Date.now();
     const id = window.setTimeout(() => expireRef.current(), Math.max(0, remaining.current));
     timer.current = id;
@@ -45,7 +53,7 @@ export function UndoToast({
       // Bank whatever's left so a pause resumes the window rather than restarting it.
       remaining.current = Math.max(0, remaining.current - (Date.now() - startedAt.current));
     };
-  }, [paused]);
+  }, [paused, clock]);
 
   const undo = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -62,13 +70,15 @@ export function UndoToast({
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      className="mx-3 mb-1 flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-soft px-3 py-2 text-[14px] text-muted transition-colors motion-reduce:transition-none"
+      // Phones (#39): the row is at least 44px and the Undo button a full 44px
+      // target; at md+ both keep their original compact sizes.
+      className="mx-3 mb-1 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-line bg-surface-soft px-3 py-0 text-[14px] text-muted transition-colors motion-reduce:transition-none md:min-h-0 md:py-2"
     >
       <span className="min-w-0 truncate">{message}</span>
       <button
         type="button"
         onClick={undo}
-        className="shrink-0 rounded-md px-1.5 py-0.5 font-medium text-accent transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring motion-reduce:transition-none"
+        className="max-md:tap shrink-0 rounded-md px-3 py-0.5 font-medium text-accent transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring motion-reduce:transition-none md:px-1.5"
       >
         Undo
       </button>

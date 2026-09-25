@@ -43,7 +43,7 @@ export function PortalButton({ label }: { label: string }) {
 
   return (
     <div>
-      <button type="button" onClick={open} disabled={busy} className="btn-primary">
+      <button type="button" onClick={open} disabled={busy} className="btn-primary max-md:tap max-sm:w-full">
         {busy ? "Opening…" : label}
       </button>
       {error && <p className="mt-3 text-[14px] text-danger">{error}</p>}
@@ -60,7 +60,7 @@ export function SignOutLink() {
     router.refresh();
   }
   return (
-    <button type="button" onClick={logout} className="font-medium text-muted hover:text-ink hover:underline">
+    <button type="button" onClick={logout} className="font-medium text-muted hover:text-ink hover:underline max-md:tap max-md:inline-flex max-md:items-center">
       Sign out
     </button>
   );

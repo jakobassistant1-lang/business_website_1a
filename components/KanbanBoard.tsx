@@ -372,6 +372,8 @@ export function KanbanBoard({
 
   return (
     <div className="flex min-h-[calc(100vh-5rem)] flex-col">
+      {/* Phones (#39): admin boards stay desktop-first — HTML5 drag-and-drop doesn't fire on touch. */}
+      <p className="mb-3 text-[13px] text-muted md:hidden">Best on a laptop — drag-and-drop is desktop-only.</p>
       {/* Topbar */}
       <header className="mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
@@ -471,7 +473,7 @@ export function KanbanBoard({
                               </span>
                             )}
                           </div>
-                          <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                          <div className="hover-reveal flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                             <IconButton label="Edit ticket" onClick={(e) => { e.stopPropagation(); openEdit(task); }}>
                               <path d="M4 20h4l10-10-4-4L4 16v4Z" />
                               <path d="M13.5 6.5l4 4" />

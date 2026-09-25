@@ -71,9 +71,11 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
       data-tour={anchor}
       className="card group flex flex-col p-5 transition hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
     >
-      <div className="flex items-start justify-between gap-3">
+      {/* Phones: the title may take two lines and the grade pill + menu wrap
+          below it, instead of the pill squeezing the title to a few letters. */}
+      <div className="flex items-start justify-between gap-3 max-md:flex-wrap max-md:gap-y-2">
         <div className="min-w-0">
-          <h3 className="truncate text-[17px] font-semibold leading-snug text-ink">{cleanCourse(courseName)}</h3>
+          <h3 className="truncate text-[17px] font-semibold leading-snug text-ink max-md:line-clamp-2 max-md:whitespace-normal max-md:break-words">{cleanCourse(courseName)}</h3>
           <p className="mt-1 text-[12px] font-medium">
             {overdue > 0 ? (
               <span className="inline-flex items-center gap-1.5 text-muted">

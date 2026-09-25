@@ -54,7 +54,7 @@ export function AccountForm({ initial }: { initial: Initial }) {
       <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
       <p className="mt-1 text-sm text-muted">Your local profile.</p>
 
-      <form onSubmit={onSubmit} className="card mt-6 max-w-xl space-y-4 p-6">
+      <form onSubmit={onSubmit} className="card mt-6 max-w-xl space-y-6 p-5 sm:p-6 md:space-y-4">
         <div>
           <label className="label" htmlFor="fullName">Full name</label>
           <input id="fullName" className="field" value={form.fullName} onChange={(e) => set("fullName", e.target.value)} />
@@ -67,15 +67,15 @@ export function AccountForm({ initial }: { initial: Initial }) {
         </div>
         <div>
           <label className="label" htmlFor="phone">Phone <span className="font-normal text-muted">(optional)</span></label>
-          <input id="phone" className="field" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+          <input id="phone" className="field" inputMode="tel" autoComplete="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
         </div>
         <div>
           <label className="label" htmlFor="password">New password <span className="font-normal text-muted">(leave blank to keep)</span></label>
           <input id="password" type="password" className="field" value={form.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" />
         </div>
 
-        <div className="flex items-center gap-3">
-          <button type="submit" className="btn-primary" disabled={busy}>
+        <div className="flex items-center gap-3 max-md:flex-wrap">
+          <button type="submit" className="btn-primary max-md:tap max-sm:w-full" disabled={busy}>
             {busy ? "Saving…" : "Save changes"}
           </button>
           {saved && <span className="text-sm text-success">Saved.</span>}

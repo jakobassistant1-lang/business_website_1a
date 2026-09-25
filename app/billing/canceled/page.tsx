@@ -21,15 +21,15 @@ export default async function CanceledPage() {
   const price = await priceDisplay().catch(() => null);
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
+    <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-[13px] font-semibold uppercase tracking-wider text-muted">Billing</p>
       <h1 className="mt-2 text-[26px] font-bold tracking-tight text-ink">Your subscription is canceled</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
         You&apos;re not being charged, and <span className="font-medium text-ink">nothing is deleted</span> — your Canvas
         connection, plans, and notes are kept exactly as you left them. Restart any time and pick up where you were.
       </p>
-      <div className="card mt-6 p-6">
-        <Link href="/welcome/card" className="btn-primary">Restart Navo</Link>
+      <div className="card mt-6 p-5 sm:p-6">
+        <Link href="/welcome/card" className="btn-primary max-md:tap max-sm:w-full">Restart Navo</Link>
         <p className="mt-4 text-[14px] text-muted">
           Restarting takes a minute: enter a card and you&apos;ll be charged {price ? `${price} ` : ""}today — no second free trial. Cancel anytime.
         </p>

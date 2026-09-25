@@ -50,19 +50,19 @@ export function SettingsForm({ initial }: { initial: Initial }) {
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
       <p className="mt-1 text-sm text-muted">How the planner builds your week. (Effort per assignment is now estimated automatically by AI.)</p>
 
-      <form onSubmit={onSubmit} className="card mt-6 max-w-xl space-y-5 p-6">
+      <form onSubmit={onSubmit} className="card mt-6 max-w-xl space-y-6 p-5 sm:p-6 md:space-y-5">
         <Field label="Hours you can study per day" hint="Your daily study budget — the planner schedules work and study within it."
           value={form.defaultHoursPerDay} onChange={(v) => set("defaultHoursPerDay", v)}
-          type="number" min="0.5" max="24" step="0.5" error={errors.defaultHoursPerDay} />
+          type="number" inputMode="decimal" min="0.5" max="24" step="0.5" error={errors.defaultHoursPerDay} />
         <Field label="Start studying for exams/tests (days ahead)" hint="How many days before an exam the planner begins scheduling study sessions."
           value={form.studyDaysTest} onChange={(v) => set("studyDaysTest", v)}
-          type="number" min="1" max="14" step="1" error={errors.studyDaysTest} />
+          type="number" inputMode="numeric" min="1" max="14" step="1" error={errors.studyDaysTest} />
         <Field label="Start studying for quizzes (days ahead)" hint="How many days before a quiz the planner begins scheduling study sessions."
           value={form.studyDaysQuiz} onChange={(v) => set("studyDaysQuiz", v)}
-          type="number" min="1" max="14" step="1" error={errors.studyDaysQuiz} />
+          type="number" inputMode="numeric" min="1" max="14" step="1" error={errors.studyDaysQuiz} />
 
-        <div className="flex items-center gap-3">
-          <button type="submit" className="btn-primary" disabled={busy}>
+        <div className="flex items-center gap-3 max-md:flex-wrap">
+          <button type="submit" className="btn-primary max-md:tap max-sm:w-full" disabled={busy}>
             {busy ? "Saving…" : "Save settings"}
           </button>
           {saved && <span className="text-sm text-success">Saved.</span>}
@@ -75,12 +75,14 @@ export function SettingsForm({ initial }: { initial: Initial }) {
 function Field(props: {
   label: string; hint?: string; value: string; onChange: (v: string) => void;
   type?: string; min?: string; max?: string; step?: string; error?: string;
+  /** Phone keypad: "numeric" for whole days, "decimal" when the step allows halves. */
+  inputMode?: "numeric" | "decimal";
 }) {
   return (
     <div>
       <label className="label">{props.label}</label>
       <input
-        className="field max-w-[12rem]" type={props.type} min={props.min} max={props.max} step={props.step}
+        className="field md:max-w-[12rem]" type={props.type} inputMode={props.inputMode} min={props.min} max={props.max} step={props.step}
         value={props.value} onChange={(e) => props.onChange(e.target.value)}
       />
       {props.hint && <p className="mt-1 text-xs text-muted">{props.hint}</p>}

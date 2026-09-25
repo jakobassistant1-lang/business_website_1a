@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cleanCourse } from "@/lib/courseName";
+import { Sheet, useIsPhone } from "@/components/Sheet";
 
 function EyeOffIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
@@ -32,17 +33,20 @@ async function setExcluded(courseCanvasId: number, excluded: boolean): Promise<b
 }
 
 /** The ⋯ menu on a course card. Lives inside the card <Link>, so every click
- *  stops propagation — opening the menu never navigates. */
+ *  stops propagation — opening the menu never navigates. On phones (#39) the
+ *  popover is a bottom Sheet; React events from the portal still bubble to the
+ *  wrapper span below, so taps inside the sheet never reach the card link. */
 export function CourseMenu({ courseCanvasId }: { courseCanvasId: number }) {
   const router = useRouter();
+  const phone = useIsPhone();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open || phone) return; // the Sheet handles Escape itself
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, phone]);
 
   const exclude = async () => {
     if (busy) return;
@@ -60,13 +64,28 @@ export function CourseMenu({ courseCanvasId }: { courseCanvasId: number }) {
         aria-label="Class options"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition hover:bg-surface-soft hover:text-ink"
+        className="max-md:tap max-md:-m-2 grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition hover:bg-surface-soft hover:text-ink"
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
           <circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" />
         </svg>
       </button>
-      {open && (
+      {phone ? (
+        <Sheet open={open} onClose={() => setOpen(false)} title="Class options">
+          <button
+            type="button"
+            onClick={exclude}
+            disabled={busy}
+            className="tap flex w-full items-center gap-3 rounded-lg px-3 text-left text-[16px] font-medium text-ink transition hover:bg-surface-soft disabled:opacity-50"
+          >
+            <EyeOffIcon className="h-5 w-5 shrink-0 text-muted" />
+            {busy ? "Excluding…" : "Exclude from my plan"}
+          </button>
+          <p className="px-3 pb-1 pt-1 text-[14px] leading-snug text-muted">
+            Hides its work from your plan and lists. You can undo this anytime.
+          </p>
+        </Sheet>
+      ) : open && (
         <>
           <span className="fixed inset-0 z-20 cursor-default" onClick={() => setOpen(false)} aria-hidden />
           <span className="absolute right-0 top-8 z-30 block w-60 rounded-lg border border-line bg-surface p-1 shadow-lg">
@@ -117,7 +136,7 @@ export function ExcludedCoursesRow({ courses, demo = false }: { courses: { canva
               type="button"
               onClick={() => include(c.canvasId)}
               disabled={busyId != null}
-              className="shrink-0 text-[13.5px] font-medium text-accent hover:underline disabled:opacity-50"
+              className="max-md:tap inline-flex shrink-0 items-center justify-end text-[13.5px] font-medium text-accent hover:underline disabled:opacity-50"
             >
               {busyId === c.canvasId ? "Including…" : "Include again"}
             </button>
@@ -145,7 +164,7 @@ export function ExcludedBanner({ courseCanvasId }: { courseCanvasId: number }) {
         <EyeOffIcon className="mr-1.5 inline h-4 w-4 align-[-3px]" />
         This class is excluded from your plan — its work doesn&apos;t appear in your lists or schedule.
       </p>
-      <button type="button" onClick={include} disabled={busy} className="shrink-0 text-[14px] font-medium text-accent hover:underline disabled:opacity-50">
+      <button type="button" onClick={include} disabled={busy} className="max-md:tap inline-flex shrink-0 items-center text-[14px] font-medium text-accent hover:underline disabled:opacity-50">
         {busy ? "Including…" : "Include again"}
       </button>
     </div>
@@ -169,7 +188,7 @@ export function ExcludeCourseAction({ courseCanvasId }: { courseCanvasId: number
       onClick={exclude}
       disabled={busy}
       title="Hides this class's work from your plan and lists. Undo anytime."
-      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-faint transition hover:text-muted disabled:opacity-50"
+      className="max-md:tap inline-flex items-center gap-1.5 text-[13px] font-medium text-faint transition hover:text-muted disabled:opacity-50"
     >
       <EyeOffIcon className="h-3.5 w-3.5" />
       {busy ? "Excluding…" : "Exclude from my plan"}

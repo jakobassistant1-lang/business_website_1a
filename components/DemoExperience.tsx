@@ -19,6 +19,8 @@ import { CourseGrid } from "@/components/CourseGrid";
 import { DemoStudyTools } from "@/components/DemoStudyTools";
 import { AssignmentPage } from "@/components/AssignmentPage";
 import { CoursePage } from "@/components/CoursePage";
+import { NavIcon } from "@/components/NavIcon";
+import { TAB_ITEMS } from "@/components/navItems";
 import { cleanCourse } from "@/lib/courseName";
 import { TYPE_LABEL } from "@/lib/itemType";
 import {
@@ -27,6 +29,9 @@ import {
   DEMO_VIEW_LABEL,
   WELCOME_STEP,
   FINALE_STEP,
+  placementFor,
+  selectorFor,
+  isAnchorShown,
   type DemoView,
   type TourStep,
 } from "@/lib/tour/demoTour";
@@ -54,6 +59,17 @@ const NAV: { section: string; label: string; icon: string; first: DemoView }[] =
   { section: "courses", label: "Courses", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z", first: "courses" },
 ];
 const sectionOf = (v: DemoView): string => (v.startsWith("plan") ? "plan" : v);
+
+// Phone shell (#39): below `md` the demo frame swaps its sidebar for the SAME
+// four tabs as the real MobileTabBar (TAB_ITEMS — one nav list, can't drift).
+// Each tab maps to the demo view it opens; taps drive the demo's own router
+// (setView), never the real Next router.
+const TAB_VIEW: Record<string, DemoView> = {
+  "/dashboard": "dashboard",
+  "/plan": "plan-list",
+  "/study": "study",
+  "/courses": "courses",
+};
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -134,21 +150,31 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
     // up AFTER first paint, so a fixed-timeout refresh can measure a 0-height box.
     // Poll a few animation frames until the element has nonzero size, then refresh.
     // Runs even under reduced motion (correctness, not animation).
-    const settleThenRefresh = (selector: string | undefined, tries = 0) => {
+    const settleThenRefresh = (el: HTMLElement | null, tries = 0) => {
       if (cancelled) return;
-      const el = selector ? (document.querySelector(selector) as HTMLElement | null) : null;
-      const ready = !selector || (el && el.offsetWidth > 0 && el.offsetHeight > 0);
+      const ready = !el || (el.offsetWidth > 0 && el.offsetHeight > 0);
       if (ready || tries >= 10) {
         driverRef.current?.refresh();
         return;
       }
-      requestAnimationFrame(() => settleThenRefresh(selector, tries + 1));
+      requestAnimationFrame(() => settleThenRefresh(el, tries + 1));
     };
 
     const start = (tries = 0) => {
       if (cancelled) return;
-      // Keep only steps whose anchor is on screen (centered steps always qualify).
-      const present = raw.filter((s) => !s.selector || document.querySelector(s.selector));
+      // Phone-width viewport → phone anchors (selectorFor) and beside-the-anchor
+      // popovers go below it (placementFor). Read once per tour page.
+      const viewportWidth = window.innerWidth;
+      // Resolve each step's anchor to the first RENDERED match — a plain
+      // querySelector can return a CSS-hidden twin (e.g. a desktop-only view on
+      // a phone). Keep only steps with a shown anchor (centered steps always qualify).
+      const present = raw
+        .map((s) => {
+          const sel = selectorFor(s, viewportWidth);
+          const anchor = sel ? (Array.from(document.querySelectorAll<HTMLElement>(sel)).find(isAnchorShown) ?? null) : null;
+          return { s, sel, anchor };
+        })
+        .filter((r) => !r.sel || r.anchor);
       if (present.length === 0) {
         // Anchors may not have mounted yet; wait briefly, then move on rather than stall.
         if (tries < 15) {
@@ -159,16 +185,19 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
         return;
       }
       const nextLabel = isLastView ? "Finish" : DEMO_VIEW_LABEL[DEMO_VIEW_ORDER[idx + 1]];
-      const steps = present.map((s, i) => {
+      const steps = present.map(({ s, sel, anchor }, i) => {
         const last = i === present.length - 1;
         const first = i === 0;
+        const place = placementFor(s, viewportWidth);
         return {
-          element: s.selector,
+          // Re-resolved lazily when driver reaches the step (the node may have
+          // re-rendered since start); falls back to the one found above.
+          element: sel && anchor ? () => Array.from(document.querySelectorAll<HTMLElement>(sel)).find(isAnchorShown) ?? anchor : undefined,
           popover: {
             title: s.title,
             description: s.body,
-            ...(s.side ? { side: s.side } : {}),
-            ...(s.align ? { align: s.align } : {}),
+            ...(place.side ? { side: place.side } : {}),
+            ...(place.align ? { align: place.align } : {}),
             ...(last
               ? {
                   nextBtnText: isLastView ? "Finish ✓" : `Next: ${nextLabel} →`,
@@ -248,14 +277,11 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
       // the window, so without this a stale main.scrollTop left the anchor — and
       // the cutout — off where driver thought it was. Fixes Back (which uniquely
       // drives the previous page's LAST/bottom step) and Next alike.
-      const startSelector = steps[startIdx]?.element as string | undefined;
+      const startAnchor = present[startIdx]?.anchor ?? null;
       const main = mainRef.current;
       if (main) {
         main.scrollTop = 0;
-        if (startSelector) {
-          const target = document.querySelector(startSelector) as HTMLElement | null;
-          target?.scrollIntoView({ block: startIdx === steps.length - 1 ? "center" : "nearest" });
-        }
+        startAnchor?.scrollIntoView({ block: startIdx === steps.length - 1 ? "center" : "nearest" });
       }
 
       d.drive(startIdx);
@@ -263,7 +289,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
       // Re-measure once layout settles (heavy remounts size up after first paint).
       // Always runs at least once — under reduced motion we skip the ANIMATION
       // (animate:false above), not the correctness re-measure.
-      settleThenRefresh(startSelector);
+      settleThenRefresh(startAnchor);
     };
     start();
     return () => {
@@ -361,37 +387,44 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
                 destroyTour();
                 setPhase("exploring");
               }}
-              className="demo-control rounded-md bg-white/15 px-2.5 py-1 text-xs font-semibold text-accent-on transition-colors hover:bg-white/25"
+              className="demo-control group rounded-md text-xs font-semibold text-accent-on max-md:tap max-md:inline-flex max-md:items-center max-md:justify-center"
             >
-              Explore on my own
+              {/* The visible pill stays compact (same box as before on desktop);
+                  on phones .tap widens only the hit area around it. */}
+              <span className="block rounded-md bg-white/15 px-2.5 py-1 transition-colors group-hover:bg-white/25">
+                <span className="sm:hidden">Explore</span>
+                <span className="hidden sm:inline">Explore on my own</span>
+              </span>
             </button>
           )}
           {phase !== "welcome" && phase !== "finale" && (
             <button
               type="button"
               onClick={restartDemo}
-              className="demo-control rounded-md px-2.5 py-1 text-xs font-semibold text-accent-on/90 transition-colors hover:bg-white/15"
+              className="demo-control group rounded-md text-xs font-semibold text-accent-on/90 max-md:tap max-md:inline-flex max-md:items-center max-md:justify-center"
             >
-              ↻ Replay
+              <span className="block rounded-md px-2.5 py-1 transition-colors group-hover:bg-white/15">↻ Replay</span>
             </button>
           )}
           <button
             type="button"
             onClick={endDemo}
             disabled={ending}
-            className="demo-control rounded-md px-2.5 py-1 text-xs font-semibold text-accent-on transition-colors hover:bg-white/15 disabled:opacity-60"
+            className="demo-control group rounded-md text-xs font-semibold text-accent-on disabled:opacity-60 max-md:tap max-md:inline-flex max-md:items-center max-md:justify-center"
           >
-            Exit demo →
+            <span className="block rounded-md px-2.5 py-1 transition-colors group-hover:bg-white/15">Exit demo →</span>
           </button>
         </div>
       </header>
 
       {/* The framed app — a thin accent ring on a soft violet wash, below the bar. */}
-      <div className="fixed inset-x-0 bottom-0 top-11 z-0 bg-[rgb(var(--accent)/0.06)] p-3 sm:p-4">
-        <div className="flex h-full overflow-hidden rounded-2xl bg-canvas shadow-[var(--shadow-demo)] ring-1 ring-accent/30">
+      {/* Phones: the frame's bottom padding clears the home indicator, since the
+          frame-local tab bar sits at its foot (like the real fixed MobileTabBar). */}
+      <div className="fixed inset-x-0 bottom-0 top-11 z-0 bg-[rgb(var(--accent)/0.06)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+        <div className="flex h-full flex-col overflow-hidden rounded-2xl bg-canvas shadow-[var(--shadow-demo)] ring-1 ring-accent/30 md:flex-row">
           {/* Demo sidebar — mirrors the real nav; switches the on-screen view, with
               quiet tour progress (sections before the current one get a check). */}
-          <aside className="flex w-64 shrink-0 flex-col bg-sidebar px-4 py-6">
+          <aside className="hidden w-64 shrink-0 flex-col bg-sidebar px-4 py-6 md:flex">
             <div className="mb-6 flex items-center gap-3 px-1">
               <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-on shadow-md">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -425,7 +458,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
           {/* The real surfaces, mock-fed; in-view links neutralized. Plan's three
               sub-views are separate tour pages (remounted via key so the right one
               shows). */}
-          <main ref={mainRef} onClickCapture={onMainClick} className="min-w-0 flex-1 overflow-auto px-6 py-8 lg:px-10 lg:py-10">
+          <main ref={mainRef} onClickCapture={onMainClick} className="min-w-0 flex-1 overflow-auto px-6 py-8 lg:px-10 lg:py-10 max-md:min-h-0 max-md:overflow-x-hidden max-md:px-4 max-md:py-5">
             {detail ? (
               <DemoDetail detail={detail} data={data} todayYmd={todayYmd} onBack={() => setDetail(null)} />
             ) : (
@@ -452,6 +485,36 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
               </>
             )}
           </main>
+
+          {/* Phone tab bar, frame-local: the real MobileTabBar's four tabs
+              (TAB_ITEMS), driving the demo router — same look, no navigation. */}
+          <nav aria-label="Demo sections" className="shrink-0 border-t border-line bg-surface md:hidden">
+            <ul className="flex h-14">
+              {TAB_ITEMS.map((item) => {
+                const target = TAB_VIEW[item.href];
+                const isActive = !!target && sectionOf(view) === sectionOf(target);
+                return (
+                  <li key={item.href} className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={() => {
+                        if (!target) return;
+                        setDetail(null);
+                        setView(target);
+                      }}
+                      className={`tap flex h-full w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium leading-none transition-colors ${
+                        isActive ? "text-accent" : "text-muted"
+                      }`}
+                    >
+                      <NavIcon name={item.icon} size={22} />
+                      <span>{item.tabLabel}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
         </div>
       </div>
 
@@ -479,9 +542,12 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
 
       {/* Free-explore bar (welcome → explore, or after closing a coachmark). */}
       {phase === "exploring" && (
-        <div className="fixed bottom-5 left-1/2 z-[100001] flex -translate-x-1/2 items-center gap-4 rounded-full bg-ink px-5 py-2.5 text-sm text-white shadow-[var(--shadow-demo)]">
-          <span className="font-medium">Exploring the demo — click around any page.</span>
-          <button type="button" onClick={() => { setDetail(null); setPhase("touring"); }} className="demo-control font-semibold underline">
+        <div className="fixed bottom-5 left-1/2 z-[100001] flex -translate-x-1/2 items-center gap-4 rounded-full bg-ink px-5 py-2.5 text-sm text-white shadow-[var(--shadow-demo)] max-md:bottom-[calc(56px+max(0.75rem,env(safe-area-inset-bottom))+0.75rem)] max-md:w-max max-md:max-w-[calc(100vw-2rem)] max-md:gap-3 max-md:py-1 max-md:pl-4 max-md:pr-2 max-md:text-[13px]">
+          <span className="font-medium max-md:min-w-0 max-md:truncate">
+            <span className="md:hidden">Exploring the demo</span>
+            <span className="max-md:hidden">Exploring the demo — click around any page.</span>
+          </span>
+          <button type="button" onClick={() => { setDetail(null); setPhase("touring"); }} className="demo-control font-semibold underline max-md:tap max-md:inline-flex max-md:shrink-0 max-md:items-center max-md:justify-center max-md:px-2">
             Take the tour
           </button>
         </div>

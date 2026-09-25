@@ -68,11 +68,11 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice,
         <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
           {role === "admin" ? "Admin" : "Student"}
         </span>
-        <button type="button" onClick={() => setRole(null)} className="text-xs font-medium text-muted hover:text-ink">
+        <button type="button" onClick={() => setRole(null)} className="text-xs font-medium text-muted hover:text-ink max-md:tap max-md:-mr-2 max-md:inline-flex max-md:items-center max-md:justify-center max-md:px-2">
           ← Change
         </button>
       </div>
-      <div className="card p-6">
+      <div className="card p-5 sm:p-6">
         {role === "student" && mode === "signup" && trialTerms && (
           <p className="mb-5 rounded-lg bg-surface-soft px-3 py-2.5 text-[13px] leading-relaxed text-muted">
             {trialTerms.price ? (
@@ -88,7 +88,7 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice,
           <div className="mb-5">
             <a
               href="/api/auth/google/start"
-              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
+              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring max-md:tap"
             >
               <GoogleGlyph />
               Continue with Google
@@ -111,14 +111,14 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice,
         {mode === "login" ? (
           <>
             New here?{" "}
-            <button onClick={() => setMode("signup")} className="font-medium text-accent hover:text-accent-hover">
+            <button onClick={() => setMode("signup")} className="font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center">
               Create {role === "admin" ? "an admin" : "a student"} account
             </button>
           </>
         ) : (
           <>
             Already have an account?{" "}
-            <button onClick={() => setMode("login")} className="font-medium text-accent hover:text-accent-hover">
+            <button onClick={() => setMode("login")} className="font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center">
               Log in
             </button>
           </>
@@ -189,11 +189,11 @@ function LoginForm({ onDone }: { onDone: (isAdmin: boolean) => void }) {
         <input id="password" type="password" className="field" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
       </div>
       <div className="-mt-1 text-right">
-        <Link href="/forgot-password" className="text-sm font-medium text-accent hover:text-accent-hover">
+        <Link href="/forgot-password" className="text-sm font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center max-md:justify-end">
           Forgot password?
         </Link>
       </div>
-      <button type="submit" className="btn-primary w-full" disabled={busy}>
+      <button type="submit" className="btn-primary w-full max-md:tap" disabled={busy}>
         {busy ? "Signing in…" : "Log in"}
       </button>
     </form>
@@ -261,14 +261,14 @@ function SignupForm({ role, inviteConfigured, onDone }: { role: Role; inviteConf
       </div>
       <div>
         <label className="label" htmlFor="phone">Phone <span className="font-normal text-muted">(optional)</span></label>
-        <input id="phone" className="field" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" />
+        <input id="phone" className="field" inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" />
       </div>
-      <label className="flex items-start gap-2.5 text-sm text-ink">
+      <label className="flex items-start gap-2.5 text-sm text-ink max-md:min-h-11 max-md:py-1">
         <input type="checkbox" checked={tos} onChange={(e) => setTos(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-line text-accent focus:ring-accent-ring" />
         <span>I agree to the Terms of Service</span>
       </label>
       {errors.tos && <p className="-mt-2 text-xs text-danger">{errors.tos}</p>}
-      <button type="submit" className="btn-primary w-full" disabled={!tos || busy}>
+      <button type="submit" className="btn-primary w-full max-md:tap" disabled={!tos || busy}>
         {busy ? "Creating account…" : `Create ${isAdmin ? "admin " : ""}account`}
       </button>
     </form>

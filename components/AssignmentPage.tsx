@@ -169,6 +169,10 @@ export function AssignmentPage(props: {
 
   const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, dueAt, todayYmd, manuallyDone);
   const hasPlan = Boolean(approach) || steps.length > 0;
+  // Manual checkoff — hidden in demo and once Canvas itself confirms a submission.
+  const canMarkDone = !demo && !(submittedAt || submissionState === "submitted" || submissionState === "pending_review" || submissionState === "graded");
+  // Phones (#39): a thumb-zone action bar carries Open in Canvas + Mark as done.
+  const hasActionBar = Boolean(htmlUrl) || canMarkDone;
 
   // "← Back" returns within the app when there's history, else falls back to the
   // dashboard (so a bookmarked / shared / refreshed deep link never dead-ends out).
@@ -178,8 +182,8 @@ export function AssignmentPage(props: {
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <button onClick={goBack} className="text-[14px] font-medium text-muted transition-colors hover:text-ink">
+    <div className={`mx-auto max-w-3xl ${hasActionBar ? "max-md:pb-20" : ""}`}>
+      <button onClick={goBack} className="max-md:tap max-md:-my-3 inline-flex items-center text-[14px] font-medium text-muted transition-colors hover:text-ink">
         ← Back
       </button>
 
@@ -197,9 +201,19 @@ export function AssignmentPage(props: {
           <EffortEditor canvasId={canvasId} estimate={estimatedEffortHours ?? null} override={effortOverrideHours ?? null} />
         )}
         <span className={`rounded-full px-3 py-1 ${toneSoft[badge.tone]}`}>{badge.label}</span>
-        {/* Manual checkoff — hidden in demo and once Canvas itself confirms a submission. */}
-        {!demo && !(submittedAt || submissionState === "submitted" || submissionState === "pending_review" || submissionState === "graded") && (
-          <MarkDoneButton canvasId={canvasId} done={manuallyDone} />
+        {/* ONE MarkDoneButton (one piece of state). md+: it sits inline here
+            (`contents`). Phones: the same element is pinned by fixed positioning
+            into the slot the action bar below reserves for it — the offsets mirror
+            the bar's geometry (bottom above the tab bar + the bar's py-2; right
+            px-4; half width = (100vw − 2·16px padding − 10px gap) / 2). */}
+        {canMarkDone && (
+          <span
+            className={`max-md:fixed max-md:bottom-[calc(56px+env(safe-area-inset-bottom)+0.5rem)] max-md:right-4 max-md:z-40 max-md:flex max-md:h-11 md:contents max-md:[&>button]:tap max-md:[&>button]:w-full max-md:[&>button]:rounded-lg max-md:[&>button]:text-[15px] ${
+              htmlUrl ? "max-md:w-[calc(50%-21px)]" : "max-md:left-4"
+            }`}
+          >
+            <MarkDoneButton canvasId={canvasId} done={manuallyDone} />
+          </span>
         )}
       </div>
 
@@ -237,12 +251,17 @@ export function AssignmentPage(props: {
         <section className="card mt-6 p-6">
           <h2 className="text-[19px] font-semibold text-ink">Assignment brief</h2>
           {safeHtml != null ? (
-            <div
-              className="mt-2 text-[15px] leading-relaxed text-ink [&_a]:text-accent [&_a]:underline [&_h1]:mt-3 [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:text-[16px] [&_h2]:font-semibold [&_li]:mb-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
-              dangerouslySetInnerHTML={{ __html: safeHtml }}
-            />
+            // `brief` wrapper: Canvas HTML is arbitrary — images/embeds shrink to fit
+            // everywhere; on phones wide tables and code scroll sideways instead of
+            // widening the page (desktop table layout unchanged).
+            <div className="brief [&_iframe]:max-w-full [&_img]:h-auto [&_img]:max-w-full max-md:[&_pre]:overflow-x-auto max-md:[&_table]:block max-md:[&_table]:max-w-full max-md:[&_table]:overflow-x-auto">
+              <div
+                className="mt-2 text-[15px] leading-relaxed text-ink [&_a]:text-accent [&_a]:underline [&_h1]:mt-3 [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:text-[16px] [&_h2]:font-semibold [&_li]:mb-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+                dangerouslySetInnerHTML={{ __html: safeHtml }}
+              />
+            </div>
           ) : (
-            <div className="mt-2 whitespace-pre-line text-[15px] leading-relaxed text-ink">{htmlToText(description)}</div>
+            <div className="mt-2 whitespace-pre-line text-[15px] leading-relaxed text-ink max-md:break-words">{htmlToText(description)}</div>
           )}
         </section>
       )}
@@ -266,15 +285,37 @@ export function AssignmentPage(props: {
       )}
 
       {htmlUrl && (
-        <div className="mt-7">
+        <div className="mt-7 hidden md:block">
           <a href={htmlUrl} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-1.5">
             Open in Canvas
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
-              <path d="M7 17L17 7M9 7h8v8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <ExternalIcon />
           </a>
         </div>
       )}
+
+      {/* Phones: sticky thumb-zone actions, sitting just above the fixed tab bar
+          (whose own pb-safe already covers the home-indicator inset). The Mark
+          done half is a reserved slot — the single MarkDoneButton above is
+          pinned into it (see the comment there). */}
+      {hasActionBar && (
+        <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-30 flex gap-2.5 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur md:hidden">
+          {htmlUrl && (
+            <a href={htmlUrl} target="_blank" rel="noreferrer" className="btn-primary tap flex-1 gap-1.5">
+              Open in Canvas
+              <ExternalIcon />
+            </a>
+          )}
+          {canMarkDone && <span className="h-11 flex-1" aria-hidden />}
+        </div>
+      )}
     </div>
+  );
+}
+
+function ExternalIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+      <path d="M7 17L17 7M9 7h8v8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

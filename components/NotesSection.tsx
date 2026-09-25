@@ -6,7 +6,8 @@
 // Adding/deleting a note marks the guide/practice as stale (onNotesChanged) so the
 // student is prompted to regenerate — generation is cached and won't auto-refresh.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Sheet, useIsPhone } from "@/components/Sheet";
 
 type NoteSourceKind = "paste" | "pdf" | "docx" | "text" | "image" | "notion";
 interface NotionPageRef {
@@ -70,6 +71,9 @@ export function NotesSection({
   const [showPhoto, setShowPhoto] = useState(false);
   const [showNotion, setShowNotion] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Decided here (mounted long before any modal opens) so a modal never flashes
+  // as a desktop dialog before becoming a phone sheet.
+  const phone = useIsPhone();
 
   const refresh = useCallback(async () => {
     try {
@@ -193,16 +197,16 @@ export function NotesSection({
           <p className="text-base font-medium text-ink">{busy ? "Reading your file…" : dragOver ? "Drop to upload" : "No notes yet."}</p>
           <p className="mt-1 text-sm text-muted">Upload a file, paste from Notion or Docs, or snap a photo of handwritten notes.</p>
           <div className="mt-4 flex flex-col justify-center gap-2.5 sm:flex-row">
-            <button onClick={() => fileInputRef.current?.click()} disabled={busy} className="btn-primary text-sm">
+            <button onClick={() => fileInputRef.current?.click()} disabled={busy} className="btn-primary max-md:tap text-sm">
               Upload file
             </button>
-            <button onClick={() => setShowPaste(true)} disabled={busy} className="btn-ghost text-sm">
+            <button onClick={() => setShowPaste(true)} disabled={busy} className="btn-ghost max-md:tap text-sm">
               Paste text
             </button>
-            <button onClick={() => setShowPhoto(true)} disabled={busy} className="btn-ghost text-sm">
+            <button onClick={() => setShowPhoto(true)} disabled={busy} className="btn-ghost max-md:tap text-sm">
               Add photos
             </button>
-            <button onClick={() => setShowNotion(true)} disabled={busy} className="btn-ghost text-sm">
+            <button onClick={() => setShowNotion(true)} disabled={busy} className="btn-ghost max-md:tap text-sm">
               Import from Notion
             </button>
           </div>
@@ -218,16 +222,16 @@ export function NotesSection({
             <NoteRow key={n.id} note={n} onRename={rename} onDelete={remove} />
           ))}
           <div className="flex flex-col gap-2.5 sm:flex-row">
-            <button onClick={() => fileInputRef.current?.click()} disabled={busy || atLimit} className="btn-ghost text-sm">
+            <button onClick={() => fileInputRef.current?.click()} disabled={busy || atLimit} className="btn-ghost max-md:tap text-sm">
               {busy ? "Working…" : "+ Upload file"}
             </button>
-            <button onClick={() => setShowPaste(true)} disabled={busy || atLimit} className="btn-ghost text-sm">
+            <button onClick={() => setShowPaste(true)} disabled={busy || atLimit} className="btn-ghost max-md:tap text-sm">
               + Paste text
             </button>
-            <button onClick={() => setShowPhoto(true)} disabled={busy || atLimit} className="btn-ghost text-sm">
+            <button onClick={() => setShowPhoto(true)} disabled={busy || atLimit} className="btn-ghost max-md:tap text-sm">
               + Add photos
             </button>
-            <button onClick={() => setShowNotion(true)} disabled={busy || atLimit} className="btn-ghost text-sm">
+            <button onClick={() => setShowNotion(true)} disabled={busy || atLimit} className="btn-ghost max-md:tap text-sm">
               + Import from Notion
             </button>
           </div>
@@ -255,9 +259,10 @@ export function NotesSection({
         }}
       />
 
-      {showPaste && <PasteModal busy={busy} onClose={() => setShowPaste(false)} onSave={(title, text) => void submitNote({ title, text }, () => setShowPaste(false))} />}
+      {showPaste && <PasteModal phone={phone} busy={busy} onClose={() => setShowPaste(false)} onSave={(title, text) => void submitNote({ title, text }, () => setShowPaste(false))} />}
       {showPhoto && (
         <PhotoModal
+          phone={phone}
           canvasId={canvasId}
           busy={busy}
           onClose={() => setShowPhoto(false)}
@@ -266,6 +271,7 @@ export function NotesSection({
       )}
       {showNotion && (
         <NotionModal
+          phone={phone}
           canvasId={canvasId}
           onClose={() => setShowNotion(false)}
           onImported={async () => {
@@ -294,8 +300,8 @@ function NoteRow({
 
   return (
     <div className="rounded-[14px] border border-line-subtle bg-surface-soft/50 px-4 py-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex items-start justify-between gap-3 max-md:flex-wrap max-md:gap-y-1">
+        <div className="min-w-0 flex-1 max-md:basis-full">
           {editing ? (
             <form
               onSubmit={(e) => {
@@ -309,7 +315,7 @@ function NoteRow({
               className="flex gap-2"
             >
               <input autoFocus className="field flex-1" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} aria-label="Note title" />
-              <button type="submit" className="btn-primary text-sm">
+              <button type="submit" className="btn-primary max-md:tap text-sm">
                 Save
               </button>
             </form>
@@ -322,33 +328,33 @@ function NoteRow({
               {note.sourceKind === "image" && note.imageCount ? ` · ${note.imageCount} images` : ""}
             </span>
             <span className="text-[11px] text-muted">{approxWords(note.charCount)}</span>
-            <button onClick={() => setShowText((v) => !v)} className="text-[11px] font-medium text-muted hover:text-accent">
+            <button onClick={() => setShowText((v) => !v)} className={`${SMALL_LINK} text-[11px] hover:text-accent`}>
               {showText ? "Hide text" : "View extracted text"}
             </button>
           </div>
         </div>
         {!editing && (
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3 max-md:gap-1">
             <button
               onClick={() => {
                 setTitle(note.title);
                 setEditing(true);
               }}
-              className="text-[13px] font-medium text-muted transition-colors hover:text-accent"
+              className={`${SMALL_LINK} text-[13px] transition-colors hover:text-accent max-md:px-2`}
             >
               Rename
             </button>
             {confirmDel ? (
-              <span className="flex items-center gap-2 text-[13px]">
-                <button onClick={() => onDelete(note.id)} className="font-medium text-danger hover:underline">
+              <span className="flex items-center gap-2 text-[13px] max-md:gap-1">
+                <button onClick={() => onDelete(note.id)} className="max-md:tap inline-flex items-center font-medium text-danger hover:underline max-md:px-2 max-md:text-[14px]">
                   Delete
                 </button>
-                <button onClick={() => setConfirmDel(false)} className="text-muted hover:text-ink">
+                <button onClick={() => setConfirmDel(false)} className="max-md:tap inline-flex items-center text-muted hover:text-ink max-md:px-2 max-md:text-[14px]">
                   Cancel
                 </button>
               </span>
             ) : (
-              <button onClick={() => setConfirmDel(true)} className="text-[13px] font-medium text-muted transition-colors hover:text-danger">
+              <button onClick={() => setConfirmDel(true)} className={`${SMALL_LINK} text-[13px] transition-colors hover:text-danger max-md:px-2`}>
                 Delete
               </button>
             )}
@@ -364,20 +370,45 @@ function NoteRow({
   );
 }
 
-function PasteModal({ busy, onClose, onSave }: { busy: boolean; onClose: () => void; onSave: (title: string, text: string) => void }) {
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
-  const titleRef = useRef<HTMLInputElement>(null);
+// Small text actions: their desktop size stays; on phones they read at 14px with
+// a 44px target (#39).
+const SMALL_LINK = "max-md:tap inline-flex items-center font-medium text-muted max-md:text-[14px]";
 
+/** The frame every notes modal shares: the original centered dialog at md+, and
+ *  the app's bottom Sheet on phones. Escape closes both (the Sheet owns it on
+ *  phones). */
+function NotesModal({
+  phone,
+  titleId,
+  title,
+  headerAside,
+  onClose,
+  children,
+}: {
+  phone: boolean;
+  titleId: string;
+  title: string;
+  headerAside?: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+}) {
   useEffect(() => {
-    titleRef.current?.focus();
+    if (phone) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [phone, onClose]);
 
+  if (phone) {
+    return (
+      <Sheet open onClose={onClose} title={title}>
+        {headerAside && <div className="-mt-1 flex justify-end">{headerAside}</div>}
+        {children}
+      </Sheet>
+    );
+  }
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-6"
@@ -385,63 +416,90 @@ function PasteModal({ busy, onClose, onSave }: { busy: boolean; onClose: () => v
       onMouseDown={onClose}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="paste-notes-title"
+      aria-labelledby={titleId}
     >
       <div
         className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-2xl border border-line-subtle bg-surface p-6 shadow-lg"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 id="paste-notes-title" className="text-lg font-semibold text-ink">
-          Paste your notes
-        </h2>
-        <p className="mt-1 text-[13px] text-muted">Copy from Notion, Google Docs, or anywhere — formatting is dropped; we keep the text.</p>
-        <form
-          className="mt-4 space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (text.trim()) onSave(title.trim() || "Pasted notes", text.trim());
-          }}
-        >
-          <div>
-            <label className="label" htmlFor="note-title">
-              Title
-            </label>
-            <input
-              id="note-title"
-              ref={titleRef}
-              className="field"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Chapter 7 summary"
-              maxLength={120}
-            />
+        {headerAside ? (
+          <div className="flex items-start justify-between gap-3">
+            <h2 id={titleId} className="text-lg font-semibold text-ink">
+              {title}
+            </h2>
+            {headerAside}
           </div>
-          <div>
-            <label className="label" htmlFor="note-text">
-              Notes
-            </label>
-            <textarea
-              id="note-text"
-              className="field"
-              rows={10}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              maxLength={20000}
-              placeholder="Paste your notes here…"
-            />
-            <p className="mt-1 text-right text-[11px] text-muted">{text.length.toLocaleString()} / 20,000</p>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="btn-ghost text-sm">
-              Cancel
-            </button>
-            <button type="submit" disabled={!text.trim() || busy} className="btn-primary text-sm">
-              {busy ? "Saving…" : "Save note"}
-            </button>
-          </div>
-        </form>
+        ) : (
+          <h2 id={titleId} className="text-lg font-semibold text-ink">
+            {title}
+          </h2>
+        )}
+        {children}
       </div>
     </div>
+  );
+}
+
+function PasteModal({ phone, busy, onClose, onSave }: { phone: boolean; busy: boolean; onClose: () => void; onSave: (title: string, text: string) => void }) {
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  // Desktop: straight into the title. Phones: the Sheet focuses its own panel
+  // (no keyboard popping up over the sheet before the student asks for it).
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, []);
+
+  return (
+    <NotesModal phone={phone} titleId="paste-notes-title" title="Paste your notes" onClose={onClose}>
+      <p className="mt-1 text-[13px] text-muted">Copy from Notion, Google Docs, or anywhere — formatting is dropped; we keep the text.</p>
+      <form
+        className="mt-4 space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) onSave(title.trim() || "Pasted notes", text.trim());
+        }}
+      >
+        <div>
+          <label className="label" htmlFor="note-title">
+            Title
+          </label>
+          <input
+            id="note-title"
+            ref={titleRef}
+            className="field"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Chapter 7 summary"
+            maxLength={120}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="note-text">
+            Notes
+          </label>
+          <textarea
+            id="note-text"
+            className="field"
+            rows={10}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={20000}
+            placeholder="Paste your notes here…"
+          />
+          <p className="mt-1 text-right text-[11px] text-muted">{text.length.toLocaleString()} / 20,000</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-ghost max-md:tap text-sm">
+            Cancel
+          </button>
+          <button type="submit" disabled={!text.trim() || busy} className="btn-primary max-md:tap text-sm">
+            {busy ? "Saving…" : "Save note"}
+          </button>
+        </div>
+      </form>
+    </NotesModal>
   );
 }
 
@@ -463,11 +521,13 @@ const transcribeErr = (code: unknown) => (typeof code === "string" && TRANSCRIBE
 // Photo → handwriting transcription. Select images → "Transcribe with AI" (Gemini
 // vision) → REVIEW/edit the text (OCR can err) → save via the parent's submitNote.
 function PhotoModal({
+  phone,
   canvasId,
   busy,
   onClose,
   onSave,
 }: {
+  phone: boolean;
   canvasId: number;
   busy: boolean;
   onClose: () => void;
@@ -486,14 +546,6 @@ function PhotoModal({
     setPreviews(urls);
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [files]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -525,107 +577,93 @@ function PhotoModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "rgb(22 22 25 / 0.55)" }}
-      onMouseDown={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="photo-notes-title"
-    >
-      <div
-        className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-2xl border border-line-subtle bg-surface p-6 shadow-lg"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <h2 id="photo-notes-title" className="text-lg font-semibold text-ink">
-          Add photos of handwritten notes
-        </h2>
-        <p className="mt-1 text-[13px] text-muted">We&apos;ll read your handwriting with AI — you can review and fix the text before saving.</p>
+    <NotesModal phone={phone} titleId="photo-notes-title" title="Add photos of handwritten notes" onClose={onClose}>
+      <p className="mt-1 text-[13px] text-muted">We&apos;ll read your handwriting with AI — you can review and fix the text before saving.</p>
 
-        {previews.length > 0 && (
-          <div className="mt-3 flex gap-2 overflow-x-auto">
-            {previews.map((src, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={src} alt={`Page ${i + 1}`} className="h-16 w-16 shrink-0 rounded-lg object-cover" />
-            ))}
-          </div>
-        )}
+      {previews.length > 0 && (
+        <div className="mt-3 flex snap-x gap-2 overflow-x-auto">
+          {previews.map((src, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={i} src={src} alt={`Page ${i + 1}`} className="h-16 w-16 shrink-0 snap-start rounded-lg object-cover" />
+          ))}
+        </div>
+      )}
 
-        {step === "review" ? (
-          <div className="mt-4 space-y-3">
-            <div>
-              <label className="label" htmlFor="photo-title">
-                Title
-              </label>
-              <input id="photo-title" className="field" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
-            </div>
-            <div>
-              <label className="label" htmlFor="photo-text">
-                Transcription — check it before saving
-              </label>
-              <textarea id="photo-text" className="field" rows={12} value={text} onChange={(e) => setText(e.target.value)} maxLength={20000} />
-              <p className="mt-1 text-[11px] text-muted">AI can misread handwriting. Fix anything that looks off.</p>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <button type="button" onClick={() => setStep("select")} className="text-[13px] font-medium text-muted transition-colors hover:text-accent">
-                ← Back to photos
-              </button>
-              <div className="flex gap-2">
-                <button type="button" onClick={onClose} className="btn-ghost text-sm">
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!text.trim() || busy}
-                  onClick={() => onSave(title.trim() || "Handwritten notes", text.trim(), files.length)}
-                  className="btn-primary text-sm"
-                >
-                  {busy ? "Saving…" : "Save note"}
-                </button>
-              </div>
-            </div>
+      {step === "review" ? (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="label" htmlFor="photo-title">
+              Title
+            </label>
+            <input id="photo-title" className="field" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
           </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {step === "transcribing" ? (
-              <div className="rounded-[14px] bg-accent-soft px-4 py-3 text-sm text-accent" aria-live="polite">
-                Reading your handwriting with AI… this can take ~10–25 seconds.
-              </div>
-            ) : (
-              <button onClick={() => imgInputRef.current?.click()} className="btn-ghost text-sm">
-                {files.length > 0 ? "Add more photos" : "Choose photos"}
-              </button>
-            )}
-            {err && (
-              <p className="text-sm text-danger" role="alert">
-                {err}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={onClose} className="btn-ghost text-sm">
+          <div>
+            <label className="label" htmlFor="photo-text">
+              Transcription — check it before saving
+            </label>
+            <textarea id="photo-text" className="field" rows={12} value={text} onChange={(e) => setText(e.target.value)} maxLength={20000} />
+            <p className="mt-1 text-[11px] text-muted">AI can misread handwriting. Fix anything that looks off.</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button type="button" onClick={() => setStep("select")} className={`${SMALL_LINK} text-[13px] transition-colors hover:text-accent`}>
+              ← Back to photos
+            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={onClose} className="btn-ghost max-md:tap text-sm">
                 Cancel
               </button>
-              <button type="button" disabled={files.length === 0 || step === "transcribing"} onClick={transcribe} className="btn-primary text-sm">
-                {step === "transcribing" ? "Transcribing…" : "Transcribe with AI"}
+              <button
+                type="button"
+                disabled={!text.trim() || busy}
+                onClick={() => onSave(title.trim() || "Handwritten notes", text.trim(), files.length)}
+                className="btn-primary max-md:tap text-sm"
+              >
+                {busy ? "Saving…" : "Save note"}
               </button>
             </div>
           </div>
-        )}
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {step === "transcribing" ? (
+            <div className="rounded-[14px] bg-accent-soft px-4 py-3 text-sm text-accent" aria-live="polite">
+              Reading your handwriting with AI… this can take ~10–25 seconds.
+            </div>
+          ) : (
+            <button onClick={() => imgInputRef.current?.click()} className="btn-ghost max-md:tap text-sm">
+              {files.length > 0 ? "Add more photos" : "Choose photos"}
+            </button>
+          )}
+          {err && (
+            <p className="text-sm text-danger" role="alert">
+              {err}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="btn-ghost max-md:tap text-sm">
+              Cancel
+            </button>
+            <button type="button" disabled={files.length === 0 || step === "transcribing"} onClick={transcribe} className="btn-primary max-md:tap text-sm">
+              {step === "transcribing" ? "Transcribing…" : "Transcribe with AI"}
+            </button>
+          </div>
+        </div>
+      )}
 
-        <input
-          ref={imgInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          capture="environment"
-          hidden
-          onChange={(e) => {
-            addFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </div>
-    </div>
+      {/* No `capture`: it forces the camera and hides the photo library on iOS.
+          `accept="image/*"` alone lets the OS offer camera OR library. */}
+      <input
+        ref={imgInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+    </NotesModal>
   );
 }
 
@@ -643,7 +681,7 @@ const notionErr = (code: unknown) => (typeof code === "string" && NOTION_ERR[cod
 // Import notes from Notion. On open: check connection (GET). Not connected →
 // "Connect Notion" (full-page OAuth, returns to this study page). Connected →
 // search the granted pages and import any into this test's notes.
-function NotionModal({ canvasId, onClose, onImported }: { canvasId: number; onClose: () => void; onImported: () => void | Promise<void> }) {
+function NotionModal({ phone, canvasId, onClose, onImported }: { phone: boolean; canvasId: number; onClose: () => void; onImported: () => void | Promise<void> }) {
   const [status, setStatus] = useState<"loading" | "unconfigured" | "disconnected" | "ready">("loading");
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [pages, setPages] = useState<NotionPageRef[]>([]);
@@ -671,14 +709,6 @@ function NotionModal({ canvasId, onClose, onImported }: { canvasId: number; onCl
   useEffect(() => {
     void loadPages("");
   }, [loadPages]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   function connect() {
     const returnTo = typeof window !== "undefined" ? window.location.pathname : "/study";
@@ -715,105 +745,94 @@ function NotionModal({ canvasId, onClose, onImported }: { canvasId: number; onCl
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "rgb(22 22 25 / 0.55)" }}
-      onMouseDown={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="notion-notes-title"
+    <NotesModal
+      phone={phone}
+      titleId="notion-notes-title"
+      title="Import from Notion"
+      onClose={onClose}
+      headerAside={
+        status === "ready" ? (
+          <button onClick={disconnect} className={`${SMALL_LINK} shrink-0 text-[12px] transition-colors hover:text-danger`}>
+            Disconnect
+          </button>
+        ) : undefined
+      }
     >
-      <div
-        className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-2xl border border-line-subtle bg-surface p-6 shadow-lg"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <h2 id="notion-notes-title" className="text-lg font-semibold text-ink">
-            Import from Notion
-          </h2>
-          {status === "ready" && (
-            <button onClick={disconnect} className="shrink-0 text-[12px] font-medium text-muted transition-colors hover:text-danger">
-              Disconnect
-            </button>
-          )}
-        </div>
+      {status === "loading" && <p className="mt-4 text-sm text-muted">Loading…</p>}
 
-        {status === "loading" && <p className="mt-4 text-sm text-muted">Loading…</p>}
+      {status === "unconfigured" && (
+        <p className="mt-4 text-sm text-muted">Notion isn&apos;t set up for Navo yet. For now, use a file or paste your notes instead.</p>
+      )}
 
-        {status === "unconfigured" && (
-          <p className="mt-4 text-sm text-muted">Notion isn&apos;t set up for Navo yet. For now, use a file or paste your notes instead.</p>
-        )}
-
-        {status === "disconnected" && (
-          <div className="mt-4">
-            <p className="text-sm text-muted">Connect your Notion account, then pick the pages you want to study from.</p>
-            <button onClick={connect} className="btn-primary mt-3 text-sm">
-              Connect Notion
-            </button>
-          </div>
-        )}
-
-        {status === "ready" && (
-          <div className="mt-3">
-            {workspace && <p className="text-[12px] text-muted">Workspace: {workspace}</p>}
-            <form
-              className="mt-2 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void loadPages(q);
-              }}
-            >
-              <input
-                className="field flex-1"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search your Notion pages…"
-                aria-label="Search Notion pages"
-              />
-              <button type="submit" className="btn-ghost text-sm">
-                Search
-              </button>
-            </form>
-
-            <div className="mt-3 space-y-2">
-              {pages.length === 0 ? (
-                <p className="text-sm text-muted">No pages found. Make sure you shared pages with Navo when connecting.</p>
-              ) : (
-                pages.map((p) => {
-                  const done = importedIds.has(p.id);
-                  return (
-                    <div
-                      key={p.id}
-                      className="flex items-center justify-between gap-3 rounded-[14px] border border-line-subtle bg-surface-soft/50 px-4 py-2.5"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{p.title}</span>
-                      {done ? (
-                        <span className="shrink-0 text-[13px] font-medium text-success">Added ✓</span>
-                      ) : (
-                        <button onClick={() => void importPage(p)} disabled={importingId !== null} className="btn-ghost shrink-0 text-sm">
-                          {importingId === p.id ? "Importing…" : "Import"}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-
-        {err && (
-          <p className="mt-3 text-sm text-danger" role="alert">
-            {err}
-          </p>
-        )}
-
-        <div className="mt-4 flex justify-end">
-          <button type="button" onClick={onClose} className="btn-ghost text-sm">
-            Done
+      {status === "disconnected" && (
+        <div className="mt-4">
+          <p className="text-sm text-muted">Connect your Notion account, then pick the pages you want to study from.</p>
+          <button onClick={connect} className="btn-primary max-md:tap mt-3 text-sm">
+            Connect Notion
           </button>
         </div>
+      )}
+
+      {status === "ready" && (
+        <div className="mt-3">
+          {workspace && <p className="text-[12px] text-muted">Workspace: {workspace}</p>}
+          <form
+            className="mt-2 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void loadPages(q);
+            }}
+          >
+            <input
+              className="field flex-1"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search your Notion pages…"
+              aria-label="Search Notion pages"
+            />
+            <button type="submit" className="btn-ghost max-md:tap text-sm">
+              Search
+            </button>
+          </form>
+
+          <div className="mt-3 space-y-2">
+            {pages.length === 0 ? (
+              <p className="text-sm text-muted">No pages found. Make sure you shared pages with Navo when connecting.</p>
+            ) : (
+              pages.map((p) => {
+                const done = importedIds.has(p.id);
+                return (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-3 rounded-[14px] border border-line-subtle bg-surface-soft/50 px-4 py-2.5"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{p.title}</span>
+                    {done ? (
+                      <span className="shrink-0 text-[13px] font-medium text-success">Added ✓</span>
+                    ) : (
+                      <button onClick={() => void importPage(p)} disabled={importingId !== null} className="btn-ghost max-md:tap shrink-0 text-sm">
+                        {importingId === p.id ? "Importing…" : "Import"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {err && (
+        <p className="mt-3 text-sm text-danger" role="alert">
+          {err}
+        </p>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button type="button" onClick={onClose} className="btn-ghost max-md:tap text-sm">
+          Done
+        </button>
       </div>
-    </div>
+    </NotesModal>
   );
 }

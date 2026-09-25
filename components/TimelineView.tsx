@@ -140,15 +140,22 @@ export function TimelineView({ data }: { data: CalendarData }) {
             <div className="card p-8 text-center text-sm text-muted">No upcoming work to sequence. You&apos;re clear.</div>
           ) : (
             <>
-              <p className="mb-2 mt-4 text-[13px] text-muted">
-                Each bar is the days set aside to <span className="font-semibold text-ink">work</span> on something; the{" "}
-                <span className="font-semibold text-ink">◆</span> marks when it&rsquo;s due, and the number is the order to tackle them.
-              </p>
-              <div data-tour="tl-gantt">
-                <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
+              {/* Phones (#39): no Gantt — the same week's blocks as a day-grouped
+                  agenda. md+ keeps the Gantt exactly as before. */}
+              <div className="md:hidden">
+                <TimelineAgenda courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
               </div>
-              <div data-tour="tl-legend">
-                <TimelineLegend />
+              <div className="hidden md:block">
+                <p className="mb-2 mt-4 text-[13px] text-muted">
+                  Each bar is the days set aside to <span className="font-semibold text-ink">work</span> on something; the{" "}
+                  <span className="font-semibold text-ink">◆</span> marks when it&rsquo;s due, and the number is the order to tackle them.
+                </p>
+                <div data-tour="tl-gantt">
+                  <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
+                </div>
+                <div data-tour="tl-legend">
+                  <TimelineLegend />
+                </div>
               </div>
             </>
           )}
@@ -156,6 +163,74 @@ export function TimelineView({ data }: { data: CalendarData }) {
       )}
 
       {selected && <ItemDetail item={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+/** The phone fallback for the Gantt: the same plan blocks (same week, same
+ *  classes, same recommended-order numbers), grouped by day as a plain list.
+ *  Each row opens the same ItemDetail the bars do. */
+function TimelineAgenda({
+  courses,
+  days,
+  rank,
+  typeOf,
+  onPick,
+}: {
+  courses: string[];
+  days: PlanDay[];
+  rank: Map<number, number>;
+  typeOf: (id: number) => ItemType;
+  onPick: (id: number) => void;
+}) {
+  const shown = new Set(courses); // the Gantt's rows — excluded classes never appear there either
+  const groups = days
+    .map((d, i) => ({ d, i, blocks: d.blocks.filter((b) => shown.has(b.courseName)) }))
+    .filter((g) => g.blocks.length > 0);
+  // Demo-tour anchor (#39): the FIRST row of the #1-ranked item only (its work can
+  // span several days, and the tour needs one target).
+  const firstRow = groups.flatMap((g) => g.blocks.map((b, j) => ({ key: `${g.d.date}-${b.canvasId}-${j}`, id: b.canvasId }))).find((r) => rank.get(r.id) === 1)?.key;
+  return (
+    <div className="mt-4 space-y-4">
+      {groups.map(({ d, i, blocks }) => {
+        const date = parseYmd(d.date);
+        return (
+          <section key={d.date}>
+            <h2 className={`mb-1.5 text-xs font-semibold uppercase tracking-wide ${i === 0 ? "text-accent" : "text-muted"}`}>
+              {i === 0 ? "Today · " : ""}
+              {WEEKDAYS[date.getDay()]} {date.getDate()}
+            </h2>
+            <ul className="card divide-y divide-line-subtle p-1">
+              {blocks.map((b, j) => {
+                const n = rank.get(b.canvasId);
+                return (
+                  <li key={`${b.canvasId}-${j}`}>
+                    <button
+                      type="button"
+                      data-tour={`${d.date}-${b.canvasId}-${j}` === firstRow ? "tl-agenda" : undefined}
+                      onClick={() => onPick(b.canvasId)}
+                      className="tap flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left"
+                    >
+                      <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ background: TYPE_COLOR[typeOf(b.canvasId)] }} aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[16px] font-medium text-ink">
+                          {n ? <span className="font-bold">{n}. </span> : null}
+                          {b.study ? "Study: " : ""}
+                          {b.name}
+                        </span>
+                        <span className="block truncate text-[13px] text-muted">
+                          {TYPE_LABEL[typeOf(b.canvasId)]} · {cleanCourse(b.courseName)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[14px] font-medium text-ink">{fmtHours(b.hours)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }

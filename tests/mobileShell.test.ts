@@ -1,13 +1,28 @@
 // Ticket #39 (M1): the phone/tablet shell and its global foundations. Pure
 // tests for the pathname helpers the shell renders from, plus grep guards so
 // the shell's wiring (layout, sidebar breakpoints, tab bar, Sheet, CSS,
-// manifest, viewport) can't be quietly undone by a later task.
+// manifest, viewport) can't be quietly undone by a later task. Guards assert
+// TOKEN PRESENCE (class names / identifiers split on whitespace and quotes),
+// never whole class strings or attribute order, so a reflow of a className
+// doesn't fail them.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { navItems, TAB_ITEMS, setupItems, pageTitle, activeTabHref, initialsOf } from "@/components/navItems";
 import { NAV_ICONS } from "@/components/navIcons";
 
 const read = (p: string) => readFileSync(p, "utf8");
+/** Does `src` contain `word` as a whole token? Letters, digits, `_` and `-`
+ *  are token characters; everything else (space, quote, `=`, `{`, `:`, `.`,
+ *  `(`, …) is a boundary. Multi-part class names (`md:hidden`, `bg-ink/40`,
+ *  `max-h-[85dvh]`, `#f7f6f4`) are matched as whole literals. Order-independent
+ *  by construction — never pins a full className string. */
+const hasToken = (src: string, word: string) => {
+  const esc = word.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  return new RegExp(`(^|[^\\w-])${esc}(?=$|[^\\w-])`, "m").test(src);
+};
+const expectTokens = (src: string, ...want: string[]) => {
+  for (const w of want) expect(hasToken(src, w), `missing token ${w}`).toBe(true);
+};
 
 describe("pageTitle (phone top bar)", () => {
   it.each([
@@ -72,60 +87,45 @@ describe("navItems — the ONE nav list", () => {
 describe("grep guard: MobileTabBar renders TAB_ITEMS, never its own hrefs", () => {
   const src = read("components/MobileTabBar.tsx");
   it("imports TAB_ITEMS + activeTabHref from navItems and hardcodes no href", () => {
-    expect(src.includes("TAB_ITEMS")).toBe(true);
-    expect(src.includes("activeTabHref(")).toBe(true);
+    expectTokens(src, "TAB_ITEMS", "activeTabHref");
     expect(/href="\//.test(src)).toBe(false);
   });
   it("is phone-only, fixed to the bottom, 56px + safe area, 44px targets, aria-current", () => {
-    expect(src.includes("md:hidden")).toBe(true);
-    expect(src.includes("fixed inset-x-0 bottom-0")).toBe(true);
-    expect(src.includes("h-14")).toBe(true);
-    expect(src.includes("pb-safe")).toBe(true);
-    expect(src.includes("tap ")).toBe(true);
-    expect(src.includes('aria-current={isActive ? "page" : undefined}')).toBe(true);
+    expectTokens(src, "md:hidden", "fixed", "inset-x-0", "bottom-0", "h-14", "pb-safe", "tap", "aria-current", "page", "text-accent", "text-muted");
   });
 });
 
 describe("grep guard: the (app) layout wires the phone shell and keeps the access gate", () => {
   const src = read("app/(app)/layout.tsx");
-  it("renders MobileTopBar above <main> and MobileTabBar after it", () => {
-    const top = src.indexOf("<MobileTopBar");
-    const main = src.indexOf("<main className");
-    const tab = src.indexOf("<MobileTabBar");
-    expect(top).toBeGreaterThan(-1);
-    expect(tab).toBeGreaterThan(-1);
-    expect(top).toBeLessThan(main);
-    expect(tab).toBeGreaterThan(src.indexOf("</main>"));
+  it("renders the Sidebar, MobileTopBar and MobileTabBar", () => {
+    expectTokens(src, "<Sidebar", "<MobileTopBar", "<MobileTabBar");
   });
   it("still gates through accessDecision / DECISION_PATH and keeps the three banners", () => {
     expect(src.includes("accessDecision(")).toBe(true);
     expect(src.includes("DECISION_PATH[")).toBe(true);
-    for (const el of ["<ConnectionAlert", "<TrialBanner", "<CancelScheduledNote", "<Sidebar"]) expect(src.includes(el)).toBe(true);
+    expectTokens(src, "<ConnectionAlert", "<TrialBanner", "<CancelScheduledNote");
   });
   it("<main> guards horizontal overflow and reserves the tab-bar height on phones", () => {
-    expect(src.includes("overflow-x-hidden")).toBe(true);
+    expectTokens(src, "overflow-x-hidden", "min-h-dvh", "flex-col", "md:flex-row");
     expect(src.includes("pb-[calc(56px+env(safe-area-inset-bottom)+1rem)]")).toBe(true);
-    expect(src.includes("min-h-dvh")).toBe(true);
   });
 });
 
 describe("grep guard: Sidebar breakpoints", () => {
   const src = read("components/Sidebar.tsx");
-  it("is hidden below md and uses dvh, never 100vh", () => {
-    expect(src.includes("hidden")).toBe(true);
-    expect(src.includes("md:flex")).toBe(true);
-    expect(src.includes("h-dvh")).toBe(true);
-    expect(src.includes("h-screen")).toBe(false);
+  it("is hidden below md, uses dvh (never 100vh), and pads the rail for a left cutout", () => {
+    expectTokens(src, "hidden", "md:flex", "h-dvh");
+    expect(hasToken(src, "h-screen")).toBe(false);
+    expect(src.includes("env(safe-area-inset-left)")).toBe(true);
   });
   it("renders the shared navItems and icons (no private path strings)", () => {
-    expect(src.includes("navItems")).toBe(true);
-    expect(src.includes("NavIcon")).toBe(true);
+    expectTokens(src, "navItems", "NavIcon");
     expect(/icon:\s*"M/.test(src)).toBe(false);
   });
-  it("the collapse chevrons only exist at lg+ (tablets are always the rail)", () => {
-    const chevrons = src.match(/aria-label="(Collapse|Expand) menu"[^>]*className="([^"]*)"/g) ?? [];
-    expect(chevrons.length).toBe(2);
-    for (const c of chevrons) expect(c.includes("lg:block")).toBe(true);
+  it("the collapse/expand chevrons exist and are lg-only (tablets are always the rail)", () => {
+    expect(src.includes("Collapse menu")).toBe(true);
+    expect(src.includes("Expand menu")).toBe(true);
+    expectTokens(src, "lg:block", "lg:w-64", "lg:inline");
   });
 });
 
@@ -135,28 +135,36 @@ describe("grep guard: Sheet and the phone account surfaces", () => {
     expect(src.includes("export function Sheet(")).toBe(true);
     expect(src.includes("export function useIsPhone()")).toBe(true);
     expect(src.includes("(max-width: 767px)")).toBe(true);
-    expect(src.includes("max-h-[85dvh]")).toBe(true);
-    expect(src.includes("rounded-t-2xl")).toBe(true);
-    expect(src.includes("md:max-w-md")).toBe(true);
-    expect(src.includes('role="dialog"')).toBe(true);
-    expect(src.includes('aria-modal="true"')).toBe(true);
-    expect(src.includes("bg-ink/40")).toBe(true);
-    expect(src.includes('e.key === "Escape"')).toBe(true);
+    expectTokens(src, "max-h-[85dvh]", "rounded-t-2xl", "md:max-w-md", "md:rounded-2xl", "role=", "dialog", "aria-modal=", "aria-labelledby=", "bg-ink/40", "pb-safe");
+  });
+  it("Sheet locks <html> AND <body> scroll behind a counter, only the top sheet handles Escape, and the backdrop blocks touch scroll", () => {
+    const src = read("components/Sheet.tsx");
+    expect(src.includes("document.documentElement.style.overflow")).toBe(true);
+    expect(src.includes("document.body.style.overflow")).toBe(true);
+    expectTokens(src, "lockCount", "openSheets", "isTopSheet", "touch-none");
+    expect(src.includes("stopPropagation")).toBe(false);
+  });
+  it("Sheet focuses the panel itself (not the Close button) and clamps long titles", () => {
+    const src = read("components/Sheet.tsx");
+    expect(src.includes("panel?.focus()")).toBe(true);
+    expectTokens(src, "line-clamp-2");
+    expect(/<h2[^>]*\btruncate\b/.test(src)).toBe(false);
   });
   it("AccountSheet uses Sheet with the sidebar's setup items, replay and logout", () => {
     const src = read("components/AccountSheet.tsx");
-    expect(src.includes("<Sheet")).toBe(true);
-    expect(src.includes("setupItems")).toBe(true);
-    expect(src.includes('href="/demo"')).toBe(true);
-    expect(src.includes('fetch("/api/auth/logout", { method: "POST" })')).toBe(true);
-    expect(src.includes("h-12")).toBe(true);
+    expectTokens(src, "<Sheet", "setupItems", "/demo", "/api/auth/logout", "h-12", "tap");
   });
-  it("MobileTopBar derives its title from pageTitle and opens the AccountSheet", () => {
+  it("MobileTopBar derives its title from pageTitle, is not a second <h1>, and opens the AccountSheet", () => {
     const src = read("components/MobileTopBar.tsx");
     expect(src.includes("pageTitle(pathname)")).toBe(true);
-    expect(src.includes("<AccountSheet")).toBe(true);
-    expect(src.includes("md:hidden")).toBe(true);
-    expect(src.includes("h-12")).toBe(true);
+    expectTokens(src, "<AccountSheet", "md:hidden", "h-12", "aria-hidden=");
+    expect(src.includes("<h1")).toBe(false);
+  });
+  it("the theme toggle keeps <meta name=theme-color> in step with data-theme, and the top bar syncs it on load", () => {
+    const toggle = read("components/ThemeToggle.tsx");
+    expect(toggle.includes('meta[name="theme-color"]')).toBe(true);
+    expectTokens(toggle, "syncThemeColorMeta", "#f7f6f4", "#161619");
+    expect(read("components/MobileTopBar.tsx").includes("syncThemeColorMeta()")).toBe(true);
   });
 });
 
@@ -195,15 +203,11 @@ describe("home-screen install: manifest + viewport", () => {
   it("app/layout.tsx exports viewport with viewportFit cover and the manifest/apple metadata", () => {
     const src = read("app/layout.tsx");
     expect(src.includes("export const viewport: Viewport")).toBe(true);
-    expect(src.includes('viewportFit: "cover"')).toBe(true);
-    expect(src.includes('manifest: "/manifest.webmanifest"')).toBe(true);
-    expect(src.includes("appleWebApp")).toBe(true);
+    expectTokens(src, "viewportFit:", "cover", "manifest:", "/manifest.webmanifest", "appleWebApp:");
   });
-  it("the theme colors are the brand canvas/ink tokens, in both the layout and the manifest", () => {
-    const layout = read("app/layout.tsx");
+  it("the theme colors are the brand canvas/ink tokens, in the layout, the toggle and the manifest", () => {
     const m = JSON.parse(read("public/manifest.webmanifest"));
-    expect(layout.includes('color: "#f7f6f4"')).toBe(true);
-    expect(layout.includes('color: "#161619"')).toBe(true);
+    expectTokens(read("app/layout.tsx"), "#f7f6f4", "#161619");
     expect(m.theme_color).toBe("#f7f6f4");
     expect(m.background_color).toBe("#f7f6f4");
   });

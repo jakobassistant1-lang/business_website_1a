@@ -7,12 +7,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Sheet, useIsPhone } from "@/components/Sheet";
 import { courseColor } from "@/lib/courseColor";
 import { toneSoft } from "@/lib/tone";
 import { isStudyType, type ItemType } from "@/lib/itemType";
 import type { CalendarItem } from "@/lib/calendarData";
 import type { CalendarEvent } from "@/lib/calendar/types";
-import type { AtRiskItem } from "@/lib/scheduler";
+import type { AtRiskItem, DayBlock } from "@/lib/scheduler";
+import { ymd } from "@/lib/calendarDates";
 import type { ScoredAssignment } from "@/lib/priority";
 
 export const ICON = {
@@ -30,6 +32,19 @@ export const ICON = {
   inbox: "M3 12h5l2 3h4l2-3h5M5 5h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z",
   x: "M6 6l12 12M18 6 6 18",
 };
+
+/** A 44px touch target on phones only (#39): `.tap` below `md` via the
+ *  `max-md:` variant, so tablet/desktop keep their exact sizes. The ONE
+ *  spelling for phone-only targets; components may also write `max-md:tap`
+ *  inline. The bare global `.tap` applies at every width. */
+export const TAP_PHONE = "max-md:tap";
+
+/** A plan block worth showing as "study" to the student: a real study session
+ *  (hours > 0) for an assessment that isn't already past. The ONE filter the
+ *  dashboard's "Today's study" and the phone Plan's study list share. */
+export function isUpcomingStudy(b: Pick<DayBlock, "study" | "hours" | "dueAt">, todayYmd: string): boolean {
+  return !!b.study && b.hours > 0 && ymd(new Date(b.dueAt)) >= todayYmd;
+}
 
 export function Glyph({ d, size = 16 }: { d: string; size?: number }) {
   return (
@@ -84,7 +99,7 @@ function statusMeta(item: CalendarItem): StatusMeta {
 }
 
 /** The coursework atom rendered in every view. A button → opens ItemDetail. */
-export function ItemPill({ item, onSelect, showTime = true, compact = false }: { item: CalendarItem; onSelect: (it: CalendarItem) => void; showTime?: boolean; compact?: boolean }) {
+export function ItemPill({ item, onSelect, showTime = true, compact = false, tap = false }: { item: CalendarItem; onSelect: (it: CalendarItem) => void; showTime?: boolean; compact?: boolean; tap?: boolean }) {
   const s = statusMeta(item);
   const glyph = s.danger ? ICON.alert : typeGlyph(item.type);
   return (
@@ -93,7 +108,7 @@ export function ItemPill({ item, onSelect, showTime = true, compact = false }: {
       onClick={() => onSelect(item)}
       title={`${item.courseName} · ${item.name}`}
       aria-label={`${item.name}, ${item.courseName}${s.pill ? `, ${s.pill.text}` : ""}`}
-      className={`flex w-full items-center gap-2 overflow-hidden rounded-lg border bg-surface px-2.5 py-2 text-left transition hover:shadow-sm ${s.border} ${s.muted ? "opacity-60" : ""}`}
+      className={`flex w-full items-center gap-2 overflow-hidden rounded-lg border bg-surface px-2.5 py-2 text-left transition hover:shadow-sm ${s.border} ${s.muted ? "opacity-60" : ""} ${tap ? "tap" : ""}`}
     >
       <span className="w-1.5 shrink-0 self-stretch rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
       <span className={`shrink-0 ${s.danger ? "text-danger" : "text-muted"}`}>
@@ -129,11 +144,15 @@ export function BusyRow({ ev }: { ev: CalendarEvent }) {
 export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () => void }) {
   const [desc, setDesc] = useState<string | null>(item.summary ?? null);
   const [descLoading, setDescLoading] = useState(false);
+  // Phones get the shared bottom Sheet (#39), which owns Escape/focus/scroll-lock
+  // itself; the desktop dialog below keeps its own Escape handler.
+  const phone = useIsPhone();
   useEffect(() => {
+    if (phone) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, phone]);
   useEffect(() => {
     if (item.summary) {
       setDesc(item.summary);
@@ -152,6 +171,52 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
     };
   }, [item.canvasId, item.summary]);
   const eff = effortHoursText(item.estimatedEffortHours); // effective hours (override-aware), minute-formatted, no stale bucket
+  const canStudy = isStudyType(item.type) && item.status !== "done";
+
+  if (phone) {
+    // Same facts and actions as the dialog, sized for a thumb: 14px body text,
+    // full-width 44px actions pinned in the sheet's footer.
+    const actions =
+      canStudy || item.htmlUrl ? (
+        <div className="flex gap-3">
+          {canStudy && (
+            <Link href={`/study/${item.canvasId}`} className="btn-ghost tap flex-1">
+              Study for this
+            </Link>
+          )}
+          {item.htmlUrl && (
+            <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary tap flex-1">
+              Open in Canvas ↗
+            </a>
+          )}
+        </div>
+      ) : undefined;
+    return (
+      <Sheet open onClose={onClose} title={item.name} footer={actions}>
+        <p className="flex items-center gap-2 text-[14px] text-muted">
+          <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
+          <span className="min-w-0 truncate">{item.courseName}</span>
+        </p>
+        {item.status === "overdue" && <p className="mt-2 text-[14px] font-medium text-danger">Past due</p>}
+        <dl className="mt-3 space-y-2 text-[14px]">
+          {item.dueAt && <DetailRow k="Due" v={fmtDueLong(item.dueAt)} />}
+          {eff && <DetailRow k="Effort" v={eff} />}
+          {item.pointsPossible != null && <DetailRow k="Points" v={`${item.pointsPossible}`} />}
+          <DetailRow k="Type" v={item.type} />
+        </dl>
+        {desc ? (
+          <p className="mt-3 rounded-md bg-surface-soft px-3 py-2 text-[14px] text-muted">
+            <span className="font-medium text-ink">About this: </span>
+            {desc}
+          </p>
+        ) : descLoading ? (
+          <p className="mt-3 text-[14px] text-muted">Generating a quick description…</p>
+        ) : null}
+        {canStudy && <StudyLeadEditor item={item} />}
+      </Sheet>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true">
       <div className="card w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
@@ -257,7 +322,7 @@ export function StudyLeadEditor({ item }: { item: CalendarItem }) {
           placeholder="days"
         />
         <span className="text-xs text-muted">days ahead</span>
-        <button onClick={apply} disabled={busy} className="btn-primary text-sm">
+        <button onClick={apply} disabled={busy} className={`btn-primary text-sm ${TAP_PHONE}`}>
           {busy ? "Saving…" : "Apply"}
         </button>
         {saved && <span className="text-xs text-success">Re-planned ✓</span>}
@@ -283,14 +348,16 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
   const [err, setErr] = useState<string | null>(null);
   const effective = override ?? estimate;
   const label = effortHoursText(effective);
+  const phone = useIsPhone(); // phones: the presets open in the shared bottom Sheet
 
-  // Close on Escape; the backdrop below handles outside-clicks.
+  // Close on Escape; the backdrop below handles outside-clicks. (The phone Sheet
+  // handles its own Escape.)
   useEffect(() => {
-    if (!open) return;
+    if (!open || phone) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, phone]);
 
   async function save(hours: number | null) {
     setBusy(true);
@@ -321,13 +388,42 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         title="Adjust the estimated time"
-        className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-surface-soft px-3 py-1 text-[13px] font-medium text-muted transition hover:text-ink"
+        // Phones: an invisible ::after stretches the hit area to 44px tall without
+        // changing the chip's look or the row it sits in.
+        className="relative inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-surface-soft px-3 py-1 text-[13px] font-medium text-muted transition after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] hover:text-ink md:after:hidden"
       >
         <Glyph d={ICON.clock} size={12} aria-hidden />
         {label ?? "Add time"}
         {override != null && <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-accent" title="Your estimate" aria-hidden />}
       </button>
-      {open && (
+      {open && phone && (
+        <Sheet open onClose={() => setOpen(false)} title="How long will this take?">
+          {label && <p className="text-[14px] text-muted">Now {label}.</p>}
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            {EFFORT_PRESETS.map((h) => {
+              const active = effective != null && Math.abs(effective - h) < 1e-9;
+              return (
+                <button
+                  key={h}
+                  disabled={busy}
+                  onClick={() => save(h)}
+                  aria-pressed={active}
+                  className={`tap rounded-full px-2 text-[15px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-white" : "bg-surface-soft text-ink"}`}
+                >
+                  {fmtHours(h)}
+                </button>
+              );
+            })}
+          </div>
+          {override != null && (
+            <button disabled={busy} onClick={() => save(null)} className="tap mt-3 w-full rounded-lg text-[15px] text-muted transition hover:text-ink disabled:opacity-50">
+              ↺ Use the estimate{estimate != null ? ` (${effortHoursText(estimate)})` : ""}
+            </button>
+          )}
+          {err && <p className="mt-2 text-[14px] text-danger">{err}</p>}
+        </Sheet>
+      )}
+      {open && !phone && (
         <>
           <span className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden />
           <span className="absolute left-0 top-full z-30 mt-1.5 w-max rounded-lg border border-line-subtle bg-surface p-2 text-left shadow-md">
@@ -393,18 +489,85 @@ export function DayPeek({
   onClose: () => void;
   onOpenDay?: () => void;
 }) {
+  const phone = useIsPhone(); // phones: the shared bottom Sheet (it owns Escape)
   useEffect(() => {
+    if (phone) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, phone]);
   const empty = items.length === 0 && events.length === 0 && study.length === 0;
   const dueShort = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const dayTitle = date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  if (phone) {
+    return (
+      <Sheet
+        open
+        onClose={onClose}
+        title={dayTitle}
+        footer={
+          onOpenDay ? (
+            <button
+              onClick={() => {
+                onOpenDay();
+                onClose();
+              }}
+              className="btn-ghost tap w-full"
+            >
+              Open full day view →
+            </button>
+          ) : undefined
+        }
+      >
+        {empty && <p className="py-6 text-center text-[15px] text-muted">Nothing on this day.</p>}
+        {items.length > 0 && (
+          <section className="mt-1">
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Due ({items.length})</h3>
+            <div className="space-y-2">
+              {items.map((it) => (
+                <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} tap />
+              ))}
+            </div>
+          </section>
+        )}
+        {study.length > 0 && (
+          <section className="mt-4">
+            <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+              <Glyph d={ICON.clock} size={13} /> Study plan
+            </h3>
+            <ul className="mt-1.5 space-y-1">
+              {study.map((s, i) => (
+                <li key={`peekst-${s.canvasId}-${i}`}>
+                  <Link href={`/study/${s.canvasId}`} className="tap flex items-center gap-2 text-[15px]">
+                    <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
+                    <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
+                    <span className="shrink-0 text-[13px] text-muted">
+                      {fmtHours(s.hours)} · due {dueShort(s.dueAt)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {events.length > 0 && (
+          <section className="mt-4">
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Busy</h3>
+            <div className="space-y-1.5">
+              {events.map((e, i) => (
+                <BusyRow key={`peekev-${i}`} ev={e} />
+              ))}
+            </div>
+          </section>
+        )}
+      </Sheet>
+    );
+  }
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true">
       <div className="card max-h-[80vh] w-full max-w-md overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">{date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</h2>
+          <h2 className="text-sm font-semibold text-ink">{dayTitle}</h2>
           <button onClick={onClose} className="text-muted hover:text-ink" aria-label="Close">
             <Glyph d={ICON.x} size={16} />
           </button>
@@ -477,7 +640,7 @@ export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
   if (overdue.length === 0) return null;
   return (
     <div className="mb-3 rounded-lg border border-danger bg-surface px-3 py-2">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-3">
+      <button onClick={() => setOpen((o) => !o)} className={`flex w-full items-center justify-between gap-3 ${TAP_PHONE}`}>
         <span className="flex items-center gap-2 text-sm font-semibold text-danger">
           <Glyph d={ICON.alert} size={16} /> {overdue.length} overdue
         </span>
@@ -552,13 +715,19 @@ export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "m
     let cancelled = false;
     setLoading(true);
     const q = new URLSearchParams({ view, start, days: String(days) });
-    fetch(`/api/calendar/briefing?${q.toString()}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => !cancelled && setText(typeof body?.text === "string" ? body.text : null))
-      .catch(() => !cancelled && setText(null))
-      .finally(() => !cancelled && setLoading(false));
+    // Deferred a tick (#39): a view that mounts and unmounts at once (e.g. a quick
+    // view switch) never fires the Gemini briefing request at all.
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      fetch(`/api/calendar/briefing?${q.toString()}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => !cancelled && setText(typeof body?.text === "string" ? body.text : null))
+        .catch(() => !cancelled && setText(null))
+        .finally(() => !cancelled && setLoading(false));
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [view, start, days]);
 
@@ -576,7 +745,7 @@ export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "m
   }
   return (
     <div className="mb-3 rounded-lg border border-accent-soft bg-accent-soft/30 px-3 py-2">
-      <button onClick={toggle} className="flex w-full items-center justify-between gap-3">
+      <button onClick={toggle} className={`flex w-full items-center justify-between gap-3 ${TAP_PHONE}`}>
         <span className="flex items-center gap-2 text-sm font-semibold text-accent">
           <Glyph d={ICON.spark} size={15} /> Study coach
         </span>
@@ -618,13 +787,13 @@ export function PeriodToolbar({
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-1.5">
-        <button onClick={onPrev} className="btn-ghost px-2" aria-label="Previous">
+        <button onClick={onPrev} className={`btn-ghost px-2 ${TAP_PHONE}`} aria-label="Previous">
           <Glyph d={ICON.chevL} size={16} />
         </button>
-        <button onClick={onToday} disabled={atToday} className="btn-ghost text-sm disabled:opacity-50">
+        <button onClick={onToday} disabled={atToday} className={`btn-ghost text-sm disabled:opacity-50 ${TAP_PHONE}`}>
           Today
         </button>
-        <button onClick={onNext} className="btn-ghost px-2" aria-label="Next">
+        <button onClick={onNext} className={`btn-ghost px-2 ${TAP_PHONE}`} aria-label="Next">
           <Glyph d={ICON.chevR} size={16} />
         </button>
         <span className="ml-1.5 text-sm font-semibold text-ink">{label}</span>
@@ -637,7 +806,7 @@ export function PeriodToolbar({
               role="tab"
               aria-selected={v === view}
               onClick={() => onView(v)}
-              className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${
+              className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${TAP_PHONE} ${
                 v === view ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"
               }`}
             >
@@ -657,6 +826,7 @@ export function PeriodToolbar({
 export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; weekKey: string }) {
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const phone = useIsPhone(); // phones: the nudge opens in the shared bottom Sheet
   useEffect(() => {
     try {
       setDismissed(sessionStorage.getItem(`sp_overload_dismissed_${weekKey}`) === "1");
@@ -681,11 +851,25 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={`This week is over your study budget by about ${n} hours`}
-        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}
+        className={`relative inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] md:after:hidden ${toneSoft.warning}`}
       >
         <Glyph d={ICON.clock} size={13} /> ~{n}h over this week
       </button>
-      {open && (
+      {open && phone && (
+        <Sheet open onClose={() => setOpen(false)} title={`~${n}h over this week`}>
+          <p className="text-[15px] font-medium text-ink">This week needs ~{n}h more than you&apos;ve set aside.</p>
+          <p className="mt-1 text-[14px] text-muted">Raise your daily study time, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
+          <div className="mt-4 flex gap-3">
+            <Link href="/settings" className="btn-primary tap flex-1" onClick={() => setOpen(false)}>
+              Adjust daily hours
+            </Link>
+            <button onClick={dismiss} className="btn-ghost tap flex-1">
+              Got it
+            </button>
+          </div>
+        </Sheet>
+      )}
+      {open && !phone && (
         <div className="absolute right-0 z-30 mt-1.5 w-64 rounded-lg border border-warning/30 bg-warning-soft/40 px-3 py-2 text-xs shadow-md">
           <p className="font-medium text-ink">This week needs ~{n}h more than you&apos;ve set aside.</p>
           <p className="mt-0.5 text-muted">Raise your daily study time, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
@@ -760,7 +944,18 @@ export function DoneCheck({
       setBusy(false);
     }
   };
-  const idle = tone === "danger" ? "border-danger/50 hover:border-success" : tone === "warning" ? "border-warning/50 hover:border-success" : "border-line hover:border-success";
+  const idle = tone === "danger" ? "border-danger/50 group-hover/done:border-success" : tone === "warning" ? "border-warning/50 group-hover/done:border-success" : "border-line group-hover/done:border-success";
+  // The button is the hit area, the inner span the 22px circle. On phones the
+  // button is a 44×44 target whose padding (and matching negative margin) is
+  // lopsided — 16px to the left, 6px to the right, 11px above/below — so the
+  // circle doesn't move, the row's layout doesn't move, and the target stops short
+  // of the row text (rows leave ≥8px between circle and text; the spare left side
+  // falls in the row's left padding and the list's gutter). At md+ it collapses to the circle exactly as
+  // before. Unchecked, the tick is hover-only on desktop; `hover-reveal` shows it
+  // on touch (tinted faint, so an unchecked circle never reads as done).
+  // Pre-existing, out of scope: this <button> sits inside the row's <Link> (a
+  // button in an anchor); the handler's preventDefault/stopPropagation keeps a tap
+  // from navigating.
   return (
     <button
       type="button"
@@ -768,11 +963,13 @@ export function DoneCheck({
       disabled={busy}
       aria-label={local ? "Mark as not done" : "Mark as done"}
       title={local ? "Mark as not done" : "Mark as done"}
-      className={`grid h-[22px] w-[22px] shrink-0 cursor-pointer place-items-center rounded-full border-2 text-success transition ${local ? "border-success bg-success" : idle} ${className}`}
+      className={`group/done ${TAP_PHONE} -my-[11px] -ml-4 -mr-1.5 grid shrink-0 cursor-pointer place-items-center rounded-full py-[11px] pl-4 pr-1.5 md:m-0 md:p-0 ${className}`}
     >
-      <svg viewBox="0 0 12 12" className={`h-3 w-3 transition-opacity ${local ? "text-white opacity-100" : "opacity-0 hover:opacity-100"}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M2 6.5 4.8 9 10 3.5" />
-      </svg>
+      <span className={`grid h-[22px] w-[22px] place-items-center rounded-full border-2 text-success transition ${local ? "border-success bg-success" : idle}`}>
+        <svg viewBox="0 0 12 12" className={`h-3 w-3 transition-opacity ${local ? "text-white opacity-100" : "text-faint opacity-0 hover:opacity-100 hover-reveal hover:text-success"}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M2 6.5 4.8 9 10 3.5" />
+        </svg>
+      </span>
     </button>
   );
 }

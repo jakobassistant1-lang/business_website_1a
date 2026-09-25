@@ -17,10 +17,12 @@ export const metadata: Metadata = {
   },
 };
 
-// The browser-chrome color per scheme. These two hexes are the brand canvas
-// (--bg light) and ink (--bg dark) tokens from app/globals.css — metadata can't
-// read CSS variables, so this is the ONE place raw hex is allowed. Keep them in
-// sync with the tokens (and with public/manifest.webmanifest).
+// The browser-chrome color per scheme — the DEFAULT before the user's stored
+// theme is known. These two hexes are the brand canvas (--bg light) and ink
+// (--bg dark) tokens from app/globals.css — metadata can't read CSS variables,
+// so raw hex is allowed here and in components/ThemeToggle.tsx (which rewrites
+// these metas to follow data-theme) only. Keep both in sync with the tokens
+// (and with public/manifest.webmanifest).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,

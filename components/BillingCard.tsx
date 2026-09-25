@@ -30,7 +30,7 @@ export async function BillingCard({ user, enabled, isAdmin, fromPortal }: { user
   const plan = price ? `Navo · ${price}` : "Navo";
 
   return (
-    <section className="card mt-6 max-w-xl p-6" aria-labelledby="billing-heading">
+    <section className="card mt-6 max-w-xl p-5 sm:p-6" aria-labelledby="billing-heading">
       <h2 id="billing-heading" className="text-base font-semibold text-ink">Billing</h2>
       <p className="mt-1 text-sm text-ink">{plan}</p>
 

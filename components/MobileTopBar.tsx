@@ -10,6 +10,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AccountSheet } from "./AccountSheet";
 import { BrandMark } from "./BrandMark";
+import { syncThemeColorMeta } from "./ThemeToggle";
 import { initialsOf, pageTitle } from "./navItems";
 
 export function MobileTopBar({ userName, userEmail, isAdmin }: { userName: string; userEmail: string; isAdmin: boolean }) {
@@ -17,13 +18,20 @@ export function MobileTopBar({ userName, userEmail, isAdmin }: { userName: strin
   const [open, setOpen] = useState(false);
   // A route change (a sheet row navigated) closes the sheet.
   useEffect(() => setOpen(false), [pathname]);
+  // This bar is mounted on every app page (hidden at md+ but present), so it is
+  // the one always-on place to align the browser-chrome color with a stored
+  // theme choice on load; the toggle keeps it aligned afterwards.
+  useEffect(() => syncThemeColorMeta(), []);
 
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-line bg-surface/95 px-3 backdrop-blur md:hidden">
       <Link href="/dashboard" className="tap flex items-center" aria-label="Navo home">
         <BrandMark compact />
       </Link>
-      <h1 className="min-w-0 truncate text-sm font-semibold text-ink">{pageTitle(pathname)}</h1>
+      {/* Decorative: each page keeps its own top heading; this is NOT a second h1. */}
+      <p aria-hidden="true" className="min-w-0 truncate text-sm font-semibold text-ink">
+        {pageTitle(pathname)}
+      </p>
       <button
         type="button"
         onClick={() => setOpen(true)}

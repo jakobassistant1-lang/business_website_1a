@@ -6,9 +6,9 @@
 // dialog. Callers never branch on width — they just render <Sheet>.
 //
 // Accessibility: role="dialog" + aria-modal, labelled by the title when there is
-// one; focus moves into the panel on open and back to the opener on close; Tab
-// is trapped inside; Escape and a backdrop tap close it; body scroll is locked
-// while open. The entrance animation is skipped under prefers-reduced-motion
+// one; focus moves to the panel on open and back to the opener on close; Tab
+// is trapped inside; Escape (topmost sheet only) and a backdrop tap close it;
+// page scroll is locked while any sheet is open (ref-counted for nesting). The entrance animation is skipped under prefers-reduced-motion
 // (see .sheet-panel in app/globals.css).
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -31,6 +31,37 @@ export function useIsPhone(): boolean {
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+// --- module-level bookkeeping for NESTED sheets (e.g. DayPeek → ItemDetail) ---
+// Scroll lock is reference-counted so closing the inner sheet doesn't unlock
+// the page while the outer one is still open. iOS Safari ignores
+// body{overflow:hidden} for touch scrolling, so the lock goes on <html> too
+// (and the backdrop carries touch-action:none).
+let lockCount = 0;
+let prevHtmlOverflow = "";
+let prevBodyOverflow = "";
+function lockScroll() {
+  if (lockCount++ === 0) {
+    prevHtmlOverflow = document.documentElement.style.overflow;
+    prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+  }
+}
+function unlockScroll() {
+  if (--lockCount <= 0) {
+    lockCount = 0;
+    document.documentElement.style.overflow = prevHtmlOverflow;
+    document.body.style.overflow = prevBodyOverflow;
+  }
+}
+// Stack of open sheets: only the TOPMOST handles Escape, so one keypress closes
+// one sheet. Escape is preventDefault-ed but its propagation is never stopped, so
+// driver.js (demo tour) still sees keys whenever no sheet is open.
+const openSheets: object[] = [];
+function isTopSheet(token: object) {
+  return openSheets[openSheets.length - 1] === token;
+}
+
 export function Sheet({
   open,
   onClose,
@@ -52,19 +83,27 @@ export function Sheet({
   // effect below runs once per open, not on every parent render.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  // Identity of this sheet in the open-sheet stack.
+  const tokenRef = useRef<object>({});
 
-  // Focus in on open, restore on close; lock body scroll while open.
+  // Focus in on open (the panel itself, so a screen reader announces the
+  // dialog's title rather than "Close"), restore on close; lock page scroll.
+  // Gated on `mounted` too: the panel is only portalled once `mounted` flips, so
+  // a Sheet mounted already open (`<Sheet open …>`) has no panel on the first
+  // run — re-running when `mounted` flips gives it the same focus/trap/lock as
+  // one that opens later.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !mounted) return;
     const opener = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
-    const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
-    (first ?? panel)?.focus();
+    const token = tokenRef.current;
+    panel?.focus();
 
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    lockScroll();
+    openSheets.push(token);
 
     const onKey = (e: KeyboardEvent) => {
+      if (!isTopSheet(token)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onCloseRef.current();
@@ -90,17 +129,19 @@ export function Sheet({
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
+      const i = openSheets.lastIndexOf(token);
+      if (i >= 0) openSheets.splice(i, 1);
+      unlockScroll();
       opener?.focus?.();
     };
-  }, [open]);
+  }, [open, mounted]);
 
   if (!open || !mounted) return null;
 
   return createPortal(
     // Wrapper: bottom-aligned on phones (sheet), centered at md+ (dialog).
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">
-      <div className="sheet-backdrop absolute inset-0 bg-ink/40" onClick={onClose} aria-hidden />
+      <div className="sheet-backdrop absolute inset-0 touch-none bg-ink/40" onClick={onClose} aria-hidden />
       <div
         ref={panelRef}
         role="dialog"
@@ -115,7 +156,7 @@ export function Sheet({
         </div>
         {title && (
           <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3 md:pt-5">
-            <h2 id={titleId} className="min-w-0 truncate text-base font-semibold text-ink">
+            <h2 id={titleId} className="min-w-0 line-clamp-2 text-base font-semibold leading-snug text-ink">
               {title}
             </h2>
             <button type="button" onClick={onClose} aria-label="Close" className="tap -mr-2 flex items-center justify-center rounded-full text-muted hover:bg-surface-soft hover:text-ink">

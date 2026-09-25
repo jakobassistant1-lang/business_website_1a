@@ -127,9 +127,25 @@ export function StudyTools({
 
   const totalHours = round1(sessions.reduce((s, x) => s + x.hours, 0));
 
+  // Tablist keyboard model (WAI-ARIA tabs, automatic activation): Left/Right
+  // (wrapping) and Home/End move focus AND select; only the selected tab is in
+  // the Tab order. The focused tab is scrolled into view inside the scroller.
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onTabKey = (e: React.KeyboardEvent) => {
+    const i = TABS.findIndex((t) => t.id === tab);
+    const last = TABS.length - 1;
+    const next = e.key === "ArrowRight" ? (i === last ? 0 : i + 1) : e.key === "ArrowLeft" ? (i === 0 ? last : i - 1) : e.key === "Home" ? 0 : e.key === "End" ? last : null;
+    if (next == null) return;
+    e.preventDefault();
+    setTab(TABS[next].id);
+    const el = tabRefs.current[next];
+    el?.focus();
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/study" className="text-sm font-medium text-accent hover:underline">
+      <Link href="/study" className="max-md:tap max-md:-my-3 inline-flex items-center text-sm font-medium text-accent hover:underline">
         ← All tests
       </Link>
 
@@ -144,22 +160,28 @@ export function StudyTools({
           {assessment.dueAt && <StudyChip text={`Due ${dueLabel(assessment.dueAt)}`} />}
           {assessment.pointsPossible != null && assessment.pointsPossible > 0 && <StudyChip text={`${assessment.pointsPossible} pts`} />}
           {assessment.htmlUrl && (
-            <a href={assessment.htmlUrl} target="_blank" rel="noreferrer" className="ml-auto rounded-full border border-white/40 px-3 py-1 text-xs font-medium text-white transition hover:bg-white/10">
+            <a href={assessment.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap ml-auto inline-flex items-center rounded-full border border-white/40 px-3 py-1 text-xs font-medium max-md:px-4 max-md:text-[14px] text-white transition hover:bg-white/10">
               Open in Canvas ↗
             </a>
           )}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="mt-5 inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-surface-soft p-1" role="tablist" aria-label="Study tools">
-        {TABS.map((t) => (
+      {/* Tabs — on phones a full-width, horizontally scrolling segmented control
+          (44px tabs, snap-aligned, no scrollbar; the cut-off last tab hints at
+          more). md+ unchanged. The scroller's p-1 leaves room for the focus ring. */}
+      <div className="mt-5 inline-flex max-w-full snap-x gap-1 overflow-x-auto rounded-full bg-surface-soft p-1 max-md:flex max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Study tools" onKeyDown={onTabKey}>
+        {TABS.map((t, i) => (
           <button
             key={t.id}
+            ref={(el) => {
+              tabRefs.current[i] = el;
+            }}
             role="tab"
             aria-selected={tab === t.id}
+            tabIndex={tab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
-            className={`shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition ${
+            className={`max-md:tap shrink-0 snap-start whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring max-md:text-[15px] ${
               tab === t.id ? "bg-accent text-white" : "text-muted hover:text-ink"
             }`}
           >
@@ -214,14 +236,14 @@ function ErrorBox({ code, onRetry }: { code: string | null; onRetry: () => void 
   return (
     <div className="rounded-[14px] border border-danger/30 bg-danger-soft/40 px-4 py-3">
       <p className="text-sm text-danger">{errText(code)}</p>
-      <button onClick={onRetry} className="mt-2 text-sm font-medium text-accent hover:underline">Try again</button>
+      <button onClick={onRetry} className="max-md:tap mt-2 inline-flex items-center text-sm font-medium text-accent hover:underline">Try again</button>
     </div>
   );
 }
 
 function RegenButton({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="shrink-0 text-[13px] font-medium text-muted transition-colors hover:text-accent">
+    <button onClick={onClick} className="max-md:tap max-md:-my-3 max-md:-mr-2 inline-flex shrink-0 items-center justify-center text-[13px] font-medium text-muted transition-colors hover:text-accent max-md:px-2 max-md:text-[14px]">
       Regenerate
     </button>
   );
@@ -263,7 +285,7 @@ function StaleNote({ onRegen, label }: { onRegen: () => void; label: string }) {
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] bg-accent-soft px-4 py-2.5 text-[13px] text-accent">
       <span>You&apos;ve added or changed notes since this was made. Regenerate to include them.</span>
-      <button onClick={onRegen} className="shrink-0 font-semibold hover:underline">
+      <button onClick={onRegen} className="max-md:tap inline-flex shrink-0 items-center font-semibold hover:underline max-md:text-[14px]">
         {label}
       </button>
     </div>
@@ -400,16 +422,16 @@ function QuestionsSection({
   return (
     <SectionShell title="Practice questions">
       <div className="flex flex-wrap items-center gap-2.5">
-        <select className="field w-auto" value={qType} onChange={(e) => setQType(e.target.value as StudyQuestionType)} aria-label="Question type">
+        <select className="field max-md:tap w-auto" value={qType} onChange={(e) => setQType(e.target.value as StudyQuestionType)} aria-label="Question type">
           {QUESTION_TYPES.map((t) => (
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>
-        <button onClick={() => onGenerate(false)} disabled={questions.status === "loading"} className="btn-primary text-sm">
+        <button onClick={() => onGenerate(false)} disabled={questions.status === "loading"} className="btn-primary max-md:tap text-sm">
           {questions.status === "loading" ? "Generating…" : ready ? "Generate (new type)" : "Generate questions"}
         </button>
         {ready && (
-          <button onClick={() => onGenerate(true)} className="text-[13px] font-medium text-muted transition-colors hover:text-accent">
+          <button onClick={() => onGenerate(true)} className="max-md:tap inline-flex items-center text-[13px] font-medium text-muted transition-colors hover:text-accent max-md:px-2 max-md:text-[14px]">
             New set
           </button>
         )}
@@ -485,7 +507,7 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
                   ? "border-danger bg-danger-soft text-danger"
                   : "border-line-subtle bg-surface opacity-60";
             return (
-              <button key={i} onClick={() => answerMcq(i)} disabled={done} className={`block w-full rounded-[14px] border px-3.5 py-2 text-left text-sm transition ${cls}`}>
+              <button key={i} onClick={() => answerMcq(i)} disabled={done} className={`max-md:tap block w-full rounded-[14px] border px-3.5 py-2 text-left text-sm transition max-md:py-2.5 max-md:text-[15px] ${cls}`}>
                 {c}
               </button>
             );
@@ -494,7 +516,7 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
       )}
 
       {q.kind === "true_false" && (
-        <div className="mt-2.5 flex gap-2">
+        <div className="mt-2.5 flex gap-2 max-md:flex-col">
           {([true, false] as const).map((v) => {
             const isAnswer = v === q.answer;
             const isPicked = picked === v;
@@ -506,7 +528,7 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
                   ? "border-danger bg-danger-soft text-danger"
                   : "border-line-subtle bg-surface opacity-60";
             return (
-              <button key={String(v)} onClick={() => answerTf(v)} disabled={done} className={`rounded-[14px] border px-5 py-2 text-sm font-medium transition ${cls}`}>
+              <button key={String(v)} onClick={() => answerTf(v)} disabled={done} className={`max-md:tap rounded-[14px] border px-5 py-2 text-sm font-medium transition max-md:w-full max-md:text-[15px] ${cls}`}>
                 {v ? "True" : "False"}
               </button>
             );
@@ -518,7 +540,7 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
         <form onSubmit={checkSa} className="mt-2.5">
           <div className="flex gap-2">
             <input className="field flex-1" value={saText} onChange={(e) => setSaText(e.target.value)} placeholder="Type your answer…" disabled={done} />
-            <button type="submit" disabled={done || !saText.trim()} className="btn-primary text-sm">Check</button>
+            <button type="submit" disabled={done || !saText.trim()} className="btn-primary max-md:tap text-sm">Check</button>
           </div>
           {saResult !== null && (
             <p className="mt-2 text-[13px] text-muted">

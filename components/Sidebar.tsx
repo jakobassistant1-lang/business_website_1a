@@ -75,9 +75,13 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
   const menuItemClass = "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white";
 
   return (
+    // The rail's left padding adds the display cutout inset (phone landscape
+    // at 812px is `md`): 8px + env(safe-area-inset-left); width grows to match.
     <aside
       className={`sticky top-0 hidden h-dvh shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 md:flex ${
-        collapsed ? "w-16 px-2" : "w-16 px-2 lg:w-64 lg:px-4"
+        collapsed
+          ? "w-[calc(4rem+env(safe-area-inset-left))] px-2 pl-[calc(0.5rem+env(safe-area-inset-left))]"
+          : "w-[calc(4rem+env(safe-area-inset-left))] px-2 pl-[calc(0.5rem+env(safe-area-inset-left))] lg:w-64 lg:px-4 lg:pl-[calc(1rem+env(safe-area-inset-left))]"
       }`}
     >
       <div className={`mb-2 flex items-center px-1 ${collapsed ? "justify-center" : "justify-center lg:justify-between"}`}>

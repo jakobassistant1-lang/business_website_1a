@@ -47,11 +47,12 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/dashboard" className="text-[14px] font-medium text-accent hover:underline">
+      <Link href="/dashboard" className="max-md:tap max-md:-my-3 inline-flex items-center text-[14px] font-medium text-accent hover:underline">
         ← Dashboard
       </Link>
-      <div className="mt-3 flex items-start justify-between gap-4">
-        <h1 className="text-[28px] font-bold tracking-tight text-ink">{cleanCourse(courseName)}</h1>
+      {/* Phones: the grade pill sits under the (wrapping) title so it never clips. */}
+      <div className="mt-3 flex items-start justify-between gap-4 max-md:flex-col max-md:gap-2">
+        <h1 className="text-[28px] font-bold tracking-tight text-ink max-md:min-w-0 max-md:break-words">{cleanCourse(courseName)}</h1>
         {grade && <GradePill grade={grade} size="lg" />}
       </div>
       <p className="mt-1 text-[15px] text-muted">
@@ -78,7 +79,7 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`rounded-md px-3.5 py-1.5 text-sm font-medium capitalize transition ${tab === t ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"}`}
+              className={`max-md:tap rounded-md px-3.5 py-1.5 text-sm font-medium capitalize transition max-md:px-5 max-md:text-[15px] ${tab === t ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"}`}
             >
               {t}
             </button>
@@ -136,7 +137,7 @@ function Section({
 
 function Row({ item, todayYmd, done, demo }: { item: CalendarItem; todayYmd: string; done?: boolean; demo?: boolean }) {
   return (
-    <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60">
+    <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60">
       {!done ? (
         <DoneCheck canvasId={item.canvasId} disabled={demo} />
       ) : item.manuallyDone ? (

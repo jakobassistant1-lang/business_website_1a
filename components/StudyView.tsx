@@ -84,7 +84,7 @@ export function StudyView({
       {/* Featured: the next-up test */}
       <div data-tour="study-featured" className="rounded-xl bg-accent p-7 text-white shadow-card">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">Next up</p>
-        <p className="mt-1.5 text-[2rem] font-bold leading-[1.1] tracking-tight">{featured.name}</p>
+        <p className="mt-1.5 text-[2rem] font-bold leading-[1.1] tracking-tight max-md:line-clamp-3 max-md:break-words max-md:text-2xl" title={featured.name}>{featured.name}</p>
         <p className="mt-1 text-[15px] text-white/80">
           {TYPE_LABEL[featured.type]} · {shortCourse(featured.courseName)}
         </p>
@@ -94,11 +94,11 @@ export function StudyView({
           <StudyChip text={fSessions.length > 0 ? `${fmtHours(totalHours)} of study scheduled` : "No study blocks scheduled"} />
         </div>
         <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
-          <Link href={`/study/${featured.canvasId}`} className="rounded-[14px] bg-white px-5 py-2.5 text-center text-sm font-semibold text-accent transition hover:bg-white/90">
+          <Link href={`/study/${featured.canvasId}`} className="max-md:tap inline-flex items-center justify-center rounded-[14px] bg-white px-5 py-2.5 text-center text-sm font-semibold text-accent transition hover:bg-white/90">
             Study
           </Link>
           {featured.htmlUrl && (
-            <a href={featured.htmlUrl} target="_blank" rel="noreferrer" className="rounded-[14px] border border-white/40 px-5 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10">
+            <a href={featured.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap inline-flex items-center justify-center rounded-[14px] border border-white/40 px-5 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10">
               Open in Canvas ↗
             </a>
           )}
@@ -111,9 +111,9 @@ export function StudyView({
           <h2 className="text-lg font-semibold text-ink">Also coming up</h2>
           <div className="mt-2 divide-y divide-line-subtle/70">
             {others.map((a) => (
-              <Link key={a.canvasId} href={`/study/${a.canvasId}`} className="flex w-full items-center gap-3.5 px-1 py-3.5 transition-colors hover:bg-surface-soft">
+              <Link key={a.canvasId} href={`/study/${a.canvasId}`} className="tap flex w-full items-center gap-3.5 px-1 py-3.5 transition-colors hover:bg-surface-soft">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-medium text-ink">{a.name}</span>
+                  <span className="block truncate text-[15px] font-medium text-ink max-md:text-[16px]">{a.name}</span>
                   <span className="block truncate text-[13px] text-muted">
                     {TYPE_LABEL[a.type]} · {shortCourse(a.courseName)}
                   </span>

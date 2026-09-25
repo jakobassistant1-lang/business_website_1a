@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAutoSync } from "@/components/useAutoSync";
+import { useIsPhone } from "@/components/Sheet";
 import {
   startOfDay,
   addDays,
@@ -58,6 +59,7 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
   const [selected, setSelected] = useState<CalendarItem | null>(null);
   const [peek, setPeek] = useState<Date | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
+  const phone = useIsPhone(); // behaviour only (sheet stacking), never layout
   // Canvas auto-sync (full on mount when stale, quick refresh on tab return) +
   // the manual Sync button — one policy, in components/useAutoSync.
   const { syncing, warning: syncWarning, runManual: runSync } = useAutoSync({ connected: data.connected, syncedAt: data.syncedAt, demo });
@@ -216,7 +218,13 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
           study={(planByDay.get(ymd(peek))?.blocks ?? [])
             .filter((b) => b.study)
             .map((b) => ({ canvasId: b.canvasId, name: b.name, courseName: b.courseName, hours: b.hours, dueAt: b.dueAt }))}
-          onSelect={setSelected}
+          onSelect={(it) => {
+            // Phones: the day peek and the item detail are both bottom sheets —
+            // swap one for the other instead of stacking them. Desktop keeps the
+            // peek open beneath the detail dialog, as before.
+            if (phone) setPeek(null);
+            setSelected(it);
+          }}
           onClose={() => setPeek(null)}
           onOpenDay={() => openDay(peek)}
         />
@@ -398,55 +406,63 @@ function MonthView({
   const month = anchor.getMonth();
   return (
     <div>
-      <div className="mb-1.5 grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => (
-          <div key={w}>{w}</div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {cells.map((d) => {
-          const key = ymd(d);
-          const items = itemsByDay.get(key) ?? [];
-          const hasBusy = (eventsByDay.get(key) ?? []).length > 0;
-          const inMonth = d.getMonth() === month;
-          const isToday = sameDay(d, now);
-          const atRisk = items.filter((it) => it.status === "overdue").length;
-          return (
-            <button
-              key={key}
-              onClick={() => onPeek(d)}
-              className={`flex min-h-[5.5rem] flex-col rounded-md border p-1.5 text-left transition hover:border-accent ${
-                inMonth ? "border-line-subtle bg-surface" : "border-transparent bg-surface-soft"
-              }`}
-            >
-              <span className="flex items-center justify-between">
-                <span className={`text-xs font-medium ${atRisk ? "text-danger" : isToday ? "text-accent" : inMonth ? "text-ink" : "text-faint"} ${isToday ? "flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft" : ""}`}>
-                  {d.getDate()}
-                </span>
-                {hasBusy && <span className="text-faint" aria-label="busy"><Glyph d={ICON.calendar} size={10} /></span>}
-              </span>
-              {items.length === 0 ? null : items.length <= 3 ? (
-                <span className="mt-1 flex flex-wrap gap-1">
-                  {items.map((it) => (
-                    <span
-                      key={it.canvasId}
-                      className="h-2 w-2 rounded-full"
-                      style={{ background: it.status === "overdue" ? "rgb(var(--danger))" : courseColor(it.courseName) }}
-                      title={it.name}
-                    />
-                  ))}
-                </span>
-              ) : (
-                <span className="mt-1 space-y-0.5">
-                  <span className="block truncate text-xs text-ink">{items[0].name}</span>
-                  <span className="flex items-center gap-1 text-xs text-muted">
-                    +{items.length - 1} {atRisk > 0 && <span className="font-semibold text-danger">⚠{atRisk}</span>}
+      {/* Phones (#39) never get Month from the Plan tabs, but a demo/deep link can
+          land here: below md the 7-column grid scrolls sideways inside its own box
+          (560px floor) instead of crushing the cells or widening the page. md+ is
+          unchanged. */}
+      <div className="overflow-x-auto md:overflow-visible">
+        <div className="min-w-[560px] md:min-w-0">
+          <div className="mb-1.5 grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => (
+              <div key={w}>{w}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((d) => {
+              const key = ymd(d);
+              const items = itemsByDay.get(key) ?? [];
+              const hasBusy = (eventsByDay.get(key) ?? []).length > 0;
+              const inMonth = d.getMonth() === month;
+              const isToday = sameDay(d, now);
+              const atRisk = items.filter((it) => it.status === "overdue").length;
+              return (
+                <button
+                  key={key}
+                  onClick={() => onPeek(d)}
+                  className={`flex min-h-[5.5rem] flex-col rounded-md border p-1.5 text-left transition hover:border-accent ${
+                    inMonth ? "border-line-subtle bg-surface" : "border-transparent bg-surface-soft"
+                  }`}
+                >
+                  <span className="flex items-center justify-between">
+                    <span className={`text-xs font-medium ${atRisk ? "text-danger" : isToday ? "text-accent" : inMonth ? "text-ink" : "text-faint"} ${isToday ? "flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft" : ""}`}>
+                      {d.getDate()}
+                    </span>
+                    {hasBusy && <span className="text-faint" aria-label="busy"><Glyph d={ICON.calendar} size={10} /></span>}
                   </span>
-                </span>
-              )}
-            </button>
-          );
-        })}
+                  {items.length === 0 ? null : items.length <= 3 ? (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {items.map((it) => (
+                        <span
+                          key={it.canvasId}
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: it.status === "overdue" ? "rgb(var(--danger))" : courseColor(it.courseName) }}
+                          title={it.name}
+                        />
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="mt-1 space-y-0.5">
+                      <span className="block truncate text-xs text-ink">{items[0].name}</span>
+                      <span className="flex items-center gap-1 text-xs text-muted">
+                        +{items.length - 1} {atRisk > 0 && <span className="font-semibold text-danger">⚠{atRisk}</span>}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
       <MonthLegend />
     </div>

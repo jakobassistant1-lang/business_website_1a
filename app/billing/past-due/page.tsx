@@ -40,7 +40,7 @@ export default async function PastDuePage({ searchParams }: { searchParams: Prom
   const fromPortal = from === "portal";
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
+    <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-[13px] font-semibold uppercase tracking-wider text-muted">Billing</p>
       <h1 className="mt-2 text-[26px] font-bold tracking-tight text-ink">Your payment didn&apos;t go through</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
@@ -51,7 +51,7 @@ export default async function PastDuePage({ searchParams }: { searchParams: Prom
       {fromPortal && (
         <p className="mt-4 text-[14px] text-muted">Card updated? Stripe may take a minute to retry the charge — this page will let you back in as soon as it clears.</p>
       )}
-      <div className="card mt-6 p-6">
+      <div className="card mt-6 p-5 sm:p-6">
         <UpdatePaymentButton />
         <p className="mt-4 text-[14px] text-muted">
           You&apos;ll be taken to a secure Stripe page to update your card, then brought straight back here.
