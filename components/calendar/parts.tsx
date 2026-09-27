@@ -14,7 +14,7 @@ import { isStudyType, type ItemType } from "@/lib/itemType";
 import type { CalendarItem } from "@/lib/calendarData";
 import type { CalendarEvent } from "@/lib/calendar/types";
 import type { AtRiskItem, DayBlock } from "@/lib/scheduler";
-import { ymd } from "@/lib/calendarDates";
+import { isStudySessionBlock } from "@/lib/studyWeek";
 import type { ScoredAssignment } from "@/lib/priority";
 
 export const ICON = {
@@ -39,11 +39,12 @@ export const ICON = {
  *  inline. The bare global `.tap` applies at every width. */
 export const TAP_PHONE = "max-md:tap";
 
-/** A plan block worth showing as "study" to the student: a real study session
- *  (hours > 0) for an assessment that isn't already past. The ONE filter the
- *  dashboard's "Today's study" and the phone Plan's study list share. */
+/** A plan block worth showing as "study" to the student on `todayYmd`. The
+ *  block-type rule (real session, assessment not past) lives in ONE place —
+ *  lib/studyWeek.isStudySessionBlock, shared with the Plan's "Study this week"
+ *  strip; this wrapper is what the dashboard's "Today's study" calls. */
 export function isUpcomingStudy(b: Pick<DayBlock, "study" | "hours" | "dueAt">, todayYmd: string): boolean {
-  return !!b.study && b.hours > 0 && ymd(new Date(b.dueAt)) >= todayYmd;
+  return isStudySessionBlock(b, todayYmd);
 }
 
 export function Glyph({ d, size = 16 }: { d: string; size?: number }) {
@@ -975,16 +976,23 @@ export function DoneCheck({
 }
 
 /** "Mark as done" pill for the assignment detail page — same PATCH + refresh as
- *  DoneCheck, button-shaped with a label so the action is explicit. */
-export function MarkDoneButton({ canvasId, done }: { canvasId: number; done: boolean }) {
+ *  DoneCheck, button-shaped with a label so the action is explicit.
+ *  Uncontrolled by default (`done` seeds its own state). Controlled when
+ *  `onToggled` is given: it shows `done` as-is and reports every change
+ *  (optimistically, then the revert if the PATCH fails) instead of owning the
+ *  state — so two copies (inline at md+, the phone action bar) stay in step.
+ *  `className` is appended for the caller's layout (phone-bar sizing). */
+export function MarkDoneButton({ canvasId, done = false, onToggled, className }: { canvasId: number; done?: boolean; onToggled?: (done: boolean) => void; className?: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [local, setLocal] = useState(done);
   useEffect(() => setLocal(done), [done]);
+  const shown = onToggled ? done : local;
+  const report = (v: boolean) => (onToggled ? onToggled(v) : setLocal(v));
   const toggle = async () => {
     if (busy) return;
-    const next = !local;
-    setLocal(next);
+    const next = !shown;
+    report(next);
     setBusy(true);
     try {
       const res = await fetch("/api/assignment/done", {
@@ -995,7 +1003,7 @@ export function MarkDoneButton({ canvasId, done }: { canvasId: number; done: boo
       if (!res.ok) throw new Error(String(res.status));
       router.refresh();
     } catch {
-      setLocal(!next);
+      report(!next);
     } finally {
       setBusy(false);
     }
@@ -1006,10 +1014,10 @@ export function MarkDoneButton({ canvasId, done }: { canvasId: number; done: boo
       onClick={toggle}
       disabled={busy}
       className={`rounded-full px-3 py-1 text-[13.5px] font-medium transition ${
-        local ? "bg-success-soft text-success hover:opacity-80" : "border border-line text-muted hover:border-success hover:text-success"
-      }`}
+        shown ? "bg-success-soft text-success hover:opacity-80" : "border border-line text-muted hover:border-success hover:text-success"
+      }${className ? ` ${className}` : ""}`}
     >
-      {local ? "✓ Done · undo" : "Mark as done"}
+      {shown ? "✓ Done · undo" : "Mark as done"}
     </button>
   );
 }

@@ -6,10 +6,12 @@
 // (the #1 task) sits above a 7-day "what's coming up" list; a bare progress ring +
 // an Upcoming-assessments card into /study sit in the rail.
 //
-// Phones (#39, below `md`) get a glance-and-act stack: Focus (compact) with the
-// Today list → Today's study → This week (next 3 + "See plan") → Catch-up pill
-// (opens a Sheet of the overdue rows) → the AI summary (first bullet + More) →
-// Next test, with a small progress ring in the header. Where phone and desktop
+// Phones (#39, below `md`) get a calm glance-and-act stack where the violet Focus
+// block is the ONE dominant element: greeting + date → one row with the week's
+// difficulty chip and a small progress ring → the Focus card (the same card and
+// list as desktop) → Today's study → This week (next 3 not already in the Focus
+// card + "See plan") → a Catch-up row (big overdue count; opens a Sheet of the
+// overdue rows) → Next test. No AI summary on phones. Where phone and desktop
 // differ, BOTH variants are in the DOM and CSS picks one (`md:hidden` /
 // `hidden md:block`), so the server HTML is already the right layout — there is
 // no width-dependent render and no swap after hydration. DOM order = the phone's
@@ -20,6 +22,7 @@
 // clock (UndoToast `clock`), and settling is idempotent anyway (lib/pendingDone).
 
 import { useEffect, useRef, useState } from "react";
+import { useLocalToday } from "@/components/useLocalToday";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAutoSync } from "@/components/useAutoSync";
@@ -53,7 +56,7 @@ type UndoHandlers = {
 
 export function DashboardView({ data, todayYmd: serverToday, firstName, demo = false }: { data: CalendarData; todayYmd: string; firstName: string; demo?: boolean }) {
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
-  const [todayYmd, setTodayYmd] = useState(serverToday);
+  const todayYmd = useLocalToday(serverToday); // the device's own day (shared with PlanSurface)
   const [showOverdue, setShowOverdue] = useState(false);
   const [aiPoints, setAiPoints] = useState<string[]>([]);
   const [aiIntensity, setAiIntensity] = useState<Intensity | null>(null);
@@ -63,9 +66,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   useEffect(() => {
     const h = new Date().getHours();
     setGreeting(h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
-    const t = ymd(new Date());
-    if (t !== serverToday) setTodayYmd(t);
-  }, [serverToday]);
+  }, []);
 
   // Canvas auto-sync: full on mount when ≥10 min stale, quick submission refresh
   // when the tab comes back (the server decides — components/useAutoSync).
@@ -204,16 +205,27 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   });
   const intensity = aiIntensity ?? baseIntensity;
 
+  // The Focus item + the rows beneath it in the same card (one rule, both widths).
+  // A held (just-checked-off) row keeps the SPOT it was checked in. `held`
+  // promotes rows to the front of a slice, so the Focus card only honours it for
+  // rows it was already showing — otherwise checking a "This week" row would
+  // pull it up into the Focus card and restart its Undo clock there.
+  const focusShown = useRef<Set<number>>(new Set());
+  const heldInFocus = (canvasId: number) => undoHandlers.held(canvasId) && focusShown.current.has(canvasId);
+  const { focusItem, rest: focusRest } = pickFocus(data, liveItems, todayYmd, heldInFocus);
+  const inFocusCard = new Set([focusItem?.canvasId, ...focusRest.map((it) => it.canvasId)]);
+  useEffect(() => {
+    focusShown.current = new Set([...inFocusCard].filter((id): id is number => id != null));
+  });
   // Phone "This week": the next three by importance that are due in the plan
-  // window, after today, and aren't the Focus item (which sits above them).
-  const focusId = pickFocus(data, liveItems).focusItem?.canvasId;
-  const weekNext = visibleSlice(
-    liveItems
-      .filter((it) => it.status === "normal" && it.canvasId !== focusId && it.dueAt != null && windowDates.has(ymd(new Date(it.dueAt))) && !isDueToday(it))
-      .sort(byRank),
-    3,
-    undoHandlers.held
-  );
+  // window and aren't already in the Focus card above — plus EVERY remaining
+  // due-today item, so the "N of M done today" header never counts a row the
+  // phone doesn't show.
+  const weekPool = liveItems
+    .filter((it) => it.status === "normal" && !inFocusCard.has(it.canvasId) && it.dueAt != null && windowDates.has(ymd(new Date(it.dueAt))))
+    .sort(byRank);
+  const dueTodayLeft = weekPool.filter(isDueToday);
+  const weekNext = visibleSlice([...dueTodayLeft, ...weekPool.filter((it) => !isDueToday(it))], Math.max(3, dueTodayLeft.length), undoHandlers.held);
 
   // The catch-up Sheet's Undo bars can't outlive it (their clock unmounts with the
   // sheet, and the hidden desktop card's copies never run one on a phone), so
@@ -225,7 +237,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-6 flex items-start justify-between gap-4 md:block">
+      <div className="mb-6">
         <div className="min-w-0">
           <p className="text-[22px] font-semibold text-ink">
             {greeting}
@@ -239,12 +251,9 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
             </p>
           )}
         </div>
-        {/* Phones: today's progress shrinks into the header (the rail's big ring is md+). */}
-        {data.connected && (
-          <div className="shrink-0 md:hidden">
-            <ProgressRing done={dueTodayDone} total={dialTotal} small />
-          </div>
-        )}
+        {/* Phones: the week's difficulty and today's progress in one quiet row
+            (md+ shows them in the KPI row and the rail's big ring). */}
+        {data.connected && <PhoneGlance className="mt-4 md:hidden" intensity={intensity} done={dueTodayDone} total={dialTotal} />}
       </div>
 
       {!data.connected ? (
@@ -256,7 +265,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
           </div>
 
           {/* KPI bar — quiet at-a-glance status against the page. (Phones: the
-              rating rides the "This week" card and overdue is the Catch-up pill.) */}
+              rating sits under the greeting and overdue is the Catch-up row.) */}
           <div className="mb-7 hidden flex-wrap items-center gap-x-12 gap-y-4 border-b border-line-subtle pb-5 md:flex">
             <div data-tour="dash-week"><IntensityKpi intensity={intensity} /></div>
             <OverdueKpi count={overdueCount} onOpen={() => setShowOverdue(true)} />
@@ -267,15 +276,10 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
               exactly the old two-column layout. */}
           <div className="flex flex-col gap-6 lg:flex-row">
             <div className="min-w-0 flex-1 space-y-6">
-              <div data-tour="dash-focus"><FocusTodayCard data={data} items={liveItems} todayYmd={todayYmd} demo={demo} undo={undoHandlers} /></div>
+              <div data-tour="dash-focus"><FocusTodayCard data={data} focusItem={focusItem} rest={focusRest} todayYmd={todayYmd} demo={demo} undo={undoHandlers} /></div>
               {todayStudy.length > 0 && <TodayStudyCard className="md:hidden" blocks={todayStudy} />}
-              <ThisWeekCard className="md:hidden" items={weekNext} intensity={intensity} todayYmd={todayYmd} demo={demo} undo={undoHandlers} />
-              {overdueCount > 0 && <CatchUpPill className="md:hidden" count={overdueCount} onOpen={() => setShowCatchUp(true)} />}
-              {(aiPoints.length > 0 || summaryLoading) && (
-                <div className="md:hidden">
-                  <AiSummary points={aiPoints} loading={summaryLoading} collapsible />
-                </div>
-              )}
+              <ThisWeekCard className="md:hidden" items={weekNext} todayYmd={todayYmd} demo={demo} undo={undoHandlers} />
+              {overdueCount > 0 && <CatchUpEntry className="md:hidden" count={overdueCount} onOpen={() => setShowCatchUp(true)} />}
               {overdueItems.length > 0 && (
                 <div className="hidden md:block">
                   <CatchUpCard items={overdueItems} onOpenAll={() => setShowOverdue(true)} demo={demo} undo={undoHandlers} />
@@ -292,7 +296,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
       )}
 
       {showOverdue && <OverdueModal atRisk={atRiskLive} onClose={() => setShowOverdue(false)} />}
-      {/* Opened only from the phone-only pill. */}
+      {/* Opened only from the phone-only Catch-up row. */}
       <Sheet open={showCatchUp} onClose={closeCatchUp} title={`Catch up (${overdueCount})`}>
         <p className="text-[14px] text-muted">Overdue, most important first — start at the top.</p>
         {overdueItems.length === 0 ? (
@@ -310,18 +314,15 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
 }
 
 // ── AI summary banner — 2-3 scannable bullets. Fail-open: renders nothing once we
-// know there are no points. ─────────────────────────────────────────────────────
-// `collapsible` (phones): only the first bullet until "More" is tapped.
-function AiSummary({ points, loading, collapsible = false }: { points: string[]; loading: boolean; collapsible?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
+// know there are no points. md+ only (phones drop it for a calmer screen). ─────
+function AiSummary({ points, loading }: { points: string[]; loading: boolean }) {
   if (points.length === 0 && !loading) return null;
-  const visible = collapsible && !expanded ? points.slice(0, 1) : points;
   const body =
     points.length === 0 ? (
       <p className="text-[16px] leading-relaxed text-muted">Reading your week…</p>
     ) : (
       <ul className="space-y-1.5 text-[16px] leading-relaxed text-ink">
-        {visible.map((p, i) => (
+        {points.map((p, i) => (
           <li key={i} className="flex gap-2.5">
             <span className="mt-[10px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent/60" aria-hidden />
             <span>{p}</span>
@@ -330,30 +331,22 @@ function AiSummary({ points, loading, collapsible = false }: { points: string[];
       </ul>
     );
   return (
-    <div className={`${collapsible ? "" : "mb-6 "}flex items-start gap-3 rounded-2xl border border-line-subtle bg-surface-soft/60 p-4`}>
+    <div className="mb-6 flex items-start gap-3 rounded-2xl border border-line-subtle bg-surface-soft/60 p-4">
       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z" />
         </svg>
       </span>
-      {collapsible ? (
-        <div className="min-w-0 flex-1">
-          {body}
-          {points.length > 1 && (
-            <button type="button" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded} className="tap -ml-2 px-2 text-[15px] font-medium text-accent">
-              {expanded ? "Less" : "More"}
-            </button>
-          )}
-        </div>
-      ) : (
-        body
-      )}
+      {body}
     </div>
   );
 }
 
 // ── KPIs (card-less, quiet) ────────────────────────────────────────────────────
 const KPI_LABEL = "text-[12px] font-semibold uppercase tracking-wider text-muted";
+/** A shared card's h2 on phones: the quiet small-caps label, so nothing competes
+ *  with the Focus card. (md+ keeps each card's own heading.) */
+const PHONE_H2 = "max-md:text-[12px] max-md:uppercase max-md:leading-normal max-md:tracking-wider max-md:text-muted";
 
 const INTENSITY_CFG = {
   easy: { word: "Easy", soft: toneSoft.success, dot: "bg-success" },
@@ -441,6 +434,25 @@ function ProgressDial({ done, total }: { done: number; total: number }) {
   );
 }
 
+// ── Phones only: the week's Easy/Moderate/Hard rating and today's progress side
+// by side under the greeting. Deliberately quiet (a neutral chip with the tone
+// dot, not a tinted fill) so the Focus card stays the one loud thing.
+function PhoneGlance({ intensity, done, total, className = "" }: { intensity: Intensity; done: number; total: number; className?: string }) {
+  const cfg = INTENSITY_CFG[intensity];
+  return (
+    <div className={`flex items-center justify-between gap-4 ${className}`}>
+      <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-line-subtle bg-surface px-3 py-1.5 text-[14px] font-medium text-ink">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} aria-hidden />
+        {cfg.word} week
+      </span>
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="truncate text-[13px] text-muted">{total > 0 ? `${done} of ${total} done today` : "Nothing due today"}</span>
+        <ProgressRing done={done} total={total} small />
+      </div>
+    </div>
+  );
+}
+
 // A reason-chip on the violet Focus block (white-on-accent is the only variant).
 function Chip({ text }: { text: string }) {
   return <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white ring-1 ring-inset ring-white/25">{text}</span>;
@@ -505,10 +517,10 @@ function ItemRow({ item, dueLabel, demo = false, undo, side }: { item: CalendarI
 
 // ── Focus + what's next: a flush, rounded-bottom violet Focus block (the #1 task)
 // sits edge-to-edge atop a 7-day due list, all in one card. ─────────────────────
-/** The Focus item (the #1 forward recommendation) + the rank-ordered active rows it
- *  was picked from. The ONE rule — the Focus card and the phone "This week" list
- *  (which must skip it) both call this. */
-function pickFocus(data: CalendarData, items: CalendarItem[]): { focusItem: CalendarItem | undefined; normal: CalendarItem[] } {
+/** The Focus item (the #1 forward recommendation) + the rows listed beneath it in
+ *  the same card. The ONE rule — the Focus card renders it and the phone "This
+ *  week" list skips everything in it. */
+function pickFocus(data: CalendarData, items: CalendarItem[], todayYmd: string, held: (canvasId: number) => boolean): { focusItem: CalendarItem | undefined; rest: CalendarItem[] } {
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
   const normal = items
     .filter((it) => it.status === "normal")
@@ -517,22 +529,18 @@ function pickFocus(data: CalendarData, items: CalendarItem[]): { focusItem: Cale
   const fromRec = topRec ? data.items.find((it) => it.canvasId === topRec.canvasId) : undefined;
   // Fall back to the #1 ranked item when there's no forward recommendation, so we
   // never show "all caught up" above a list that still has items.
-  return { focusItem: fromRec ?? normal[0], normal };
-}
-
-function FocusTodayCard({ data, items, todayYmd, demo = false, undo }: { data: CalendarData; items: CalendarItem[]; todayYmd: string; demo?: boolean; undo: UndoHandlers }) {
-  const { focusItem, normal } = pickFocus(data, items);
-  const rest = normal.filter((it) => it.canvasId !== focusItem?.canvasId);
+  const focusItem = fromRec ?? normal[0];
+  const others = normal.filter((it) => it.canvasId !== focusItem?.canvasId);
   // Beneath the Focus item: the next 3 by importance — OR everything still due
   // TODAY when that's a longer list, so a heavy today never hides behind the cut.
-  const dueToday = rest.filter((it) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd);
+  const dueToday = others.filter((it) => it.dueAt != null && ymd(new Date(it.dueAt)) === todayYmd);
   // Held rows first, so a refresh mid-window (which drops them from `ranked` and
   // therefore sorts them last) can't push a row and its Undo bar off the cut.
   const heavyToday = dueToday.length > 3;
-  const restList = visibleSlice(heavyToday ? dueToday : rest, heavyToday ? dueToday.length : 3, undo.held);
-  // Phones: the list is strictly "Today" (everything else due today); the next few
-  // beyond today live in the separate "This week" card below.
-  const todayList = visibleSlice(dueToday, dueToday.length, undo.held);
+  return { focusItem, rest: visibleSlice(heavyToday ? dueToday : others, heavyToday ? dueToday.length : 3, held) };
+}
+
+function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }: { data: CalendarData; focusItem: CalendarItem | undefined; rest: CalendarItem[]; todayYmd: string; demo?: boolean; undo: UndoHandlers }) {
   const isToday = !!focusItem?.dueAt && ymd(new Date(focusItem.dueAt)) === todayYmd;
   const caughtUp = data.atRisk.length === 0;
   const href = focusItem ? itemHref(focusItem.canvasId, focusItem.type, focusItem.status) : null;
@@ -574,31 +582,18 @@ function FocusTodayCard({ data, items, todayYmd, demo = false, undo }: { data: C
       )}
 
       <div className="p-3 sm:p-4">
-        {/* Phone variant: strictly today's list. */}
-        <div className="md:hidden">
-          <h2 className="px-3 pb-1 pt-1 text-[12px] font-semibold uppercase tracking-wider text-muted">Today</h2>
-          {todayList.length === 0 ? (
-            <p className="py-4 text-center text-[15px] text-muted">{isToday ? "Nothing else due today." : "Nothing due today."}</p>
-          ) : (
-            <div className="space-y-0.5">
-              {todayList.map((it) => (
-                <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} demo={demo} undo={undo} side="phone" />
-              ))}
-            </div>
-          )}
-        </div>
-        {/* Desktop variant (md+): the next few by importance, unchanged. */}
-        <div className="hidden md:block">
-          {restList.length === 0 ? (
-            <p className="py-4 text-center text-[15px] text-muted">Nothing else queued up.</p>
-          ) : (
-            <div className="space-y-0.5">
-              {restList.map((it) => (
-                <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} demo={demo} undo={undo} side="desktop" />
-              ))}
-            </div>
-          )}
-        </div>
+        {/* The next few by importance — the SAME list at every width, directly
+            under the violet block in the same card. Its rows exist once (the
+            phone "This week" card skips them), so they always run their clock. */}
+        {rest.length === 0 ? (
+          <p className="py-4 text-center text-[15px] text-muted">Nothing else queued up.</p>
+        ) : (
+          <div className="space-y-0.5">
+            {rest.map((it) => (
+              <ItemRow key={it.canvasId} item={it} dueLabel={it.dueAt ? countdownLabel(it.dueAt, todayYmd) : ""} demo={demo} undo={undo} side="any" />
+            ))}
+          </div>
+        )}
         {/* Phones get "See plan →" in the This week card instead. */}
         <Link
           href="/plan"
@@ -621,9 +616,9 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
   const next = tests[0];
 
   return (
-    <div className="card p-6">
+    <div className="card p-6 max-md:p-4">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-semibold text-ink">Next test</h2>
+        <h2 className={`text-xl font-semibold text-ink ${PHONE_H2}`}>Next test</h2>
         <Link href="/study" className={`inline-flex items-center text-[15px] font-medium text-accent hover:underline md:inline ${TAP_PHONE}`}>
           Study →
         </Link>
@@ -638,7 +633,7 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
               {TYPE_LABEL[next.type]} · {shortCourse(next.courseName)}
               {next.pointsPossible != null && next.pointsPossible > 0 ? ` · ${next.pointsPossible} pts` : ""}
             </span>
-            <span className="mt-1 block text-[14px] font-semibold text-accent">{next.dueAt ? countdownLabel(next.dueAt, todayYmd) : "No date"}</span>
+            <span className="mt-1 block text-[14px] font-semibold text-accent max-md:font-medium max-md:text-muted">{next.dueAt ? countdownLabel(next.dueAt, todayYmd) : "No date"}</span>
             {studyBooked.has(next.canvasId) && <span className="mt-0.5 block text-[12px] font-medium text-success">Study booked</span>}
           </Link>
           {tests.length > 1 && (
@@ -701,38 +696,38 @@ function CatchUpRow({ item: it, demo = false, undo, side }: { item: CalendarItem
   );
 }
 
-// ── Phone only: overdue as one count pill in the thumb zone → the Catch-up Sheet.
-function CatchUpPill({ count, onOpen, className = "" }: { count: number; onOpen: () => void; className?: string }) {
+// ── Phone only: overdue as a card row — the count big, one quiet line, a chevron
+// → the Catch-up Sheet.
+function CatchUpEntry({ count, onOpen, className = "" }: { count: number; onOpen: () => void; className?: string }) {
   return (
     <button
       type="button"
       onClick={onOpen}
       aria-haspopup="dialog"
-      className={`tap flex w-full items-center justify-between gap-3 rounded-2xl border border-line-subtle bg-surface px-4 py-2 text-left ${className}`}
+      aria-label={`Catch up: ${count} overdue, most important first`}
+      className={`card tap flex w-full items-center gap-4 px-4 py-3.5 text-left ${className}`}
     >
-      <span className="flex min-w-0 items-center gap-2.5">
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-warning" aria-hidden />
-        <span className="text-[16px] font-semibold text-ink">Catch up</span>
-        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${toneSoft.warning}`}>{count} overdue</span>
+      <span className="min-w-[2ch] text-center text-[28px] font-bold leading-none tabular-nums text-ink">{count}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden />
+          Catch up
+        </span>
+        <span className="block truncate text-[13px] text-muted">Overdue, most important first</span>
       </span>
-      <span className="shrink-0 text-[15px] font-medium text-accent">Open ›</span>
+      <span className="shrink-0 text-muted">
+        <Glyph d={ICON.chevR} size={18} />
+      </span>
     </button>
   );
 }
 
-// ── Phone only: "This week" collapsed to the next three rows + a door to /plan,
-// with the week's Easy/Moderate/Hard rating (the desktop KPI) in its header.
-function ThisWeekCard({ items, intensity, todayYmd, demo = false, undo, className = "" }: { items: CalendarItem[]; intensity: Intensity; todayYmd: string; demo?: boolean; undo: UndoHandlers; className?: string }) {
-  const cfg = INTENSITY_CFG[intensity];
+// ── Phone only: "This week" collapsed to the next three rows (skipping what the
+// Focus card already lists) + a door to /plan.
+function ThisWeekCard({ items, todayYmd, demo = false, undo, className = "" }: { items: CalendarItem[]; todayYmd: string; demo?: boolean; undo: UndoHandlers; className?: string }) {
   return (
     <section className={`card p-3 ${className}`}>
-      <div className="flex items-center justify-between gap-3 px-3 pt-1">
-        <h2 className="text-[17px] font-semibold text-ink">This week</h2>
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${cfg.soft}`}>
-          <span className={`h-2 w-2 rounded-full ${cfg.dot}`} aria-hidden />
-          {cfg.word}
-        </span>
-      </div>
+      <h2 className={`px-3 pt-1 ${KPI_LABEL}`}>This week</h2>
       {items.length === 0 ? (
         <p className="py-4 text-center text-[15px] text-muted">Nothing else due this week.</p>
       ) : (
@@ -752,8 +747,8 @@ function ThisWeekCard({ items, intensity, todayYmd, demo = false, undo, classNam
 // ── Today's study — the scheduled study sessions, restored to home. ──────────────
 function TodayStudyCard({ blocks, className = "" }: { blocks: { canvasId: number; name: string; hours: number }[]; className?: string }) {
   return (
-    <div className={`card p-6 ${className}`}>
-      <h2 className="text-xl font-semibold text-ink">Today&apos;s study</h2>
+    <div className={`card p-6 max-md:p-4 ${className}`}>
+      <h2 className={`text-xl font-semibold text-ink ${PHONE_H2}`}>Today&apos;s study</h2>
       <ul className="mt-2 divide-y divide-line-subtle">
         {blocks.map((b, i) => (
           <li key={`${b.canvasId}-${i}`}>
@@ -762,7 +757,7 @@ function TodayStudyCard({ blocks, className = "" }: { blocks: { canvasId: number
                 <span className="block truncate text-[16px] font-medium text-ink">{b.name}</span>
                 <span className="block text-[14px] text-muted">Scheduled study</span>
               </span>
-              <span className="shrink-0 text-[14px] font-semibold text-success">{fmtHours(b.hours)}</span>
+              <span className="shrink-0 text-[14px] font-semibold text-success max-md:font-medium max-md:text-muted">{fmtHours(b.hours)}</span>
             </Link>
           </li>
         ))}

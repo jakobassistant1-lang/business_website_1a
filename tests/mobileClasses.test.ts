@@ -48,15 +48,36 @@ describe("AssignmentPage (phone action bar + safe brief)", () => {
     expect(hasTap(openingTag(barBody, "btn-primary"))).toBe(true);
   });
 
-  it("mounts exactly ONE MarkDoneButton (one state): inline at md+, pinned into the bar on phones", () => {
+  it("mounts exactly TWO MarkDoneButtons sharing one state via onToggled: inline at md+, in the phone bar", () => {
     expect((src.match(/import[^;]*\bMarkDoneButton\b[^;]*;/g) ?? []).length).toBe(1);
-    expect((src.match(/<MarkDoneButton\b/g) ?? []).length).toBe(1);
-    const use = src.indexOf("<MarkDoneButton");
-    const wrapperStart = src.lastIndexOf("<span", use);
-    const wrapper = openingTag(src, "<span", wrapperStart);
-    const t = tokens(wrapper);
-    for (const c of ["md:contents", "max-md:fixed", "max-md:[&>button]:tap", "max-md:[&>button]:w-full"]) expect(t.has(c), c).toBe(true);
+    const uses = [...src.matchAll(/<MarkDoneButton\b/g)].map((m) => m.index!);
+    expect(uses.length).toBe(2);
+    const [inline, inBar] = uses.map((i) => openingTag(src, "<MarkDoneButton", i));
+    // both controlled by the page's one `done` state
+    for (const tag of [inline, inBar]) {
+      expect(tag).toMatch(/done=\{done\}/);
+      expect(tag).toMatch(/onToggled=\{setDone\}/);
+    }
+    expect(src).toMatch(/const \[done, setDone\] = useState\(manuallyDone\)/);
+    // the inline copy is md+ only; the second lives inside the phone bar as a tap target
+    expect(tokens(inline).has("max-md:hidden")).toBe(true);
+    const bar = openingTag(src, "bg-surface/95");
+    const barStart = src.indexOf(bar);
+    expect(uses[1]).toBeGreaterThan(barStart);
+    expect(uses[1]).toBeLessThan(src.indexOf("function ExternalIcon"));
+    expect(hasTap(inBar)).toBe(true);
+    // no pinned/fixed-position workaround left
+    expect(src).not.toContain("md:contents");
+    expect(src).not.toContain("max-md:fixed");
     expect(src).not.toMatch(/\/api\/assignment\/done/); // the logic stays in calendar/parts
+  });
+
+  it("MarkDoneButton: controlled when onToggled is given, uncontrolled default unchanged", () => {
+    const parts = read("components/calendar/parts.tsx");
+    const body = parts.slice(parts.indexOf("export function MarkDoneButton"));
+    expect(body).toMatch(/onToggled\?: \(done: boolean\) => void/);
+    expect(body).toContain("const shown = onToggled ? done : local;");
+    expect(body).toContain("const report = (v: boolean) => (onToggled ? onToggled(v) : setLocal(v));");
   });
 
   it("wraps the brief in a `brief` container: images/embeds fit everywhere, tables/code scroll on phones", () => {

@@ -1,4 +1,4 @@
-// Ticket #39 (M2): Today (dashboard) and Plan on phones. The one pure rule —
+// Ticket #39 (M2): the Dashboard and Plan on phones. The one pure rule —
 // which Plan view renders — is unit-tested; the rest are source guards so the
 // phone behaviour (no width-dependent render on the dashboard, agenda-only Plan
 // that never mounts Calendar/Timeline on a phone, catch-up Sheet, nothing
@@ -109,9 +109,9 @@ describe("PlanSurface on phones", () => {
     expect(between(src, "function pick(", "return (")).toContain('localStorage.setItem("sp_plan_view", v)');
   });
 
-  it("the phone List carries the week's study sessions by day", () => {
-    expect(src).toContain("<StudyByDay");
-    expect(src).toContain("isUpcomingStudy(b, todayYmd)");
+  it("study sessions come from the pinned StudyWeekStrip, not a second phone-only list", () => {
+    expect(src).toContain("<StudyWeekStrip");
+    expect(src).not.toContain("<StudyByDay");
   });
 });
 
@@ -127,24 +127,53 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
   });
 
   it("phone-only and desktop-only pieces are chosen by CSS", () => {
+    expectTokens(classAfter(render, "<PhoneGlance"), ["md:hidden"]);
     expectTokens(classAfter(render, "<TodayStudyCard"), ["md:hidden"]);
     expectTokens(classAfter(render, "<ThisWeekCard"), ["md:hidden"]);
-    expectTokens(classAfter(render, "<CatchUpPill"), ["md:hidden"]);
-    expectTokens(classAfter(render, "{(aiPoints.length > 0 || summaryLoading) &&"), ["md:hidden"]);
+    expectTokens(classAfter(render, "<CatchUpEntry"), ["md:hidden"]);
     expectTokens(classAfter(render, "{overdueItems.length > 0 && ("), ["hidden", "md:block"]);
     expectTokens(classAfter(render, 'data-tour="dash-progress"'), ["hidden", "md:block"]);
     expectTokens(classAfter(render.slice(render.indexOf("<aside")), "<TodayStudyCard"), ["hidden", "md:block"]);
     expectTokens(classAfter(render, "KPI bar"), ["hidden", "md:flex"]);
-    // the Focus card's two lists
+  });
+
+  it("the AI summary is desktop-only: one copy, inside a hidden md:block wrapper", () => {
+    expect(render.match(/<AiSummary\b/g)?.length).toBe(1);
+    expectTokens(classAfter(render, "{!data.connected ?"), ["hidden", "md:block"]);
+    expect(render.indexOf("<AiSummary")).toBeGreaterThan(render.indexOf('<div className="hidden md:block">'));
+    expect(dash).not.toContain("collapsible");
+  });
+
+  it("the Focus card holds its list at every width (one card, one list, as on desktop)", () => {
     const focus = between(dash, "function FocusTodayCard(", "// ── Upcoming assessments");
-    expectTokens(classAfter(focus, "Phone variant"), ["md:hidden"]);
-    expectTokens(classAfter(focus, "Desktop variant"), ["hidden", "md:block"]);
-    expect(focus).toContain('side="phone"');
-    expect(focus).toContain('side="desktop"');
+    expect(focus.match(/<ItemRow\b/g)?.length).toBe(1);
+    expect(focus).toContain('side="any"');
+    expect(focus).not.toMatch(/Phone variant|Desktop variant/);
+    // the Focus pick + its list are ONE rule the phone "This week" card also reads
+    expect(dash).toContain("pickFocus(data, liveItems, todayYmd, heldInFocus)"); // held only promotes rows the card already showed
+    expect(dash).toContain("!inFocusCard.has(it.canvasId)");
+  });
+
+  it("the week chip lives in the phone header row, not in the This week card", () => {
+    const glance = between(dash, "function PhoneGlance(", "// A reason-chip");
+    expect(glance).toContain("INTENSITY_CFG[intensity]");
+    expect(glance).toContain("<ProgressRing");
+    const week = between(dash, "function ThisWeekCard(", "// ── Today's study");
+    expect(week).not.toContain("INTENSITY_CFG");
+    expect(week).not.toContain("intensity");
+  });
+
+  it("catch-up on phones is a card row: 28px count, one-line subtitle, chevron", () => {
+    const entry = between(dash, "function CatchUpEntry(", "// ── Phone only: \"This week\"");
+    expectTokens(classAfter(entry, "<button"), ["card", "tap", "flex", "w-full"]);
+    expect(entry).toContain("text-[28px]");
+    expect(entry).toContain("Overdue, most important first");
+    expect(entry).toContain("ICON.chevR");
+    expect(dash).not.toContain("CatchUpPill");
   });
 
   it("DOM order is the phone's visual order", () => {
-    const order = ["<FocusTodayCard", "<TodayStudyCard", "<ThisWeekCard", "<CatchUpPill", "collapsible", "<CatchUpCard", "<ProgressDial", "<UpcomingTestsCard"];
+    const order = ["<PhoneGlance", "<FocusTodayCard", "<TodayStudyCard", "<ThisWeekCard", "<CatchUpEntry", "<CatchUpCard", "<ProgressDial", "<UpcomingTestsCard"];
     const idx = order.map((s) => render.indexOf(s));
     for (const i of idx) expect(i).toBeGreaterThanOrEqual(0);
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
@@ -163,7 +192,7 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
 
   it("list rows are 44px targets", () => {
     expectTokens(classAfter(between(dash, "function ItemRow(", "function pickFocus"), "<Link"), ["tap", "flex"]);
-    expectTokens(classAfter(between(dash, "function CatchUpRow(", "function CatchUpPill"), "<Link"), ["tap", "flex"]);
+    expectTokens(classAfter(between(dash, "function CatchUpRow(", "function CatchUpEntry"), "<Link"), ["tap", "flex"]);
   });
 });
 

@@ -112,6 +112,12 @@ export function AssignmentPage(props: {
   const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, manuallyDone = false, todayYmd, demo, onBack } = props;
   const router = useRouter();
 
+  // The student's own checkoff, owned HERE so the two Mark-as-done buttons (inline
+  // at md+, the phone action bar) are one piece of state. Re-seeded when a
+  // refresh brings a new server value.
+  const [done, setDone] = useState(manuallyDone);
+  useEffect(() => setDone(manuallyDone), [manuallyDone]);
+
   // AI approach + steps, lazy-fetched. Seed the approach with the stored one-liner
   // (if any) so something useful shows instantly, then upgrade in place. The parent
   // keys this component by canvasId, so navigating to another assignment remounts
@@ -201,20 +207,9 @@ export function AssignmentPage(props: {
           <EffortEditor canvasId={canvasId} estimate={estimatedEffortHours ?? null} override={effortOverrideHours ?? null} />
         )}
         <span className={`rounded-full px-3 py-1 ${toneSoft[badge.tone]}`}>{badge.label}</span>
-        {/* ONE MarkDoneButton (one piece of state). md+: it sits inline here
-            (`contents`). Phones: the same element is pinned by fixed positioning
-            into the slot the action bar below reserves for it — the offsets mirror
-            the bar's geometry (bottom above the tab bar + the bar's py-2; right
-            px-4; half width = (100vw − 2·16px padding − 10px gap) / 2). */}
-        {canMarkDone && (
-          <span
-            className={`max-md:fixed max-md:bottom-[calc(56px+env(safe-area-inset-bottom)+0.5rem)] max-md:right-4 max-md:z-40 max-md:flex max-md:h-11 md:contents max-md:[&>button]:tap max-md:[&>button]:w-full max-md:[&>button]:rounded-lg max-md:[&>button]:text-[15px] ${
-              htmlUrl ? "max-md:w-[calc(50%-21px)]" : "max-md:left-4"
-            }`}
-          >
-            <MarkDoneButton canvasId={canvasId} done={manuallyDone} />
-          </span>
-        )}
+        {/* md+: Mark as done sits inline here. Phones get the second copy in the
+            action bar below; both are controlled by `done`, so they agree. */}
+        {canMarkDone && <MarkDoneButton canvasId={canvasId} done={done} onToggled={setDone} className="max-md:hidden" />}
       </div>
 
       {/* How to approach — the value add: turn a vague task into a first move. */}
@@ -294,18 +289,24 @@ export function AssignmentPage(props: {
       )}
 
       {/* Phones: sticky thumb-zone actions, sitting just above the fixed tab bar
-          (whose own pb-safe already covers the home-indicator inset). The Mark
-          done half is a reserved slot — the single MarkDoneButton above is
-          pinned into it (see the comment there). */}
+          (whose own pb-safe already covers the home-indicator inset). A plain
+          flex row: each button takes half (or all, when it's alone). */}
       {hasActionBar && (
-        <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-30 flex gap-2.5 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur md:hidden">
+        <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-30 flex gap-2 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur md:hidden">
           {htmlUrl && (
-            <a href={htmlUrl} target="_blank" rel="noreferrer" className="btn-primary tap flex-1 gap-1.5">
+            <a href={htmlUrl} target="_blank" rel="noreferrer" className="btn-primary max-md:tap min-w-0 flex-1 gap-1 whitespace-nowrap">
               Open in Canvas
               <ExternalIcon />
             </a>
           )}
-          {canMarkDone && <span className="h-11 flex-1" aria-hidden />}
+          {canMarkDone && (
+            <MarkDoneButton
+              canvasId={canvasId}
+              done={done}
+              onToggled={setDone}
+              className="max-md:tap max-md:min-w-0 max-md:flex-1 max-md:whitespace-nowrap max-md:rounded-lg max-md:px-4 max-md:text-sm"
+            />
+          )}
         </div>
       )}
     </div>
