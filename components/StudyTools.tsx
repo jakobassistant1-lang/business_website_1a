@@ -49,8 +49,10 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const json = await res.json().catch(() => ({}));
+    const json = await res.json().catch(() => null);
     if (res.ok && json?.ok) return { ok: true, content: json.content as T, cached: json.cached === true };
+    // A 5xx with no JSON body (a crashed route) reads like the server was unreachable.
+    if (json === null && res.status >= 500) return { ok: false, error: "network" };
     return { ok: false, error: typeof json?.error === "string" ? json.error : "failed" };
   } catch {
     return { ok: false, error: "network" };
@@ -60,6 +62,8 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
 const ERROR_TEXT: Record<string, string> = {
   no_key: "The AI service isn't configured.",
   timeout: "Generation took too long.",
+  http_error: "The AI service had a hiccup — try again in a minute.",
+  bad_response: "The AI answer came back unreadable — try again.",
   not_connected: "Connect your Canvas account first.",
   network: "Couldn't reach the server.",
 };

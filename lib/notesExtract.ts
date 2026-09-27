@@ -6,6 +6,7 @@
 // scanned PDFs to the photo path).
 
 import { GEMINI_URL, geminiKey, geminiPost } from "@/lib/geminiFetch";
+import { installPdfPolyfills } from "@/lib/pdfPolyfills";
 
 export type ExtractKind = "pdf" | "docx" | "text";
 export type ExtractFail =
@@ -42,6 +43,9 @@ export async function extractNoteText(buffer: Buffer, filename: string, mime: st
 
   try {
     if (kind === "pdf") {
+      // pdfjs constructs DOMMatrix at module scope — shim first, and keep the
+      // import inside this try (a load-time throw is a typed "error", not a 500).
+      installPdfPolyfills();
       const { PDFParse } = await import("pdf-parse");
       const parser = new PDFParse({ data: buffer });
       try {

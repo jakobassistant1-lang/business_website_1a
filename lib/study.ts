@@ -32,6 +32,7 @@ import {
 } from "./canvas";
 import type { Plan } from "./scheduler";
 import { ymd } from "./calendarDates";
+import { installPdfPolyfills } from "./pdfPolyfills";
 
 const TIMEOUT_MS = 25000; // study artifacts are bigger than one-liners
 export const STUDY_PROMPT_VERSION = 2; // bump → all cached generations revalidate (v2: relevance filter)
@@ -123,6 +124,28 @@ const MAX_PAGES = 6;
 const MAX_PDFS = 3;
 const PDF_MAX_BYTES = 8 * 1024 * 1024; // skip huge scans/textbooks
 const PDF_MIN_TEXT = 80; // under this ⇒ a scanned/image PDF with no real text layer
+
+/** The whitespace-collapsed text layer of one PDF, or "" when there is none or
+ *  ANYTHING fails — including the `pdf-parse` import itself. pdfjs (which
+ *  pdf-parse wraps) constructs `DOMMatrix` at module scope, so the import is
+ *  lazy, preceded by the server shims, and INSIDE this try: a load-time
+ *  ReferenceError is a skipped file, never a 500 (the prod bug of 2026-09-26). */
+async function pdfTextLayer(buf: Buffer, title: string): Promise<string> {
+  try {
+    installPdfPolyfills();
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: buf });
+    try {
+      const res = await parser.getText();
+      return (res?.text ?? "").replace(/\s+/g, " ").trim();
+    } finally {
+      await (parser as { destroy?: () => Promise<void> }).destroy?.().catch(() => {});
+    }
+  } catch (e) {
+    console.warn(`[study] pdf text skipped: ${title}: ${e instanceof Error ? e.message : String(e)}`);
+    return "";
+  }
+}
 
 function moduleContains(m: CanvasModule, a: AssessmentMeta): boolean {
   const wanted = norm(a.name);
@@ -246,32 +269,19 @@ export async function collectStudyMaterial(
     // Scanned/image-only PDFs yield no text and are skipped. Every step fails
     // open — a broken file can never break generation.
     const fileItems = siblings.filter((it) => it.type === "File" && it.content_id).slice(0, 6);
-    if (fileItems.length > 0) {
-      const { PDFParse } = await import("pdf-parse");
-      let taken = 0;
-      for (const it of fileItems) {
-        if (taken >= MAX_PDFS) break;
-        const meta = await fetchFileMeta(host, token, it.content_id as number);
-        if (!meta) continue;
-        const isPdf = meta["content-type"] === "application/pdf" || /\.pdf$/i.test(meta.display_name);
-        if (!isPdf || meta.size > PDF_MAX_BYTES) continue;
-        const buf = await downloadCanvasFile(meta.url, PDF_MAX_BYTES);
-        if (!buf) continue;
-        try {
-          const parser = new PDFParse({ data: buf });
-          try {
-            const res = await parser.getText();
-            const text = (res?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 3500);
-            if (text.length >= PDF_MIN_TEXT) {
-              sources.push({ kind: "file", title: meta.display_name, text });
-              taken++;
-            }
-          } finally {
-            await (parser as { destroy?: () => Promise<void> }).destroy?.();
-          }
-        } catch {
-          /* fail open per file */
-        }
+    let taken = 0;
+    for (const it of fileItems) {
+      if (taken >= MAX_PDFS) break;
+      const meta = await fetchFileMeta(host, token, it.content_id as number);
+      if (!meta) continue;
+      const isPdf = meta["content-type"] === "application/pdf" || /\.pdf$/i.test(meta.display_name);
+      if (!isPdf || meta.size > PDF_MAX_BYTES) continue;
+      const buf = await downloadCanvasFile(meta.url, PDF_MAX_BYTES);
+      if (!buf) continue;
+      const text = (await pdfTextLayer(buf, meta.display_name)).slice(0, 3500);
+      if (text.length >= PDF_MIN_TEXT) {
+        sources.push({ kind: "file", title: meta.display_name, text });
+        taken++;
       }
     }
 
