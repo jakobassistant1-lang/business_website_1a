@@ -5,6 +5,8 @@
 // with concrete sub-steps, the Canvas brief, a best-effort rubric, and a jump out
 // to Canvas. The AI plan and rubric are both fetched client-side and fail open —
 // the page is fully useful without them, and neither blocks the page's SSR.
+// The Canvas brief arrives ALREADY sanitized (`safeHtml`, from lib/sanitizeBrief
+// on the server), so it renders formatted on first paint — no text-then-HTML swap.
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,43 +16,6 @@ import { toneSoft, type Tone } from "@/lib/tone";
 import { TYPE_LABEL, type ItemType } from "@/lib/itemType";
 import { EffortTag, EffortEditor, MarkDoneButton } from "@/components/calendar/parts";
 import type { CanvasRubricCriterion } from "@/lib/canvas";
-import DOMPurify, { type Config as PurifyConfig } from "dompurify";
-import { htmlToText } from "@/lib/htmlText";
-
-// --- Canvas brief sanitization (browser-only) -------------------------------
-// The server hands us the RAW Canvas HTML (no DOM there, and jsdom on the server
-// broke this route on Vercel). DOMPurify only works with a real `window` — with
-// none it returns its input UNCHANGED — so sanitizing is done in a useEffect
-// after mount, and until then the brief renders as escaped plain text.
-const PURIFY_CONFIG: PurifyConfig = {
-  USE_PROFILES: { html: true },
-  ADD_ATTR: ["target"],
-  FORBID_TAGS: ["style", "iframe", "form", "input", "script"],
-};
-
-// Every outbound link in the brief opens in a new tab and can't reach back to
-// our window. In-page anchors (href="#…") and bare <a> without href are left
-// alone. The hook is registered once at module scope, never per render; the
-// removeHook first keeps it single under HMR (DOMPurify's instance survives a
-// module re-evaluation, this module's guard flag does not).
-let hookInstalled = false;
-function installPurifyHook() {
-  if (hookInstalled) return;
-  hookInstalled = true;
-  DOMPurify.removeHook("afterSanitizeAttributes");
-  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-    if (node.tagName !== "A") return;
-    const href = node.getAttribute("href");
-    if (!href || href.startsWith("#")) return;
-    node.setAttribute("target", "_blank");
-    node.setAttribute("rel", "noopener noreferrer");
-  });
-}
-
-function sanitizeBrief(html: string): string {
-  installPurifyHook();
-  return DOMPurify.sanitize(html, PURIFY_CONFIG);
-}
 
 /** Relative, do-next voice for the due date — matches the rest of the app. */
 function dueLabel(iso: string | null, todayYmd: string): string {
@@ -97,7 +62,9 @@ export function AssignmentPage(props: {
   estimatedEffortHours?: number | null;
   effortOverrideHours?: number | null;
   htmlUrl: string | null;
-  description: string | null;
+  // The Canvas brief, ALREADY sanitized on the server (lib/sanitizeBrief). Never
+  // pass raw Canvas HTML here. null = no brief.
+  safeHtml: string | null;
   submissionState: string | null;
   submittedAt: string | null;
   submissionScore: number | null;
@@ -109,7 +76,7 @@ export function AssignmentPage(props: {
   demo?: boolean;
   onBack?: () => void;
 }) {
-  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, description, submissionState, submittedAt, submissionScore, summary, manuallyDone = false, todayYmd, demo, onBack } = props;
+  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, safeHtml, submissionState, submittedAt, submissionScore, summary, manuallyDone = false, todayYmd, demo, onBack } = props;
   const router = useRouter();
 
   // The student's own checkoff, owned HERE so the two Mark-as-done buttons (inline
@@ -126,17 +93,6 @@ export function AssignmentPage(props: {
   const [steps, setSteps] = useState<string[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(!demo);
   const [rubric, setRubric] = useState<CanvasRubricCriterion[] | null>(null);
-
-  // Sanitized brief HTML — null until DOMPurify has run in the browser. Never
-  // set on the server; never fed the raw prop.
-  const [safeHtml, setSafeHtml] = useState<string | null>(null);
-  useEffect(() => {
-    if (!description || !description.trim() || !DOMPurify.isSupported) {
-      setSafeHtml(null);
-      return;
-    }
-    setSafeHtml(sanitizeBrief(description));
-  }, [description]);
 
   useEffect(() => {
     if (demo) return; // demo: render from the seeded summary; no live fetch
@@ -239,25 +195,22 @@ export function AssignmentPage(props: {
         </section>
       )}
 
-      {/* Canvas brief (the assignment body). Before the browser has sanitized it
-          (SSR + first paint) it renders as escaped plain text; once DOMPurify has
-          run, the sanitized HTML takes over with basic prose styling. */}
-      {description && description.trim() && (
+      {/* Canvas brief (the assignment body), sanitized on the server — so it is
+          formatted from the very first paint, with basic prose styling. */}
+      {safeHtml && safeHtml.trim() && (
         <section className="card mt-6 p-6">
           <h2 className="text-[19px] font-semibold text-ink">Assignment brief</h2>
-          {safeHtml != null ? (
-            // `brief` wrapper: Canvas HTML is arbitrary — images/embeds shrink to fit
-            // everywhere; on phones wide tables and code scroll sideways instead of
-            // widening the page (desktop table layout unchanged).
-            <div className="brief [&_iframe]:max-w-full [&_img]:h-auto [&_img]:max-w-full max-md:[&_pre]:overflow-x-auto max-md:[&_table]:block max-md:[&_table]:max-w-full max-md:[&_table]:overflow-x-auto">
-              <div
-                className="mt-2 text-[15px] leading-relaxed text-ink [&_a]:text-accent [&_a]:underline [&_h1]:mt-3 [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:text-[16px] [&_h2]:font-semibold [&_li]:mb-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
-                dangerouslySetInnerHTML={{ __html: safeHtml }}
-              />
-            </div>
-          ) : (
-            <div className="mt-2 whitespace-pre-line text-[15px] leading-relaxed text-ink max-md:break-words">{htmlToText(description)}</div>
-          )}
+          {/* `brief` wrapper: Canvas HTML is arbitrary — images/embeds shrink to fit
+              everywhere; on phones wide tables and code scroll sideways instead of
+              widening the page (desktop table layout unchanged). `relative
+              overflow-hidden [contain:layout_paint]` is a backstop: nothing inside the
+              brief can paint outside its own box, whatever styling slips through. */}
+          <div className="brief relative overflow-hidden [contain:layout_paint] [&_iframe]:max-w-full [&_img]:h-auto [&_img]:max-w-full max-md:[&_pre]:overflow-x-auto max-md:[&_table]:block max-md:[&_table]:max-w-full max-md:[&_table]:overflow-x-auto">
+            <div
+              className="mt-2 text-[15px] leading-relaxed text-ink [&_a]:text-accent [&_a]:underline [&_h1]:mt-3 [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:text-[16px] [&_h2]:font-semibold [&_li]:mb-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+              dangerouslySetInnerHTML={{ __html: safeHtml }}
+            />
+          </div>
         </section>
       )}
 

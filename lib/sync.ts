@@ -13,6 +13,7 @@ import {
   type CourseFetchStats,
 } from "./canvas";
 import { computeGradeWeights } from "./gradeWeight";
+import { MAX_BRIEF_CHARS } from "./limits";
 import { analyzeLatePolicies, latePolicyWorkToDo, type LatePolicyInput } from "./latePolicy";
 import { CanvasStatus, messageFor } from "./messages";
 import { decryptSecret } from "./crypto";
@@ -92,7 +93,7 @@ export function quickAssignmentData(a: CanvasAssignment, ctx: { userId: number; 
     pointsPossible: a.points_possible ?? null,
     htmlUrl: a.html_url ?? null,
     submissionType: Array.isArray(a.submission_types) ? a.submission_types.join(",") : null,
-    description: a.description ?? null,
+    description: typeof a.description === "string" ? a.description.slice(0, MAX_BRIEF_CHARS) : null, // #131: bound what the DB (and the brief sanitizer) ever sees
     // Submission data from include[]=submission (canvas-mcp integration).
     submittedAt: toDate(a.submission?.submitted_at),
     submissionScore: a.submission?.score ?? null,
