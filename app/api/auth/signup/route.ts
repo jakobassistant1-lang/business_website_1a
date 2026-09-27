@@ -7,6 +7,7 @@ import { rateLimit, ipOf } from "@/lib/rateLimit";
 import { isUniqueViolation } from "@/lib/prismaErrors";
 import { logEvent } from "@/lib/funnel";
 import { sendWelcomeEmail } from "@/lib/welcomeEmail";
+import { TOS_REQUIRED } from "@/lib/messages";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   if (!EMAIL_RE.test(email)) errors.email = "Enter a valid email address.";
   if (password.length < 8) errors.password = "Password must be at least 8 characters.";
   if (!fullName) errors.fullName = "Name is required.";
-  if (!tosAccepted) errors.tos = "You must accept the Terms of Service.";
+  if (!tosAccepted) errors.tos = TOS_REQUIRED;
   if (Object.keys(errors).length) return NextResponse.json({ errors }, { status: 400 });
 
   const existing = await prisma.user.findUnique({ where: { email } });

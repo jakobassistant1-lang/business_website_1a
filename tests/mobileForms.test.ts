@@ -28,11 +28,11 @@ function classLists(src: string): string[][] {
 /** Interactive elements (<button, <a, <Link) with their own className tokens. The
  *  attribute run is read up to the next "<" (attributes hold arrows like `=>`,
  *  never a "<"), so a child's className is never mistaken for the control's. */
-function controls(src: string): { tag: string; tokens: string[] }[] {
-  const out: { tag: string; tokens: string[] }[] = [];
+function controls(src: string): { tag: string; tokens: string[]; attrs: string }[] {
+  const out: { tag: string; tokens: string[]; attrs: string }[] = [];
   for (const m of src.matchAll(/<(button|a|Link)\b([^<]*)/g)) {
     const cls = m[2].match(/className=(?:"([^"]*)"|\{`([^`]*)`\})/);
-    out.push({ tag: m[1], tokens: cls ? (cls[1] ?? cls[2]).split(/\s+/).filter(Boolean) : [] });
+    out.push({ tag: m[1], tokens: cls ? (cls[1] ?? cls[2]).split(/\s+/).filter(Boolean) : [], attrs: m[2] });
   }
   return out;
 }
@@ -176,11 +176,12 @@ describe("grep guards: tap targets are phone-only", () => {
 
 describe("grep guards: phone forms", () => {
   const auth = read("components/AuthFlow.tsx");
-  it("every AuthFlow control except the tall role cards gets a phone tap target", () => {
+  it("every AuthFlow control except the inline legal links gets a phone tap target", () => {
     const cs = controls(auth);
     expect(cs.length).toBeGreaterThanOrEqual(7);
     for (const c of cs) {
-      if (c.tokens.includes("card")) continue; // RoleCard: p-5 + a 44px icon, already ≥44px
+      // Terms / Privacy sit inside a sentence: WCAG 2.5.8 exempts inline links (#139).
+      if (/href=\{(TERMS_URL|PRIVACY_URL)\}/.test(c.attrs)) continue;
       expect(c.tokens).toContain("max-md:tap");
     }
   });

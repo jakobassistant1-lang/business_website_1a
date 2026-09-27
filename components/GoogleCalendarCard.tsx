@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toneSoft } from "@/lib/tone";
 
+/** Shown when the server has no Google OAuth client set up (one wording for the card and the post-redirect notice). */
+const UNAVAILABLE = "Google Calendar sync isn't available yet.";
+
 function fmt(iso: string | null) {
   if (!iso) return "never";
   return new Date(iso).toLocaleString(undefined, {
@@ -43,7 +46,7 @@ export function GoogleCalendarCard({
       : flash === "error"
         ? { kind: "error", text: "Couldn't connect to Google. Please try again." }
         : flash === "unconfigured"
-          ? { kind: "error", text: "Google Calendar isn't set up on the server yet." }
+          ? { kind: "error", text: UNAVAILABLE }
           : null,
   );
 
@@ -134,7 +137,7 @@ export function GoogleCalendarCard({
               Connect Google Calendar
             </a>
           ) : (
-            <p className="mt-4 text-xs text-muted">Not available yet — the server needs Google credentials configured.</p>
+            <p className="mt-4 text-xs text-muted">{UNAVAILABLE}</p>
           )}
         </>
       ) : (

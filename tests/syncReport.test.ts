@@ -118,8 +118,8 @@ describe("reasonText / courseLine / footer", () => {
   });
   it("connection-level reasons reuse the FR-5 copy (single source)", () => {
     for (const r of ["unreachable", "throttled", "invalid_token", "insufficient_scope"] as const) expect(reasonText(r)).toBe(messageFor(r));
-    expect(reasonText("out_of_time")).toBe("Ran out of time this run — it'll refresh next sync");
-    expect(reasonText("restricted")).toBe("Canvas hides this class's assignments");
+    expect(reasonText("out_of_time")).toBe("Didn't finish this time. It'll refresh on the next sync.");
+    expect(reasonText("restricted")).toBe("Canvas hides this class's assignments.");
   });
   it("status → reason (quick treats 401/403 as a hidden class, not a bad token)", () => {
     expect(reasonForStatus("throttled")).toBe("throttled");

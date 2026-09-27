@@ -71,12 +71,12 @@ export function reasonText(reason: SyncReportReason): string {
     case "insufficient_scope":
       return messageFor(reason);
     case "out_of_time":
-      return "Ran out of time this run — it'll refresh next sync";
+      return "Didn't finish this time. It'll refresh on the next sync.";
     case "restricted":
-      return "Canvas hides this class's assignments";
+      return "Canvas hides this class's assignments.";
     case "error":
     default:
-      return "Something went wrong refreshing this class — it'll retry next sync";
+      return "Couldn't refresh this class. It'll retry on the next sync.";
   }
 }
 

@@ -1,27 +1,75 @@
 "use client";
 
-// Two-step auth. Step 1: pick Student or Admin. Step 2: log in or sign up.
+// Log in / sign up. Students land straight on the form (/login, /signup); the
+// admin door is the unlinked /admin/login route, which passes role="admin".
 // - Students sign up with NO invite code (open) → a regular account.
 // - Admins sign up WITH the invite code (first time only) → the account is
 //   remembered as admin (isAdmin), so later they just use email + password.
 // Login is identical for both; the account's own isAdmin flag decides access.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 // Type only (erased at build): the terms are computed on the server — the price
 // comes from Stripe and the trial length from TRIAL_DAYS, never from this file.
 import type { TrialTerms } from "@/lib/subscription";
+import { NETWORK_ERROR, TOS_REQUIRED } from "@/lib/messages";
 
 type Role = "student" | "admin";
 type Mode = "login" | "signup";
 
-const STUDENT_ICON = "M22 10L12 5 2 10l10 5 10-5Zm-4 3.5V17c0 1.5-3 2.5-6 2.5s-6-1-6-2.5v-3.5";
-const ADMIN_ICON = "M4 5h16v14H4zM9 5v14M15 5v14";
+export const TERMS_URL = "https://navolearning.com/terms";
+export const PRIVACY_URL = "https://navolearning.com/privacy";
 
-export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice, trialTerms }: { initialMode: Mode; inviteConfigured: boolean; googleEnabled: boolean; notice?: string; trialTerms?: TrialTerms | null }) {
+const HEADING: Record<Role, Record<Mode, string>> = {
+  student: { login: "Log in to Navo", signup: "Create your Navo account" },
+  admin: { login: "Log in as an admin", signup: "Create an admin account" },
+};
+
+/** The one value line on the student signup door (the price line below it comes from Stripe). */
+const VALUE_LINE = "Navo connects to your Canvas classes and tells you what to work on next.";
+
+export type SignupField = "inviteCode" | "fullName" | "email" | "password" | "tos";
+export type SignupErrors = Partial<Record<SignupField, string>>;
+/** Top-to-bottom form order: focus lands on the first field with an error. */
+const FIELD_ORDER: SignupField[] = ["inviteCode", "fullName", "email", "password", "tos"];
+
+/** The first field (in form order) that has an error, or null. */
+export function firstInvalidField(errors: SignupErrors): SignupField | null {
+  return FIELD_ORDER.find((k) => errors[k]) ?? null;
+}
+
+/** Pure client check run before signup is sent: the first invalid field + its
+ *  message, or null when the form can go. Empty required fields are caught by the
+ *  browser (`required`); the Terms box is checked here so submit never sits
+ *  disabled without saying why. */
+export function validateAuthForm(values: { tos: boolean }): { field: SignupField; message: string } | null {
+  if (!values.tos) return { field: "tos", message: TOS_REQUIRED };
+  return null;
+}
+
+/** Only a 401 (wrong email or password) marks the login fields invalid. A network
+ *  failure (status null) or a rate limit (429) is about the attempt, not the input. */
+export function loginFieldsInvalid(status: number | null): boolean {
+  return status === 401;
+}
+
+export function AuthFlow({
+  role = "student",
+  initialMode,
+  inviteConfigured,
+  googleEnabled,
+  notice,
+  trialTerms,
+}: {
+  role?: Role;
+  initialMode: Mode;
+  inviteConfigured: boolean;
+  googleEnabled: boolean;
+  notice?: string;
+  trialTerms?: TrialTerms | null;
+}) {
   const router = useRouter();
-  const [role, setRole] = useState<Role | null>(null);
   const [mode, setMode] = useState<Mode>(initialMode);
 
   function finish(isAdmin: boolean) {
@@ -29,48 +77,16 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice,
     router.refresh();
   }
 
-  const noticeBanner = notice ? (
-    <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
-      {notice}
-    </div>
-  ) : null;
-
-  if (role === null) {
-    return (
-      <>
-        {noticeBanner}
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Welcome to Navo</h1>
-          <p className="mt-1 text-sm text-muted">Who&apos;s signing in?</p>
-        </div>
-        <div className="space-y-3">
-          <RoleCard
-            icon={STUDENT_ICON}
-            title="I'm a student"
-            blurb="Connect Canvas and see your daily plan."
-            onClick={() => setRole("student")}
-          />
-          <RoleCard
-            icon={ADMIN_ICON}
-            title="I'm an admin"
-            blurb="Team tools — board, hierarchy, and burndown."
-            onClick={() => setRole("admin")}
-          />
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
-      {noticeBanner}
-      <div className="mb-5 flex items-center justify-between">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
-          {role === "admin" ? "Admin" : "Student"}
-        </span>
-        <button type="button" onClick={() => setRole(null)} className="text-xs font-medium text-muted hover:text-ink max-md:tap max-md:-mr-2 max-md:inline-flex max-md:items-center max-md:justify-center max-md:px-2">
-          ← Change
-        </button>
+      {notice && (
+        <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
+          {notice}
+        </div>
+      )}
+      <div className="mb-6 text-center">
+        <h1 className="text-balance text-2xl font-semibold tracking-tight">{HEADING[role][mode]}</h1>
+        {role === "student" && mode === "signup" && <p className="mt-1.5 text-balance text-sm text-muted">{VALUE_LINE}</p>}
       </div>
       <div className="card p-5 sm:p-6">
         {role === "student" && mode === "signup" && trialTerms && (
@@ -93,7 +109,9 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice,
               <GoogleGlyph />
               Continue with Google
             </a>
-            <p className="mt-2 text-center text-xs text-muted">By continuing, you agree to the Terms of Service.</p>
+            <p className="mt-2 text-center text-xs text-muted">
+              By continuing, you agree to the <LegalLinks />.
+            </p>
             <div className="mt-4 flex items-center gap-3" aria-hidden="true">
               <span className="h-px flex-1 bg-line" />
               <span className="text-xs text-muted">or</span>
@@ -111,14 +129,14 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice,
         {mode === "login" ? (
           <>
             New here?{" "}
-            <button onClick={() => setMode("signup")} className="font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center">
-              Create {role === "admin" ? "an admin" : "a student"} account
+            <button type="button" onClick={() => setMode("signup")} className="font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center">
+              {role === "admin" ? "Create an admin account" : "Create an account"}
             </button>
           </>
         ) : (
           <>
             Already have an account?{" "}
-            <button onClick={() => setMode("login")} className="font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center">
+            <button type="button" onClick={() => setMode("login")} className="font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center">
               Log in
             </button>
           </>
@@ -128,27 +146,27 @@ export function AuthFlow({ initialMode, inviteConfigured, googleEnabled, notice,
   );
 }
 
-function RoleCard({ icon, title, blurb, onClick }: { icon: string; title: string; blurb: string; onClick: () => void }) {
+/** "Terms of Service and Privacy Policy", each opening the live page in a new tab.
+ *  Inline links inside a sentence (WCAG 2.5.8 exempts them from the 44px target). */
+function LegalLinks() {
+  const cls = "font-medium text-accent underline underline-offset-2 hover:text-accent-hover";
   return (
-    <button
-      onClick={onClick}
-      className="card flex w-full items-center gap-4 p-5 text-left transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-accent-ring"
-    >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d={icon} />
-        </svg>
-      </span>
-      <span className="min-w-0">
-        <span className="block font-semibold text-ink">{title}</span>
-        <span className="block text-sm text-muted">{blurb}</span>
-      </span>
-      <span className="ml-auto shrink-0 text-faint">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9 6l6 6-6 6" />
-        </svg>
-      </span>
-    </button>
+    <>
+      <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" className={cls}>Terms of Service</a>
+      {" and "}
+      <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className={cls}>Privacy Policy</a>
+    </>
+  );
+}
+
+/** Field-error line, tied to its input by id (aria-describedby). Not a live region:
+ *  focus moves to the invalid field, which reads this line as its description. */
+function FieldError({ id, text }: { id: string; text?: string }) {
+  if (!text) return null;
+  return (
+    <p id={id} className="mt-1 text-xs text-danger">
+      {text}
+    </p>
   );
 }
 
@@ -156,37 +174,65 @@ function LoginForm({ onDone }: { onDone: (isAdmin: boolean) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
+  // Focus after React has rendered aria-invalid/aria-describedby onto the field.
+  useEffect(() => {
+    if (invalid) emailRef.current?.focus();
+  }, [invalid, error]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setInvalid(false);
     setBusy(true);
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    setBusy(false);
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
       const body = await res.json().catch(() => ({}));
-      onDone(body.isAdmin === true);
-    } else {
-      const body = await res.json().catch(() => ({}));
-      setError(body.error ?? "Invalid credentials.");
+      if (res.ok) {
+        onDone(body.isAdmin === true);
+        return;
+      }
+      setError(body.error ?? "That email and password don't match. Check them and try again.");
+      setInvalid(loginFieldsInvalid(res.status));
+    } catch {
+      setError(NETWORK_ERROR);
+    } finally {
+      setBusy(false);
     }
   }
 
+  const describedBy = invalid ? "login-error" : undefined;
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+      {error && (
+        <p id="login-error" role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+      )}
       <div>
         <label className="label" htmlFor="email">Email</label>
-        <input id="email" type="email" className="field" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+        <input
+          ref={emailRef} id="email" name="email" type="email" className="field"
+          value={email} onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email" autoCapitalize="none" spellCheck={false} required
+          aria-invalid={invalid} aria-describedby={describedBy}
+        />
       </div>
       <div>
         <label className="label" htmlFor="password">Password</label>
-        <input id="password" type="password" className="field" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+        <input
+          id="password" name="password" type="password" className="field"
+          value={password} onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password" spellCheck={false} required
+          aria-invalid={invalid} aria-describedby={describedBy}
+        />
       </div>
       <div className="-mt-1 text-right">
         <Link href="/forgot-password" className="text-sm font-medium text-accent hover:text-accent-hover max-md:tap max-md:inline-flex max-md:items-center max-md:justify-end">
@@ -194,7 +240,7 @@ function LoginForm({ onDone }: { onDone: (isAdmin: boolean) => void }) {
         </Link>
       </div>
       <button type="submit" className="btn-primary w-full max-md:tap" disabled={busy}>
-        {busy ? "Signing in…" : "Log in"}
+        {busy ? "Logging in…" : "Log in"}
       </button>
     </form>
   );
@@ -204,25 +250,55 @@ function SignupForm({ role, inviteConfigured, onDone }: { role: Role; inviteConf
   const isAdmin = role === "admin";
   const [form, setForm] = useState({ inviteCode: "", email: "", password: "", fullName: "", phone: "" });
   const [tos, setTos] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<SignupErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const refs = useRef<Partial<Record<SignupField, HTMLInputElement | null>>>({});
+  // Set by a submit that produced errors; the effect below focuses the first
+  // invalid field once React has rendered its aria-invalid/aria-describedby
+  // (ticking the Terms box later updates errors too, but must not move focus).
+  const focusPending = useRef(false);
   const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
+
+  useEffect(() => {
+    if (!focusPending.current) return;
+    focusPending.current = false;
+    const first = firstInvalidField(errors);
+    if (first) refs.current[first]?.focus();
+  }, [errors]);
+
+  function showErrors(next: SignupErrors) {
+    focusPending.current = true;
+    setErrors(next);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
+    setFormError(null);
+    const invalid = validateAuthForm({ tos });
+    if (invalid) {
+      showErrors({ [invalid.field]: invalid.message });
+      return;
+    }
     setBusy(true);
-    const res = await fetch("/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, role, tosAccepted: tos }),
-    });
-    setBusy(false);
-    if (res.ok) {
-      onDone(isAdmin);
-    } else {
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, role, tosAccepted: tos }),
+      });
+      if (res.ok) {
+        onDone(isAdmin);
+        return;
+      }
       const body = await res.json().catch(() => ({}));
-      setErrors(body.errors ?? { email: body.error ?? "Sign up failed." });
+      if (body.errors) showErrors(body.errors);
+      else setFormError(body.error ?? "Couldn't create your account. Try again.");
+    } catch {
+      setFormError(NETWORK_ERROR);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -234,41 +310,76 @@ function SignupForm({ role, inviteConfigured, onDone }: { role: Role; inviteConf
     );
   }
 
+  /** Error wiring for one input: aria-invalid + aria-describedby → its error line. */
+  const a11y = (k: SignupField, extra?: string) => ({
+    "aria-invalid": Boolean(errors[k]),
+    "aria-describedby": [errors[k] ? `${k}-error` : null, extra].filter(Boolean).join(" ") || undefined,
+  });
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {formError && (
+        <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+          {formError}
+        </p>
+      )}
       {isAdmin && (
         <div>
           <label className="label" htmlFor="inviteCode">Admin invite code</label>
-          <input id="inviteCode" className="field" value={form.inviteCode} onChange={(e) => set("inviteCode", e.target.value)} autoComplete="off" required />
-          {errors.inviteCode && <p className="mt-1 text-xs text-danger">{errors.inviteCode}</p>}
-          <p className="mt-1 text-xs text-muted">Needed once, the first time you register as an admin.</p>
+          <input
+            ref={(el) => { refs.current.inviteCode = el; }} id="inviteCode" name="inviteCode" className="field"
+            value={form.inviteCode} onChange={(e) => set("inviteCode", e.target.value)}
+            autoComplete="off" spellCheck={false} required {...a11y("inviteCode", "inviteCode-hint")}
+          />
+          <FieldError id="inviteCode-error" text={errors.inviteCode} />
+          <p id="inviteCode-hint" className="mt-1 text-xs text-muted">Needed once, the first time you register as an admin.</p>
         </div>
       )}
       <div>
         <label className="label" htmlFor="fullName">Full name</label>
-        <input id="fullName" className="field" value={form.fullName} onChange={(e) => set("fullName", e.target.value)} required />
-        {errors.fullName && <p className="mt-1 text-xs text-danger">{errors.fullName}</p>}
+        <input
+          ref={(el) => { refs.current.fullName = el; }} id="fullName" name="name" className="field"
+          value={form.fullName} onChange={(e) => set("fullName", e.target.value)}
+          autoComplete="name" required {...a11y("fullName")}
+        />
+        <FieldError id="fullName-error" text={errors.fullName} />
       </div>
       <div>
         <label className="label" htmlFor="email">Email</label>
-        <input id="email" type="email" className="field" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" required />
-        {errors.email && <p className="mt-1 text-xs text-danger">{errors.email}</p>}
+        <input
+          ref={(el) => { refs.current.email = el; }} id="email" name="email" type="email" className="field"
+          value={form.email} onChange={(e) => set("email", e.target.value)}
+          autoComplete="email" autoCapitalize="none" spellCheck={false} required {...a11y("email")}
+        />
+        <FieldError id="email-error" text={errors.email} />
       </div>
       <div>
         <label className="label" htmlFor="password">Password</label>
-        <input id="password" type="password" className="field" value={form.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" required />
-        {errors.password && <p className="mt-1 text-xs text-danger">{errors.password}</p>}
+        <input
+          ref={(el) => { refs.current.password = el; }} id="password" name="password" type="password" className="field"
+          value={form.password} onChange={(e) => set("password", e.target.value)}
+          autoComplete="new-password" spellCheck={false} required {...a11y("password")}
+        />
+        <FieldError id="password-error" text={errors.password} />
       </div>
       <div>
         <label className="label" htmlFor="phone">Phone <span className="font-normal text-muted">(optional)</span></label>
-        <input id="phone" className="field" inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" />
+        <input id="phone" name="phone" type="tel" className="field" inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" />
       </div>
-      <label className="flex items-start gap-2.5 text-sm text-ink max-md:min-h-11 max-md:py-1">
-        <input type="checkbox" checked={tos} onChange={(e) => setTos(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-line text-accent focus:ring-accent-ring" />
-        <span>I agree to the Terms of Service</span>
-      </label>
-      {errors.tos && <p className="-mt-2 text-xs text-danger">{errors.tos}</p>}
-      <button type="submit" className="btn-primary w-full max-md:tap" disabled={!tos || busy}>
+      <div>
+        <div className="flex items-start gap-2.5 text-sm text-ink max-md:min-h-11 max-md:py-1">
+          <input
+            ref={(el) => { refs.current.tos = el; }} id="tos" name="tos" type="checkbox"
+            checked={tos} onChange={(e) => { setTos(e.target.checked); if (e.target.checked) setErrors((prev) => ({ ...prev, tos: undefined })); }}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-accent focus:ring-accent-ring" {...a11y("tos")}
+          />
+          <label htmlFor="tos">
+            I agree to the <LegalLinks />
+          </label>
+        </div>
+        <FieldError id="tos-error" text={errors.tos} />
+      </div>
+      <button type="submit" className="btn-primary w-full max-md:tap" disabled={busy}>
         {busy ? "Creating account…" : `Create ${isAdmin ? "admin " : ""}account`}
       </button>
     </form>

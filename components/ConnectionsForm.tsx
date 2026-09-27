@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toneSoft, type Tone } from "@/lib/tone";
+import { NETWORK_ERROR } from "@/lib/messages";
 import { normalizeHost } from "@/lib/host";
 import { relativeTime } from "@/lib/calendarDates";
 import { SchoolPicker } from "@/components/SchoolPicker";
@@ -43,6 +44,12 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
   const [status, setStatus] = useState<string | null>(initial.status);
   const [accountName, setAccountName] = useState<string | null>(initial.accountName);
   const [message, setMessage] = useState<string | null>(null);
+  // The result line is announced (role="alert") and takes focus, so a keyboard or
+  // screen-reader user lands on what happened instead of a silent button.
+  const messageRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (message) messageRef.current?.focus();
+  }, [message]);
   const [busy, setBusy] = useState(false);
   // Set when THIS visit completed a connect — swaps the static "Go to your plan"
   // link for the staged first-sync progress (#64), which lands on the dashboard.
@@ -131,7 +138,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         setEditing(false); // collapse back to the connected summary
       }
     } catch {
-      setMessage("Something went wrong reaching Navo. Please try again.");
+      setMessage(NETWORK_ERROR);
     } finally {
       setBusy(false);
     }
@@ -192,7 +199,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
       <p className="mt-1 text-sm text-muted">
         Pick your school and we’ll walk you through linking Canvas — it takes about a minute.
       </p>
-      <p className="mt-1 text-[13px] text-muted md:hidden">Easier on a laptop? Log in there and connect once — it carries over.</p>
+      <p className="mt-1 text-[13px] text-muted md:hidden">Copying the token is easier on a laptop. Connect there once and your phone stays connected too.</p>
 
       <div className="card mt-6 max-w-xl p-5 sm:p-6">
         <div className="mb-4 flex items-center justify-between">
@@ -261,7 +268,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted">
                 <li>Open Canvas with the button below — it opens in a new tab.</li>
                 <li>Go to <strong className="text-ink">Account → Settings</strong>, then under <strong className="text-ink">Approved Integrations</strong> click <strong className="text-ink">+ New Access Token</strong>.</li>
-                <li>For Purpose type “Navo”, leave the expiry date <strong className="text-ink">blank</strong>, then click <strong className="text-ink">Generate Token</strong>.</li>
+                <li>For Purpose type “Navo” and leave the expiry date <strong className="text-ink">blank</strong>, so Navo doesn’t lose access mid-semester. Then click <strong className="text-ink">Generate Token</strong>.</li>
                 <li>Copy the token (Canvas shows it only once) and paste it below.</li>
               </ol>
               {tokenPageUrl && (
@@ -269,11 +276,23 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   href={tokenPageUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-primary mt-3 inline-flex max-md:tap max-sm:w-full"
+                  className="btn-ghost mt-3 inline-flex max-md:tap max-sm:w-full"
                 >
                   Open Canvas to get your token ↗
                 </a>
               )}
+            </div>
+
+            <div className="rounded-lg bg-surface-soft p-4 text-sm">
+              <p className="font-medium text-ink">What Navo can and can’t do</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                <li>Reads your courses, assignments, grades, syllabi, announcements and course materials.</li>
+                <li id="token-never">Never posts, submits or changes anything in Canvas.</li>
+                <li id="token-encrypted">Stores your token encrypted.</li>
+                <li>
+                  You can revoke it any time in Canvas: <strong className="font-medium text-ink">Account → Settings → Approved Integrations</strong>.
+                </li>
+              </ul>
             </div>
 
             <div>
@@ -287,6 +306,9 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   value={token}
                   onChange={(e) => { setToken(e.target.value); setPasteFailed(false); }}
                   autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  aria-describedby="token-never token-encrypted"
                 />
                 {/* Phones only: desktop browsers expose readText too, but there
                     Ctrl/Cmd+V is the natural paste. */}
@@ -301,9 +323,6 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   Couldn&apos;t read the clipboard — long-press the field and Paste.
                 </p>
               )}
-              <p className="mt-1 text-xs text-muted">
-                Your token is encrypted and only used to read your Canvas coursework.
-              </p>
             </div>
 
             <button type="submit" className="btn-primary max-md:tap max-sm:w-full" disabled={busy}>
@@ -313,7 +332,11 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
         )}
 
         {message && (
-          <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${status === "valid" ? toneSoft.success : status === "throttled" ? toneSoft.neutral : toneSoft.danger}`}>
+          <p
+            ref={messageRef}
+            role="alert"
+            tabIndex={-1}
+            className={`mt-4 rounded-lg px-3 py-2 text-sm outline-none ${status === "valid" ? toneSoft.success : status === "throttled" ? toneSoft.neutral : toneSoft.danger}`}>
             {message}
           </p>
         )}

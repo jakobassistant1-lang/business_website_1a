@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
+import { NETWORK_ERROR } from "@/lib/messages";
 
 interface Initial {
   defaultHoursPerDay: number;
@@ -8,17 +9,20 @@ interface Initial {
   studyDaysQuiz: number;
 }
 
+type Key = "defaultHoursPerDay" | "studyDaysTest" | "studyDaysQuiz";
+
 export function SettingsForm({ initial }: { initial: Initial }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<Record<Key, string>>({
     defaultHoursPerDay: String(initial.defaultHoursPerDay),
     studyDaysTest: String(initial.studyDaysTest),
     studyDaysQuiz: String(initial.studyDaysQuiz),
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  function set(key: keyof typeof form, value: string) {
+  function set(key: Key, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
     setSaved(false);
   }
@@ -27,28 +31,36 @@ export function SettingsForm({ initial }: { initial: Initial }) {
     e.preventDefault();
     setBusy(true);
     setErrors({});
+    setFormError(null);
     setSaved(false);
-    const res = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        defaultHoursPerDay: Number(form.defaultHoursPerDay),
-        studyDaysTest: Number(form.studyDaysTest),
-        studyDaysQuiz: Number(form.studyDaysQuiz),
-      }),
-    });
-    setBusy(false);
-    if (res.ok) setSaved(true);
-    else {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defaultHoursPerDay: Number(form.defaultHoursPerDay),
+          studyDaysTest: Number(form.studyDaysTest),
+          studyDaysQuiz: Number(form.studyDaysQuiz),
+        }),
+      });
+      if (res.ok) {
+        setSaved(true);
+        return;
+      }
       const body = await res.json().catch(() => ({}));
-      setErrors(body.errors ?? {});
+      if (body.errors) setErrors(body.errors);
+      else setFormError("Couldn't save your settings. Reload the page and try again.");
+    } catch {
+      setFormError(NETWORK_ERROR);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-muted">How the planner builds your week. (Effort per assignment is now estimated automatically by AI.)</p>
+      <p className="mt-1 text-sm text-muted">How the planner builds your week.</p>
 
       <form onSubmit={onSubmit} className="card mt-6 max-w-xl space-y-6 p-5 sm:p-6 md:space-y-5">
         <Field label="Hours you can study per day" hint="Your daily study budget — the planner schedules work and study within it."
@@ -61,11 +73,16 @@ export function SettingsForm({ initial }: { initial: Initial }) {
           value={form.studyDaysQuiz} onChange={(v) => set("studyDaysQuiz", v)}
           type="number" inputMode="numeric" min="1" max="14" step="1" error={errors.studyDaysQuiz} />
 
+        {formError && (
+          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+            {formError}
+          </p>
+        )}
         <div className="flex items-center gap-3 max-md:flex-wrap">
           <button type="submit" className="btn-primary max-md:tap max-sm:w-full" disabled={busy}>
             {busy ? "Saving…" : "Save settings"}
           </button>
-          {saved && <span className="text-sm text-success">Saved.</span>}
+          <span role="status" className="text-sm text-success">{saved ? "Settings saved." : ""}</span>
         </div>
       </form>
     </div>
@@ -78,15 +95,20 @@ function Field(props: {
   /** Phone keypad: "numeric" for whole days, "decimal" when the step allows halves. */
   inputMode?: "numeric" | "decimal";
 }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  const errorId = `${id}-error`;
+  const describedBy = [props.error ? errorId : null, props.hint ? hintId : null].filter(Boolean).join(" ") || undefined;
   return (
     <div>
-      <label className="label">{props.label}</label>
+      <label className="label" htmlFor={id}>{props.label}</label>
       <input
-        className="field md:max-w-[12rem]" type={props.type} inputMode={props.inputMode} min={props.min} max={props.max} step={props.step}
+        id={id} className="field md:max-w-[12rem]" type={props.type} inputMode={props.inputMode} min={props.min} max={props.max} step={props.step}
         value={props.value} onChange={(e) => props.onChange(e.target.value)}
+        aria-invalid={Boolean(props.error)} aria-describedby={describedBy}
       />
-      {props.hint && <p className="mt-1 text-xs text-muted">{props.hint}</p>}
-      {props.error && <p className="mt-1 text-xs text-danger">{props.error}</p>}
+      {props.hint && <p id={hintId} className="mt-1 text-xs text-muted">{props.hint}</p>}
+      {props.error && <p id={errorId} role="alert" className="mt-1 text-xs text-danger">{props.error}</p>}
     </div>
   );
 }

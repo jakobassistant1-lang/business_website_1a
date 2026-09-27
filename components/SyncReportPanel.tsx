@@ -1,5 +1,6 @@
 import { LocalRelativeTime } from "@/components/LocalRelativeTime";
 import { toneSoft, type Tone } from "@/lib/tone";
+import { shortCourse } from "@/lib/courseName";
 import {
   courseLine,
   runSummary,
@@ -44,7 +45,7 @@ export function SyncReportPanel({ report }: { report: SyncReport }) {
         <ul className="divide-y divide-line text-sm">
           {report.courses.map((c) => (
             <li key={c.canvasId} className="flex items-center justify-between gap-3 py-2 max-md:min-h-11">
-              <span className="min-w-0 flex-1 truncate text-ink">{c.name}</span>
+              <span className="min-w-0 flex-1 truncate text-ink" title={c.name}>{shortCourse(c.name)}</span>
               {c.ok ? (
                 <span className="shrink-0 text-muted">{courseLine(c)}</span>
               ) : (

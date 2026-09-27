@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isSignupOpen } from "@/lib/signup";
@@ -7,6 +8,10 @@ import { BrandMark } from "@/components/BrandMark";
 import { loadTrialTerms } from "@/lib/trialTerms";
 
 export const dynamic = "force-dynamic";
+
+// Students land straight on the form; the h1 lives in AuthFlow (it follows the
+// in-place login/signup switch). The admin door is the unlinked /admin/login.
+export const metadata: Metadata = { title: "Log in to Navo" };
 
 // Messages for a Google sign-in that bounced back here (see /api/auth/google/callback).
 const GOOGLE_NOTICES: Record<string, string> = {
