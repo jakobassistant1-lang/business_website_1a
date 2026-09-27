@@ -8,6 +8,8 @@ need your Google login, so only you can do them.
 
 ## 1. Check the key's tier and limits (5 minutes)
 
+**Status 2026-09-27: the key is on Tier 1 (billing attached), confirmed by the owner.** The burst test below is optional at Tier 1; the two alerts in §2 are still worth setting.
+
 1. Open **Google AI Studio** → <https://aistudio.google.com/apikey>.
 2. AI Studio's key list shows every key on your account with its **project**
    name and creation date. Navo's is the one you created for the app (if there
