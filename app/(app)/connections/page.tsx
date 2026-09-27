@@ -6,6 +6,8 @@ import { GoogleCalendarCard } from "@/components/GoogleCalendarCard";
 import { getConnectionStatus } from "@/lib/googleCalendar/calendar";
 import { isGoogleConfigured } from "@/lib/googleCalendar/auth";
 import { Container } from "@/components/Container";
+import { SyncReportPanel } from "@/components/SyncReportPanel";
+import { parseSyncReport } from "@/lib/syncReport";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ export default async function ConnectionsPage() {
     prisma.canvasCredential.findUnique({ where: { userId: user.id } }),
     getConnectionStatus(user.id).catch(() => ({ conn: null, eventCount: 0 })),
   ]);
+  // Persisted report of the last Canvas sync (#132); a missing/garbled one → no panel.
+  const syncReport = cred ? parseSyncReport(cred.lastSyncReport) : null;
 
   return (
     <Container>
@@ -34,6 +38,7 @@ export default async function ConnectionsPage() {
           lastValidatedAt: cred?.lastValidatedAt ? cred.lastValidatedAt.toISOString() : null,
         }}
       />
+      {syncReport && <SyncReportPanel report={syncReport} />}
       <Suspense fallback={null}>
         <GoogleCalendarCard
           configured={isGoogleConfigured()}

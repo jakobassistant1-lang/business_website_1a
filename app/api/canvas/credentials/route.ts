@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireActiveUser } from "@/lib/access";
 import { normalizeHost, apiBase, validateCredentials } from "@/lib/canvas";
@@ -46,6 +47,10 @@ export async function POST(req: Request) {
   // Token is encrypted at rest (lib/crypto): scrambled when ENCRYPTION_KEY is set,
   // tagged-plaintext fallback otherwise. Readers decrypt via decryptSecret.
   const storedToken = encryptSecret(token);
+  // A different school's last sync report (#132) would list the old school's
+  // classes on /connections — clear it when the host changes.
+  const prev = await prisma.canvasCredential.findUnique({ where: { userId: user.id }, select: { host: true } });
+  const hostChanged = !!prev && prev.host !== host;
   await prisma.canvasCredential.upsert({
     where: { userId: user.id },
     create: {
@@ -64,6 +69,7 @@ export async function POST(req: Request) {
       lastValidationStatus: v.status,
       ...(v.status === "valid" ? { lastValidatedAt: new Date() } : {}),
       accountName: v.accountName ?? null,
+      ...(hostChanged ? { lastSyncReport: Prisma.DbNull } : {}),
     },
   });
 

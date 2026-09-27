@@ -17,6 +17,7 @@ import { analyzeLatePolicies, latePolicyWorkToDo, type LatePolicyInput } from ".
 import { CanvasStatus, messageFor } from "./messages";
 import { decryptSecret } from "./crypto";
 import { MOUNT_FRESH_MS, type SyncMode } from "./syncPolicy";
+import { buildSyncReport, parseSyncReport, reasonForStatus, skippedNonStudentText, type SyncReport, type SyncReportCourse } from "./syncReport";
 
 // The policy lives in lib/syncPolicy (pure, browser-safe); re-exported so the
 // existing `@/lib/sync` import paths keep working.
@@ -55,6 +56,24 @@ export const QUICK_CONCURRENCY = 4;
 
 /** Quick mode only refreshes courses with work due inside this window (or undated). */
 export const QUICK_LIVE_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
+
+/**
+ * Persist the run's per-course report (#132) for the Connections page. FAIL-OPEN:
+ * the chain catches both a rejected write and a synchronous throw (logged, never
+ * rethrown), so saving the report can never fail (or change the result of) a sync. `updateMany`, not
+ * `update`: a credential deleted mid-sync (a disconnect) is a silent 0-row no-op
+ * instead of a P2025, and it writes ONLY lastSyncReport — never a token status.
+ * Written when a run actually walked courses (or failed listing them); NOT on the
+ * "no connection" / validation-failed early returns (the status chip covers those,
+ * and the last useful per-class list is kept) nor on quick's "nothing to refresh".
+ */
+export async function writeSyncReport(userId: number, report: SyncReport): Promise<void> {
+  await Promise.resolve()
+    .then(() => prisma.canvasCredential.updateMany({ where: { userId }, data: { lastSyncReport: report } }))
+    .catch((e) => {
+      console.warn("[sync] report not saved", e);
+    });
+}
 
 /**
  * The submission-bearing assignment fields — everything a quick sync may write.
@@ -114,19 +133,28 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
     return { ok: false, status: v.status, message: messageFor(v.status, v.httpCode), syncedAt: prevSyncedAt, failedCourses: [], mode };
   }
 
-  if (mode === "quick") return runQuickSync(userId, cred.host, token, prevSyncedAt, { deadline, overBudget });
+  // Quick never re-lists courses, so it carries the last full run's non-student count into its report.
+  const priorSkipped = parseSyncReport(cred.lastSyncReport)?.skippedNonStudent ?? 0;
+  if (mode === "quick") return runQuickSync(userId, cred.host, token, prevSyncedAt, { deadline, overBudget }, priorSkipped);
 
   // 2. Fetch active (student) courses. A failure here aborts; cache kept. The
   //    status written is whatever Canvas said: a genuine 403 → insufficient_scope,
   //    a rate limit → "throttled" (inert; the banner stays neutral, no reconnect).
   let courses;
   const courseStats: CourseFetchStats = { skippedNonStudent: 0, skippedRestricted: 0 };
+  // Per-course outcomes for the persisted report (#132); `finish` saves it (fail-open)
+  // and hands the result back untouched.
+  const reportCourses: SyncReportCourse[] = [];
+  const finish = async (r: SyncResult): Promise<SyncResult> => {
+    await writeSyncReport(userId, buildSyncReport({ at: new Date(), mode, result: r, courses: reportCourses, skippedNonStudent: courseStats.skippedNonStudent }));
+    return r;
+  };
   try {
     courses = rotateByWindow(await fetchCourses(cred.host, token, { stats: courseStats, deadline }), startedAt);
   } catch (e) {
     const status: CanvasStatus = e instanceof CanvasError ? e.status : "error";
     await prisma.canvasCredential.update({ where: { userId }, data: { lastValidationStatus: status } });
-    return { ok: false, status, message: messageFor(status), syncedAt: prevSyncedAt, failedCourses: [], mode };
+    return finish({ ok: false, status, message: messageFor(status), syncedAt: prevSyncedAt, failedCourses: [], mode });
   }
 
   // 3. Per-course: upsert course, then assignments + announcements.
@@ -149,6 +177,7 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
         const name = rest.name ?? `Course ${rest.id}`;
         outOfTime.push(name);
         failedCourses.push(name);
+        reportCourses.push({ canvasId: rest.id, name, assignments: 0, ok: false, reason: "out_of_time" });
       }
       break;
     }
@@ -220,10 +249,14 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
           update: data,
         });
       }
+      reportCourses.push({ canvasId: c.id, name: courseName, assignments: assignments.length, ok: true });
     } catch (e) {
       failedCourses.push(c.name ?? `Course ${c.id}`);
       const status: CanvasStatus = e instanceof CanvasError ? e.status : "error";
       lastCourseError = status;
+      // assignments: 0 marks the class as FAILED — even if some rows were written
+      // before the error (its cache is kept); the panel shows the reason instead.
+      reportCourses.push({ canvasId: c.id, name: courseName, assignments: 0, ok: false, reason: reasonForStatus(status) });
       // A 401 / genuine 403 on a data call is a token problem, not a one-off
       // course glitch (FR-5). A rate-limit 403 arrives as "throttled" (lib/canvas
       // tells them apart) and stays a per-course failure — never a reconnect.
@@ -264,7 +297,7 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   //     keep the cache stale (don't advance the sync time). Cache is preserved.
   if (credentialError) {
     await prisma.canvasCredential.update({ where: { userId }, data: { lastValidationStatus: credentialError } });
-    return { ok: false, status: credentialError, message: messageFor(credentialError), syncedAt: prevSyncedAt, failedCourses, mode };
+    return finish({ ok: false, status: credentialError, message: messageFor(credentialError), syncedAt: prevSyncedAt, failedCourses, mode });
   }
 
   // 4b. Every course failed (e.g., all unreachable): don't claim success or
@@ -272,7 +305,7 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   if (courses.length > 0 && failedCourses.length === courses.length) {
     const status = lastCourseError ?? "error";
     await prisma.canvasCredential.update({ where: { userId }, data: { lastValidationStatus: status } });
-    return { ok: false, status, message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: prevSyncedAt, failedCourses, mode };
+    return finish({ ok: false, status, message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: prevSyncedAt, failedCourses, mode });
   }
 
   // 4c. Mark sync time (FR-6.1). Full or partial success; stale label clears.
@@ -280,7 +313,7 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   await prisma.canvasCredential.update({ where: { userId }, data: { syncedAt } });
 
   const message = syncMessage("Sync complete.", failedCourses, outOfTime, courseStats.skippedNonStudent);
-  return {
+  return finish({
     ok: true,
     status: "valid",
     message,
@@ -289,7 +322,7 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
     mode,
     ...(outOfTime.length > 0 ? { outOfTime } : {}),
     ...(courseStats.skippedNonStudent > 0 ? { skippedNonStudent: courseStats.skippedNonStudent } : {}),
-  };
+  });
 }
 
 /** The success line, with the partial-failure / out-of-time / skipped-course
@@ -301,7 +334,8 @@ function syncMessage(okText: string, failedCourses: string[], outOfTime: string[
           outOfTime.length > 0 ? ` (${outOfTime.length} ran out of time)` : ""
         }. Cached data kept.`
       : okText;
-  if (skippedNonStudent > 0) msg += ` Skipped ${skippedNonStudent} non-student course(s).`;
+  const skipped = skippedNonStudentText(skippedNonStudent); // one wording, shared with the Connections panel
+  if (skipped) msg += ` ${skipped}`;
   return msg;
 }
 
@@ -363,6 +397,10 @@ async function settleWithLimit<T, R>(
  * Same partial-failure handling as full (FR-7.2) and the same token-level
  * semantics (FR-5). Never advances CanvasCredential.syncedAt: that timestamp
  * means "last FULL sync" so the mount rule (syncDecision) keeps working.
+ *
+ * Report (#132): lists ONLY the courses this run tried (the live window) — courses
+ * outside it weren't skipped, just not due for a quick look, so they're omitted.
+ * `skippedNonStudent` is carried over from the previous report.
  */
 async function runQuickSync(
   userId: number,
@@ -370,8 +408,14 @@ async function runQuickSync(
   token: string,
   prevSyncedAt: string | null,
   budget: { deadline: number; overBudget: () => boolean },
+  skippedNonStudent = 0,
 ): Promise<SyncResult> {
   const mode: SyncMode = "quick";
+  const reportCourses: SyncReportCourse[] = [];
+  const finish = async (r: SyncResult): Promise<SyncResult> => {
+    await writeSyncReport(userId, buildSyncReport({ at: new Date(), mode, result: r, courses: reportCourses, skippedNonStudent }));
+    return r;
+  };
   // Only courses with live-looking work: a full sync never prunes Course rows,
   // so a course Canvas no longer returns would otherwise fail (401/403) on
   // every tab return and warn forever. "Live" = at least one assignment due in
@@ -405,6 +449,7 @@ async function runQuickSync(
     if (r === "out_of_time") {
       outOfTime.push(course.name);
       failedCourses.push(course.name);
+      reportCourses.push({ canvasId: course.canvasId, name: course.name, assignments: 0, ok: false, reason: "out_of_time" });
       continue;
     }
     let failure: unknown = r.status === "rejected" ? r.reason : null;
@@ -422,9 +467,14 @@ async function runQuickSync(
         failure = e;
       }
     }
-    if (failure === null) continue;
+    if (failure === null) {
+      reportCourses.push({ canvasId: course.canvasId, name: course.name, assignments: r.status === "fulfilled" ? r.value.length : 0, ok: true });
+      continue;
+    }
     failedCourses.push(course.name);
     const status: CanvasStatus = failure instanceof CanvasError ? failure.status : "error";
+    // assignments: 0 marks the class as FAILED (rows written before the error stay cached).
+    reportCourses.push({ canvasId: course.canvasId, name: course.name, assignments: 0, ok: false, reason: reasonForStatus(status, { quick: true }) });
     // A rate limit ("throttled") is likewise just this course's failure.
     // UNLIKE full mode, a 401/403 here is NOT treated as a token problem: quick
     // walks our cached Course rows, so a concluded/dropped course answers
@@ -435,12 +485,13 @@ async function runQuickSync(
   }
 
   if (failedCourses.length === courses.length) {
-    // Every course failed: report stale, keep the cache (FR-7), write nothing —
-    // step 1 already recorded the token as valid and quick mode may not overrule it.
+    // Every course failed: report stale, keep the cache (FR-7), write NO credential
+    // status — step 1 already recorded the token as valid and quick mode may not
+    // overrule it. (Only the #132 report is saved, via finish.)
     const status: CanvasStatus = lastCourseError ?? "unreachable";
-    return { ok: false, status, message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: prevSyncedAt, failedCourses, mode };
+    return finish({ ok: false, status, message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: prevSyncedAt, failedCourses, mode });
   }
 
   const message = syncMessage("Refreshed submissions.", failedCourses, outOfTime);
-  return { ok: true, status: "valid", message, syncedAt: prevSyncedAt, failedCourses, mode, ...(outOfTime.length > 0 ? { outOfTime } : {}) };
+  return finish({ ok: true, status: "valid", message, syncedAt: prevSyncedAt, failedCourses, mode, ...(outOfTime.length > 0 ? { outOfTime } : {}) });
 }

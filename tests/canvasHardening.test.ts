@@ -8,7 +8,7 @@ import { readFileSync } from "fs";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    canvasCredential: { findUnique: vi.fn(), update: vi.fn() },
+    canvasCredential: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(async () => ({ count: 1 })) },
     course: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     assignment: { upsert: vi.fn() },
     announcement: { upsert: vi.fn() },

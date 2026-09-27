@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    canvasCredential: { findUnique: vi.fn(), update: vi.fn() },
+    canvasCredential: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(async () => ({ count: 1 })) }, // updateMany = the #132 sync-report write
     course: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     assignment: { upsert: vi.fn() },
     announcement: { upsert: vi.fn() },
