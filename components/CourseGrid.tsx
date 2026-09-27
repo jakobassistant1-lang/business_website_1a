@@ -10,6 +10,7 @@ import { countdownLabel, relativeDay } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
 import { EffortTag } from "@/components/calendar/parts";
 import { CourseMenu, ExcludedCoursesRow } from "@/components/CourseExclude";
+import { CourseCarousel } from "@/components/CourseCarousel";
 import { GradePill } from "@/components/GradePill";
 import type { CalendarData, CalendarItem, CourseMeta } from "@/lib/calendarData";
 
@@ -40,16 +41,23 @@ export function CourseGrid({ data, todayYmd, demo = false }: { data: CalendarDat
   }
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
   const metaByCourse = new Map(data.courses.map((c) => [c.canvasId, c] as const));
+  const cards = courses.map(([id, g], i) => (
+    <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} meta={metaByCourse.get(id)} rank={rank} todayYmd={todayYmd} anchor={i === 0 ? "courses-card" : undefined} demo={demo} />
+  ));
   return (
     <>
       {courses.length === 0 ? (
         <div className="card p-10 text-center text-[16px] text-muted">All your classes are excluded from planning.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {courses.map(([id, g], i) => (
-            <CourseCard key={id} courseCanvasId={id} courseName={g.name} items={g.items} meta={metaByCourse.get(id)} rank={rank} todayYmd={todayYmd} anchor={i === 0 ? "courses-card" : undefined} demo={demo} />
-          ))}
-        </div>
+        <>
+          {/* Phones: a swipeable one-card carousel. md+: the grid as before. Both
+              are in the DOM and CSS picks one (no first-paint swap); the tour
+              anchor on each first card resolves to whichever is shown. */}
+          <div className="md:hidden">
+            <CourseCarousel>{cards}</CourseCarousel>
+          </div>
+          <div className="hidden md:grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">{cards}</div>
+        </>
       )}
       <ExcludedCoursesRow courses={excluded} demo={demo} />
     </>
