@@ -13,7 +13,7 @@ import {
   type CourseFetchStats,
 } from "./canvas";
 import { computeGradeWeights } from "./gradeWeight";
-import { analyzeLatePolicies, type LatePolicyInput } from "./latePolicy";
+import { analyzeLatePolicies, latePolicyWorkToDo, type LatePolicyInput } from "./latePolicy";
 import { CanvasStatus, messageFor } from "./messages";
 import { decryptSecret } from "./crypto";
 import { MOUNT_FRESH_MS, type SyncMode } from "./syncPolicy";
@@ -136,7 +136,9 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   const outOfTime: string[] = []; // courses never started because the budget ran out (#123)
   let credentialError: CanvasStatus | null = null; // token-level problem (FR-5) seen on a data call
   let lastCourseError: CanvasStatus | null = null; // representative status if courses fail
-  const syllabiToParse: LatePolicyInput[] = []; // collected across courses → one batched late-policy read
+  // Collected across courses → one batched late-policy read. `storedHash` (#126) is
+  // what the course's current policy was parsed from; unchanged syllabi are skipped.
+  const syllabiToParse: Array<LatePolicyInput & { storedHash: string | null }> = [];
   const courseDbIdByCanvasId = new Map<number, number>(); // map late-policy results back to course rows
   for (let i = 0; i < courses.length; i++) {
     const c = courses[i];
@@ -172,7 +174,7 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
       ]);
       const groupById = new Map(groups.map((g) => [g.id, g] as const));
 
-      if (syllabus) syllabiToParse.push({ courseId: c.id, courseName, syllabus });
+      if (syllabus) syllabiToParse.push({ courseId: c.id, courseName, syllabus, storedHash: course.latePolicyHash ?? null });
       const weightById = new Map(
         computeGradeWeights(
           groups.map((g) => ({
@@ -233,15 +235,23 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   // no key / error leaves each course at the no-credit default). Best-effort: a
   // failure here never fails the sync. Skipped when the run is already over
   // budget — the syllabi are re-fetched (and parsed) by the next full sync.
-  if (syllabiToParse.length > 0 && !overBudget()) {
+  // Hash short-circuit (#126): only syllabi whose hash changed are sent, so a
+  // re-sync with unchanged syllabi makes ZERO late-policy Gemini calls. The hash
+  // is written only with a successfully parsed policy; a failure writes nothing,
+  // so the next sync retries.
+  const { toParse: lateToParse, hashes: lateHashes } = latePolicyWorkToDo(syllabiToParse);
+  if (lateToParse.length > 0 && !overBudget()) {
     try {
-      const lp = await analyzeLatePolicies(syllabiToParse);
+      const lp = await analyzeLatePolicies(lateToParse);
       if (lp.ok) {
         for (const r of lp.items) {
           const courseDbId = courseDbIdByCanvasId.get(r.courseId);
           if (courseDbId == null) continue;
           await prisma.course
-            .update({ where: { id: courseDbId }, data: { latePolicyKind: r.policy.kind, latePolicyValue: r.policy.value } })
+            .update({
+              where: { id: courseDbId },
+              data: { latePolicyKind: r.policy.kind, latePolicyValue: r.policy.value, latePolicyHash: lateHashes.get(r.courseId) },
+            })
             .catch(() => {});
         }
       }

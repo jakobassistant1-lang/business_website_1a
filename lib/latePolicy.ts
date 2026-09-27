@@ -6,6 +6,7 @@
 // assume a forgiving policy). Mirrors lib/analysis.ts (batched, server-only key,
 // never throws).
 
+import { createHash } from "crypto";
 import { geminiPost, salvageJsonObjects, GEMINI_URL, geminiKey } from "./geminiFetch";
 
 export type LateKind = "none" | "flat" | "perday";
@@ -105,6 +106,49 @@ function strip(html: string): string {
     .slice(0, MAX_SYLLABUS_CHARS);
 }
 
+// --- Hash short-circuit (#126): a syllabus Gemini already read is never re-sent ---
+//
+// Mirrors lib/analysis.ts (`analysisInputHash` → `needsAnalysis`): the course row
+// remembers a fingerprint of what the stored policy was parsed from, and a sync
+// only asks Gemini about courses whose fingerprint changed. The fingerprint is
+// taken over the SAME stripped + truncated text the prompt carries, so HTML or
+// whitespace churn in Canvas (or edits past the prompt's cut-off) can't bust it.
+
+/** Bump when the late-policy prompt/instruction or output shape changes, so every
+ *  stored policy is re-parsed once on the next full sync (mirrors ANALYSIS_VERSION
+ *  in lib/analysis.ts). */
+export const LATE_POLICY_VERSION = 1;
+
+/** sha256 (hex) of the syllabus text exactly as the prompt would see it, tagged with
+ *  LATE_POLICY_VERSION. An empty or tag-only syllabus hashes a stable value, so it
+ *  is never re-asked.
+ *
+ *  The course NAME is deliberately NOT hashed: it only labels the course in the
+ *  prompt, and renaming a course in Canvas doesn't change its late-work policy —
+ *  hashing it would spend a Gemini call on every rename for an identical answer. */
+export function syllabusHash(syllabus: string): string {
+  return createHash("sha256").update(`v${LATE_POLICY_VERSION}\u0000${strip(syllabus ?? "")}`).digest("hex");
+}
+
+/** Which courses actually need a Gemini read: those whose syllabus hash differs
+ *  from the one stored with their current policy (or that have none yet). Pure.
+ *  `hashes` carries the new hash for every course sent, so the caller stores it
+ *  ONLY after a successful parse (a failure stores nothing → retried next sync). */
+export function latePolicyWorkToDo(items: Array<LatePolicyInput & { storedHash: string | null }>): {
+  toParse: LatePolicyInput[];
+  hashes: Map<number, string>;
+} {
+  const toParse: LatePolicyInput[] = [];
+  const hashes = new Map<number, string>();
+  for (const { storedHash, ...input } of items) {
+    const hash = syllabusHash(input.syllabus);
+    if (storedHash === hash) continue; // unchanged → keep the stored policy, zero Gemini
+    toParse.push(input);
+    hashes.set(input.courseId, hash);
+  }
+  return { toParse, hashes };
+}
+
 export function buildLatePolicyPrompt(items: LatePolicyInput[]): string {
   const lines = items.map((i) => `#${i.courseId} ${i.courseName}: ${strip(i.syllabus) || "(no syllabus text)"}`);
   return [
@@ -115,7 +159,8 @@ export function buildLatePolicyPrompt(items: LatePolicyInput[]): string {
 }
 
 /** Parse Gemini's array, matching BY id; guards every level; never throws. Any
- *  course Gemini omits or garbles simply isn't in the result → caller defaults it. */
+ *  course Gemini omits, or answers with an unknown `kind`, simply isn't in the
+ *  result → the caller leaves it untouched (and un-hashed, so it's retried). */
 export function parseLatePolicies(json: unknown, inputs: LatePolicyInput[]): LatePolicyResult[] {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parts = (json as any)?.candidates?.[0]?.content?.parts;
@@ -143,6 +188,10 @@ export function parseLatePolicies(json: unknown, inputs: LatePolicyInput[]): Lat
     const e = el as any;
     const courseId = Number(e.id);
     if (!Number.isFinite(courseId) || !known.has(courseId)) continue;
+    // A garbled `kind` is NOT an answer: leave the course out (the caller then
+    // stores no policy and no hash → it's re-asked next sync) instead of pinning
+    // it to the harshest "none" default until its syllabus changes (#126 review).
+    if (!isLateKind(e.kind)) continue;
     out.push({ courseId, policy: coerceLatePolicy(e) });
   }
   return out;
