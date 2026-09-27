@@ -26,7 +26,7 @@ const expectTokens = (src: string, ...want: string[]) => {
 
 describe("pageTitle (phone top bar)", () => {
   it.each([
-    ["/dashboard", "Today"],
+    ["/dashboard", "Dashboard"],
     ["/plan", "Plan"],
     ["/study", "Study"],
     ["/study/123", "Study"],
@@ -50,7 +50,7 @@ describe("pageTitle (phone top bar)", () => {
 describe("activeTabHref (which tab lights up)", () => {
   it.each([
     ["/dashboard", "/dashboard"],
-    ["/assignment/42", "/dashboard"], // assignment detail belongs to Today
+    ["/assignment/42", "/dashboard"], // assignment detail belongs to Dashboard
     ["/plan", "/plan"],
     ["/study", "/study"],
     ["/study/7", "/study"],
@@ -72,7 +72,7 @@ describe("navItems — the ONE nav list", () => {
   it("the first four entries are the phone tab destinations, in order", () => {
     expect(navItems.slice(0, 4).map((i) => i.href)).toEqual(["/dashboard", "/plan", "/study", "/courses"]);
     expect(TAB_ITEMS.map((i) => i.href)).toEqual(navItems.slice(0, 4).map((i) => i.href));
-    expect(TAB_ITEMS.map((i) => i.tabLabel)).toEqual(["Today", "Plan", "Study", "Classes"]);
+    expect(TAB_ITEMS.map((i) => i.tabLabel)).toEqual(["Dashboard", "Plan", "Study", "Classes"]);
   });
   it("every item's icon key exists in NAV_ICONS", () => {
     for (const i of [...navItems, ...setupItems]) expect(NAV_ICONS[i.icon]).toBeTypeOf("string");
@@ -163,7 +163,7 @@ describe("grep guard: Sheet and the phone account surfaces", () => {
   it("the theme toggle keeps <meta name=theme-color> in step with data-theme, and the top bar syncs it on load", () => {
     const toggle = read("components/ThemeToggle.tsx");
     expect(toggle.includes('meta[name="theme-color"]')).toBe(true);
-    expectTokens(toggle, "syncThemeColorMeta", "#f7f6f4", "#161619");
+    expectTokens(toggle, "syncThemeColorMeta", "THEME_HEX[theme]");
     expect(read("components/MobileTopBar.tsx").includes("syncThemeColorMeta()")).toBe(true);
   });
 });
@@ -205,9 +205,12 @@ describe("home-screen install: manifest + viewport", () => {
     expect(src.includes("export const viewport: Viewport")).toBe(true);
     expectTokens(src, "viewportFit:", "cover", "manifest:", "/manifest.webmanifest", "appleWebApp:");
   });
-  it("the theme colors are the brand canvas/ink tokens, in the layout, the toggle and the manifest", () => {
+  it("the theme colors are the brand canvas/ink tokens, defined once (lib/theme) and matched by the manifest", () => {
     const m = JSON.parse(read("public/manifest.webmanifest"));
-    expectTokens(read("app/layout.tsx"), "#f7f6f4", "#161619");
+    expectTokens(read("lib/theme.ts"), "#f7f6f4", "#161619");
+    expectTokens(read("app/layout.tsx"), "THEME_HEX");
+    expect(read("app/layout.tsx").includes("#f7f6f4")).toBe(false);
+    expect(read("components/ThemeToggle.tsx").includes("#f7f6f4")).toBe(false);
     expect(m.theme_color).toBe("#f7f6f4");
     expect(m.background_color).toBe("#f7f6f4");
   });
