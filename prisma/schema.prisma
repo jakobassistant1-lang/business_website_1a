@@ -13,28 +13,28 @@ datasource db {
 }
 
 model User {
-  id                 Int      @id @default(autoincrement())
-  email              String   @unique
+  id                   Int       @id @default(autoincrement())
+  email                String    @unique
   // Null for accounts created via "Sign in with Google" (passwordless).
-  password           String?
-  fullName           String
-  phone              String?
+  password             String?
+  fullName             String
+  phone                String?
   // Gates the admin-only team Kanban board (see lib/admin.ts). Defaults false;
   // the ADMIN_EMAILS env allowlist can also grant admin without setting this.
-  isAdmin            Boolean  @default(false)
-  tosAcceptedAt      DateTime
-  defaultHoursPerDay Float    @default(3)
-  planningWindowDays Int      @default(7) // fixed at 7 in code; column kept for back-compat
-  defaultEffortHours Float    @default(2) // internal fallback when Gemini hasn't estimated effort
-  studyDaysTest      Int      @default(7) // days ahead to start studying for exams/tests
-  studyDaysQuiz      Int      @default(3) // days ahead to start studying for quizzes
-  studyDaysFinal     Int      @default(14) // days ahead to start studying for midterms/finals (cumulative)
-  createdAt          DateTime @default(now())
+  isAdmin              Boolean   @default(false)
+  tosAcceptedAt        DateTime
+  defaultHoursPerDay   Float     @default(3)
+  planningWindowDays   Int       @default(7) // fixed at 7 in code; column kept for back-compat
+  defaultEffortHours   Float     @default(2) // internal fallback when Gemini hasn't estimated effort
+  studyDaysTest        Int       @default(7) // days ahead to start studying for exams/tests
+  studyDaysQuiz        Int       @default(3) // days ahead to start studying for quizzes
+  studyDaysFinal       Int       @default(14) // days ahead to start studying for midterms/finals (cumulative)
+  createdAt            DateTime  @default(now())
   // When the student finished (or skipped) the first-run demo. Defaults to now()
   // so EXISTING users (backfilled when this column is added) and seeded/admin
   // accounts skip it; the signup paths set it to NULL so genuinely new students
   // get the demo (null → routed to /demo on first entry; set on finish/skip).
-  onboardedAt        DateTime? @default(now())
+  onboardedAt          DateTime? @default(now())
   // --- Billing (#117): who has paid status. The card itself lives ONLY at
   // Stripe — we store two pointer ids + one status word + the trial end.
   // Status vocabulary lives in lib/subscription.ts (single source): grandfathered
@@ -50,18 +50,18 @@ model User {
   currentPeriodEnd     DateTime?
   cancelAtPeriodEnd    Boolean   @default(false)
 
-  sessions      Session[]
-  credential    CanvasCredential?
-  courses       Course[]
-  assignments   Assignment[]
-  announcements Announcement[]
-  adminTasks    AdminTask[]
-  googleCalendar GoogleCalendarConnection?
-  googleEvents   GoogleCalendarEvent[]
-  studyGenerations StudyGeneration[]
+  sessions            Session[]
+  credential          CanvasCredential?
+  courses             Course[]
+  assignments         Assignment[]
+  announcements       Announcement[]
+  adminTasks          AdminTask[]
+  googleCalendar      GoogleCalendarConnection?
+  googleEvents        GoogleCalendarEvent[]
+  studyGenerations    StudyGeneration[]
   passwordResetTokens PasswordResetToken[]
-  studentNotes  StudentNote[]
-  notionConnection NotionConnection?
+  studentNotes        StudentNote[]
+  notionConnection    NotionConnection?
 }
 
 // Single-use, time-limited password-reset tokens (the "forgot password" flow).
@@ -103,32 +103,32 @@ model StudyGeneration {
 // Internal team task board (admin-only). Not user-facing and unrelated to
 // Canvas coursework — this is how the owner + team track building the business.
 model AdminTask {
-  id          Int       @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   // Which board this card belongs to: "build" (the StudyPlan MVP backlog) or
   // "marketing" (launch/marketing work). Same columns + card shape, separate lane.
-  board       String    @default("build")
-  title       String
-  description String?
-  status      String    @default("todo") // "backlog" | "todo" | "doing" | "done"
-  position    Int       @default(0) // order within a column
+  board        String    @default("build")
+  title        String
+  description  String?
+  status       String    @default("todo") // "backlog" | "todo" | "doing" | "done"
+  position     Int       @default(0) // order within a column
   // New card fields — all optional, so existing cards are unaffected (additive).
-  dueDate     DateTime?
-  category    String? // free-form category tag
-  ticketSize  String? // "small" | "medium" | "large" (validated in app) → points 1/2/3
-  contributor String? // free-text contributor (name or initials); shown as initials
+  dueDate      DateTime?
+  category     String? // free-form category tag
+  ticketSize   String? // "small" | "medium" | "large" (validated in app) → points 1/2/3
+  contributor  String? // free-text contributor (name or initials); shown as initials
   // Backlog/hierarchy fields (StudyPlan MVP backlog). All optional/additive.
-  ticketNumber Int?     // build number within a board (1..N); null = ad-hoc (multiple NULLs allowed)
-  goal        String? // top of the hierarchy, e.g. "AHA #1 — Clarity"
-  subgoal     String? // mid level, e.g. "1A — Foundation"
-  acceptance  String? // acceptance criteria text
+  ticketNumber Int? // build number within a board (1..N); null = ad-hoc (multiple NULLs allowed)
+  goal         String? // top of the hierarchy, e.g. "AHA #1 — Clarity"
+  subgoal      String? // mid level, e.g. "1A — Foundation"
+  acceptance   String? // acceptance criteria text
   dependencies String? // free-text deps, e.g. "1, 2"
-  completedAt DateTime? // set when the card first reaches "done" — powers the burndown
+  completedAt  DateTime? // set when the card first reaches "done" — powers the burndown
   // Nullable + SetNull: the board is shared by the team, so a task must outlive
   // the account that created it (deleting an admin nulls the author, not the task).
-  createdById Int?
-  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdById  Int?
+  createdBy    User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Build numbering is per-board, so the same #1 can exist on each board.
   @@unique([board, ticketNumber])
@@ -222,14 +222,17 @@ model CanvasCredential {
   lastValidatedAt      DateTime?
   lastValidationStatus String?
   syncedAt             DateTime?
+  // #132: the last sync's per-course report ({ at, mode, courses: [...], skippedNonStudent }),
+  // written fail-open by lib/sync at the end of every run so /connections can show it after a reload.
+  lastSyncReport       Json?
   user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Course {
-  id       Int    @id @default(autoincrement())
-  userId   Int
-  canvasId Int
-  name     String
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  canvasId        Int
+  name            String
   // v1 prioritizer signals + the student's own Canvas course total
   // (include[]=total_scores). All nullable → fail open. currentScore 0–100;
   // currentGrade letter. Null = instructor hides totals OR nothing graded yet
@@ -237,7 +240,10 @@ model Course {
   currentScore    Float?
   currentGrade    String?
   latePolicyKind  String? // "none" | "flat" | "perday" (Gemini-parsed from the syllabus)
-  latePolicyValue Float?  // fraction of credit lost (flat: one-time; perday: per day)
+  latePolicyValue Float? // fraction of credit lost (flat: one-time; perday: per day)
+  // #126: sha256 of the syllabus text the late policy was parsed from. A sync whose
+  // syllabus hashes the same makes ZERO Gemini calls for it (lib/latePolicy).
+  latePolicyHash  String?
   // Student excluded this course from planning (#60). Null = included. Filters the
   // assignment load at the ONE chokepoint (lib/calendarData / lib/plan) so ranking,
   // scheduler, calendar, and briefing all drop it together. Never written by sync.
@@ -253,41 +259,41 @@ model Course {
 }
 
 model Assignment {
-  id              Int       @id @default(autoincrement())
-  userId          Int
-  canvasId        Int
-  courseId        Int
-  courseCanvasId  Int
-  name            String
-  dueAt           DateTime?
-  pointsPossible  Float?
-  htmlUrl         String?
-  submissionType  String?   // Canvas submission_types, comma-joined (e.g. "online_quiz") — drives the Calendar TYPE glyph
-  studyLeadDays   Int?      // per-assignment override of days-ahead to study (null = use the User default by type)
+  id                  Int       @id @default(autoincrement())
+  userId              Int
+  canvasId            Int
+  courseId            Int
+  courseCanvasId      Int
+  name                String
+  dueAt               DateTime?
+  pointsPossible      Float?
+  htmlUrl             String?
+  submissionType      String? // Canvas submission_types, comma-joined (e.g. "online_quiz") — drives the Calendar TYPE glyph
+  studyLeadDays       Int? // per-assignment override of days-ahead to study (null = use the User default by type)
   effortOverrideHours Float? // per-user manual override of the AI effort estimate (null = use the AI estimate); feeds display + scheduling
   // Student manually checked this off (null = not checked). Feeds the ONE done
   // rule (lib/assignmentStatus): manual check OR Canvas submission counts as done.
   // Never written by Canvas sync, so a sync can't un-check it.
-  manualDoneAt    DateTime?
-  updatedAt       DateTime  @updatedAt
+  manualDoneAt        DateTime?
+  updatedAt           DateTime  @updatedAt
   // Submission data from Canvas include[]=submission (canvas-mcp integration)
-  submittedAt     DateTime?
-  submissionScore Float?
-  submissionState String?   // "submitted" | "graded" | "unsubmitted" | "pending_review"
+  submittedAt         DateTime?
+  submissionScore     Float?
+  submissionState     String? // "submitted" | "graded" | "unsubmitted" | "pending_review"
 
   // Assignment-group (Canvas grade category) + its weight — powers the weighted
   // grade calculator. All null when ungrouped or the course is points-based; the
   // calculator falls back to raw points in that case (fail-open).
-  groupId         Int?
-  groupName       String?
-  groupWeight     Float?    // Canvas assignment_group.group_weight (percent)
+  groupId     Int?
+  groupName   String?
+  groupWeight Float? // Canvas assignment_group.group_weight (percent)
 
   // Canvas body + AI analysis (lib/analysis.ts). All nullable: null effort/summary
   // means "not analyzed yet" → scheduler uses the flat default, UI shows no summary.
   description          String?
   estimatedEffortHours Float?
-  effortBucket         String?   // "quick" | "medium" | "long"
-  aiImportance         Int?      // 1-5 AI importance/difficulty → weights the planner's time allocation
+  effortBucket         String? // "quick" | "medium" | "long"
+  aiImportance         Int? // 1-5 AI importance/difficulty → weights the planner's time allocation
   aiSummary            String?
   // v1 prioritizer: false = passive / teacher-graded (participation, attendance,
   // placeholder column) → excluded from the ordering; null or true = keep (the
@@ -296,7 +302,7 @@ model Assignment {
   // Precomputed share of the course grade (0–1) for weighted-group courses; null
   // → caller falls back to points / course-total. See lib/gradeWeight.
   gradeWeight          Float?
-  analysisHash         String?   // sha1 of the analyzed inputs (for re-analysis detection)
+  analysisHash         String? // sha1 of the analyzed inputs (for re-analysis detection)
   analyzedAt           DateTime?
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -360,4 +366,21 @@ model NotionConnection {
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// #46: the admin standup log — one entry per person per day (yesterday / today /
+// blockers), shown newest-first on /admin/standup. Author is stored as text so an
+// entry outlives the account that wrote it (same reasoning as AdminTask).
+model StandupEntry {
+  id        Int      @id @default(autoincrement())
+  date      String // "YYYY-MM-DD" (the standup day, in the author's local day)
+  author    String // display name at the time of writing
+  authorId  Int? // User.id when known; no relation on purpose
+  yesterday String
+  today     String
+  blockers  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
 }
