@@ -125,6 +125,7 @@ const ALLOWLISTED_FILES = [
   "app/api/admin/briefing-prompt/route.ts",
   "app/api/admin/period-coach-prompt/route.ts",
   "app/api/admin/study-prompts/route.ts",
+  "app/api/admin/standup/route.ts", // #46 standup log (withAdmin)
   "app/api/admin/tasks/[id]/route.ts",
   "app/api/admin/tasks/route.ts",
   "app/api/auth/forgot-password/route.ts",

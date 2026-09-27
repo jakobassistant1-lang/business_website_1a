@@ -32,12 +32,13 @@ export const setupItems: readonly { href: string; label: string; icon: NavIconKe
   { href: "/account", label: "Account", icon: "account" },
 ];
 
-/** Admin boards (sidebar only; the phone sheet links to the first one). */
+/** Admin pages: the sidebar/tablet rail and the phone account sheet (admins only) list them all. */
 export const adminItems: readonly { href: string; label: string; icon: NavIconKey; exact?: boolean }[] = [
   { href: "/admin", label: "Board", icon: "board", exact: true },
   { href: "/admin/marketing", label: "Marketing", icon: "marketing" },
   { href: "/admin/hierarchy", label: "Hierarchy", icon: "hierarchy" },
   { href: "/admin/burndown", label: "Burndown", icon: "burndown" },
+  { href: "/admin/standup", label: "Standup", icon: "standup" },
   { href: "/admin/ai", label: "AI settings", icon: "ai" },
 ];
 

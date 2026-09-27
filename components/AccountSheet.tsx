@@ -47,10 +47,16 @@ export function AccountSheet({
           </Link>
         ))}
         {isAdmin && (
-          <Link href={adminItems[0].href} className={ROW} onClick={onClose}>
-            <NavIcon name={adminItems[0].icon} />
-            Admin
-          </Link>
+          <>
+            {/* Every admin page (the same adminItems the Sidebar lists) — phones have no sidebar. */}
+            <p className="mt-2 px-3 pb-1 text-xs font-medium uppercase tracking-wide text-faint">Admin</p>
+            {adminItems.map((item) => (
+              <Link key={item.href} href={item.href} className={ROW} onClick={onClose}>
+                <NavIcon name={item.icon} />
+                {item.label}
+              </Link>
+            ))}
+          </>
         )}
         <Link href="/demo" className={ROW} onClick={onClose}>
           <NavIcon name="replay" />

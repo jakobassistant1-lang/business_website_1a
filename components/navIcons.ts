@@ -16,6 +16,7 @@ export const NAV_ICONS = {
   ai: "M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4L12 3Z",
   hierarchy: "M10 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4zM12 7v4M5 17v-2h14v2",
   burndown: "M4 4v16h16M7 8l10 9",
+  standup: "M4 5h16v11H10l-4 4v-4H4V5Z M8 9h8M8 12h5",
   replay: "M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5",
   logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   chevronLeft: "M15 6l-6 6 6 6",
