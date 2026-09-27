@@ -61,6 +61,12 @@ const openSheets: object[] = [];
 function isTopSheet(token: object) {
   return openSheets[openSheets.length - 1] === token;
 }
+/** True while any Sheet is open. Lightweight popovers that listen for Escape
+ *  themselves check this first, so one Escape closes only the topmost layer
+ *  (the Sheet) and not a popover sitting underneath it. */
+export function isSheetOpen(): boolean {
+  return openSheets.length > 0;
+}
 
 export function Sheet({
   open,

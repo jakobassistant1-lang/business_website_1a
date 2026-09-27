@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { NavIcon } from "./NavIcon";
 import { adminItems, initialsOf, navItems, setupItems } from "./navItems";
+import { nextIndex } from "@/lib/keyboardNav";
 
 // Daily-use surfaces live in the main nav; setup screens (Connections / Settings /
 // Account) live in the account menu at the bottom, so they don't compete with home.
@@ -23,6 +24,9 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
 
   useEffect(() => {
     try {
@@ -42,6 +46,41 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
   useEffect(() => setMenuOpen(false), [pathname]);
+
+  // Account menu keyboard model (WAI-ARIA menu button): opening moves focus to
+  // the first item; Up/Down (wrapping) and Home/End move between items (the
+  // shared lib/keyboardNav rule); Space activates the focused item, links
+  // included; Escape closes and returns focus to the trigger; Tab closes and
+  // lets focus move on.
+  useEffect(() => {
+    if (!menuOpen) return;
+    popupRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [menuOpen]);
+  function closeMenu() {
+    setMenuOpen(false);
+    triggerRef.current?.focus();
+  }
+  function onMenuKey(e: React.KeyboardEvent) {
+    const items = Array.from(popupRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeMenu();
+      return;
+    }
+    if (e.key === "Tab") {
+      setMenuOpen(false);
+      return;
+    }
+    if (e.key === " " && document.activeElement instanceof HTMLAnchorElement) {
+      e.preventDefault(); // Space doesn't activate links natively; it does in a menu
+      document.activeElement.click();
+      return;
+    }
+    const next = nextIndex(e.key, items.indexOf(document.activeElement as HTMLElement), items.length, "vertical");
+    if (next == null) return;
+    e.preventDefault();
+    items[next]?.focus();
+  }
 
   function toggleCollapse() {
     setCollapsed((c) => {
@@ -66,10 +105,15 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
   const wideOnlyFlex = collapsed ? "hidden" : "hidden lg:flex";
   const wideOnlyBlock = collapsed ? "hidden" : "hidden lg:block";
 
+  // Focus: the <nav> scrolls (overflow-y-auto), which would clip the global
+  // outside outline, so nav links draw it INSIDE their box (offset -2px). On the
+  // active (violet) link it switches to the on-accent colour to stay visible.
   function linkClass(active: boolean) {
     return `flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors ${
       collapsed ? "justify-center px-2" : "justify-center px-2 lg:justify-start lg:px-3"
-    } ${active ? "bg-accent text-accent-on" : "text-gray-300 hover:bg-gray-800 hover:text-white"}`;
+    } focus-visible:outline-offset-[-2px] ${
+      active ? "bg-accent text-accent-on focus-visible:outline-accent-on" : "text-gray-300 hover:bg-gray-800 hover:text-white"
+    }`;
   }
 
   const menuItemClass = "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white";
@@ -78,7 +122,7 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
     // The rail's left padding adds the display cutout inset (phone landscape
     // at 812px is `md`): 8px + env(safe-area-inset-left); width grows to match.
     <aside
-      className={`sticky top-0 hidden h-dvh shrink-0 flex-col bg-sidebar py-6 transition-[width] duration-150 md:flex ${
+      className={`sticky top-0 hidden h-dvh shrink-0 flex-col bg-sidebar py-6 motion-safe:transition-[width] motion-safe:duration-150 md:flex ${
         collapsed
           ? "w-[calc(4rem+env(safe-area-inset-left))] px-2 pl-[calc(0.5rem+env(safe-area-inset-left))]"
           : "w-[calc(4rem+env(safe-area-inset-left))] px-2 pl-[calc(0.5rem+env(safe-area-inset-left))] lg:w-64 lg:px-4 lg:pl-[calc(1rem+env(safe-area-inset-left))]"
@@ -111,7 +155,13 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
           and sticky — it no longer stretches to page height or rides the scroll). */}
       <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         {navItems.map((item) => (
-          <Link key={item.href} href={item.href} className={linkClass(pathname.startsWith(item.href))} title={item.label}>
+          <Link
+            key={item.href}
+            href={item.href}
+            className={linkClass(pathname.startsWith(item.href))}
+            aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+            title={item.label}
+          >
             <NavIcon name={item.icon} />
             <span className={wideOnly}>{item.label}</span>
           </Link>
@@ -126,6 +176,7 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
                 key={item.href}
                 href={item.href}
                 className={linkClass(item.exact ? pathname === item.href : pathname.startsWith(item.href))}
+                aria-current={(item.exact ? pathname === item.href : pathname.startsWith(item.href)) ? "page" : undefined}
                 title={item.label}
               >
                 <NavIcon name={item.icon} />
@@ -139,30 +190,40 @@ export function Sidebar({ userName, userEmail, isAdmin = false }: { userName: st
       {/* Account menu — setup screens + theme + logout, tucked under the avatar. */}
       <div className="relative mt-auto border-t border-gray-800 pt-3" ref={menuRef}>
         {menuOpen && (
-          <div className={`absolute bottom-full left-0 mb-2 rounded-lg border border-gray-700 bg-gray-800 p-1.5 shadow-xl ${collapsed ? "w-56" : "w-56 lg:right-0 lg:w-auto"}`}>
+          <div
+            ref={popupRef}
+            id={menuId}
+            role="menu"
+            aria-label="Account"
+            onKeyDown={onMenuKey}
+            className={`absolute bottom-full left-0 mb-2 rounded-lg border border-gray-700 bg-gray-800 p-1.5 shadow-xl ${collapsed ? "w-56" : "w-56 lg:right-0 lg:w-auto"}`}
+          >
             {setupItems.map((item) => (
-              <Link key={item.href} href={item.href} className={menuItemClass}>
+              <Link key={item.href} href={item.href} role="menuitem" tabIndex={-1} onClick={closeMenu} className={menuItemClass}>
                 <NavIcon name={item.icon} />
                 {item.label}
               </Link>
             ))}
-            <Link href="/demo" className={menuItemClass}>
+            <Link href="/demo" role="menuitem" tabIndex={-1} onClick={closeMenu} className={menuItemClass}>
               <NavIcon name="replay" />
               Replay walkthrough
             </Link>
-            <div className="my-1 border-t border-gray-700" />
-            <ThemeToggle className={menuItemClass} />
-            <button onClick={logout} className={menuItemClass}>
+            <div role="separator" className="my-1 border-t border-gray-700" />
+            <ThemeToggle role="menuitem" tabIndex={-1} className={menuItemClass} />
+            <button role="menuitem" tabIndex={-1} onClick={logout} className={menuItemClass}>
               <NavIcon name="logout" />
               Log out
             </button>
           </div>
         )}
         <button
+          ref={triggerRef}
           onClick={() => setMenuOpen((o) => !o)}
           title="Account menu"
+          aria-label={`${userName}, account menu`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
+          aria-controls={menuOpen ? menuId : undefined}
           className={`flex w-full items-center gap-3 rounded-md py-2 text-left transition-colors hover:bg-gray-800 ${
             collapsed ? "justify-center px-1" : "justify-center px-1 lg:justify-start lg:px-2"
           }`}

@@ -38,7 +38,7 @@ function persistTheme(theme: Theme) {
  * of the wrong label for dark-mode users. Clicking reads the attribute, flips
  * it, and persists the choice (cookie + localStorage).
  */
-export function ThemeToggle({ className = "" }: { className?: string }) {
+export function ThemeToggle({ className = "", role, tabIndex }: { className?: string; role?: "menuitem"; tabIndex?: number }) {
   // Once on mount: if the cookie and the attribute disagree (e.g. a cached or
   // stale server render), the cookie — the latest persisted choice — wins.
   useEffect(() => {
@@ -58,7 +58,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
   }
 
   return (
-    <button type="button" onClick={toggle} className={className} aria-label="Toggle color theme">
+    <button type="button" onClick={toggle} className={className} role={role} tabIndex={tabIndex} aria-label="Toggle color theme">
       <span className="dark:hidden">🌙 Dark</span>
       <span className="hidden dark:inline">☀ Light</span>
     </button>

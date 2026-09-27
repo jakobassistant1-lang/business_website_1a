@@ -699,7 +699,7 @@ function IconButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className={`flex h-7 w-7 items-center justify-center rounded-sm text-faint outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent-ring ${
+      className={`flex h-7 w-7 items-center justify-center rounded-sm text-faint outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${
         danger ? "hover:bg-danger-soft hover:text-danger" : "hover:bg-accent-soft hover:text-accent"
       }`}
     >

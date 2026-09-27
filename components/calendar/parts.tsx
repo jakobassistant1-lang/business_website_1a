@@ -4,10 +4,13 @@
 // token-based (the one exception is the per-course data-viz color from
 // lib/courseColor). The AI study-coach summary fails open by design.
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Sheet, useIsPhone } from "@/components/Sheet";
+import { Sheet, isSheetOpen, useIsPhone } from "@/components/Sheet";
+import { nextIndex } from "@/lib/keyboardNav";
+import { DueLabel } from "@/components/DueLabel";
+import { ymd } from "@/lib/calendarDates";
 import { courseColor } from "@/lib/courseColor";
 import { toneSoft } from "@/lib/tone";
 import { isStudyType, type ItemType } from "@/lib/itemType";
@@ -65,9 +68,6 @@ function typeGlyph(type: ItemType): string {
 
 export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { hour: "numeric", minute: "2-digit" });
-}
-export function fmtDueLong(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 // Canonical formatting lives in lib/effortFormat (server-safe, shared with API
 // routes); imported for use below and re-exported so component imports keep working.
@@ -132,7 +132,7 @@ export function ItemPill({ item, onSelect, showTime = true, compact = false, tap
  *  (dashed border, no course rail, muted/italic) so it never reads as homework. */
 export function BusyRow({ ev }: { ev: CalendarEvent }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-dashed border-line bg-surface-soft px-1.5 py-1 text-xs text-faint">
+    <div className="flex items-center gap-1.5 rounded-md border border-dashed border-line bg-surface-soft px-1.5 py-1 text-xs text-muted">
       <Glyph d={ICON.calendar} size={12} />
       <span className="min-w-0 flex-1 truncate italic">{ev.title || "Busy"}</span>
       {!ev.allDay && <span className="shrink-0">{fmtTime(ev.startTime)}</span>}
@@ -142,18 +142,18 @@ export function BusyRow({ ev }: { ev: CalendarEvent }) {
 
 /** Click-to-open detail for a coursework item. Esc / backdrop closes. Shows a
  *  brief Gemini description (the stored AI summary, or one fetched on open). */
-export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () => void }) {
+export function ItemDetail({ item, onClose, todayYmd }: { item: CalendarItem; onClose: () => void; todayYmd?: string }) {
   const [desc, setDesc] = useState<string | null>(item.summary ?? null);
   const [descLoading, setDescLoading] = useState(false);
-  // Phones get the shared bottom Sheet (#39), which owns Escape/focus/scroll-lock
-  // itself; the desktop dialog below keeps its own Escape handler.
+  // Both widths render through the shared Sheet (#39 phones, #138 desktop): it
+  // owns Escape, focus move/trap/return, scroll lock and aria-labelledby. The
+  // phone branch only sizes things for a thumb.
   const phone = useIsPhone();
-  useEffect(() => {
-    if (phone) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, phone]);
+  // `todayYmd` is optional for now: CalendarView/TimelineView don't pass it yet
+  // (their owners will). Fallback = the browser's own day, safe because this
+  // only ever renders on the client (it opens on a click). Once every caller
+  // passes the server day, make the prop required and drop the fallback.
+  const today = todayYmd ?? ymd(new Date());
   useEffect(() => {
     if (item.summary) {
       setDesc(item.summary);
@@ -200,7 +200,7 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
         </p>
         {item.status === "overdue" && <p className="mt-2 text-[14px] font-medium text-danger">Past due</p>}
         <dl className="mt-3 space-y-2 text-[14px]">
-          {item.dueAt && <DetailRow k="Due" v={fmtDueLong(item.dueAt)} />}
+          {item.dueAt && <DetailRow k="Due" v={<DueLabel iso={item.dueAt} format="long-time" todayYmd={today} />} />}
           {eff && <DetailRow k="Effort" v={eff} />}
           {item.pointsPossible != null && <DetailRow k="Points" v={`${item.pointsPossible}`} />}
           <DetailRow k="Type" v={item.type} />
@@ -219,51 +219,51 @@ export function ItemDetail({ item, onClose }: { item: CalendarItem; onClose: () 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="card w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start gap-2">
-          <span className="mt-1 h-3.5 w-1 rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted">{item.courseName}</p>
-            <p className="text-sm font-semibold text-ink">{item.name}</p>
+    <Sheet
+      open
+      onClose={onClose}
+      title={item.name}
+      footer={
+        canStudy || item.htmlUrl ? (
+          <div className="flex items-center justify-end gap-3">
+            {canStudy && (
+              <Link href={`/study/${item.canvasId}`} className="btn-ghost text-sm">
+                Study for this
+              </Link>
+            )}
+            {item.htmlUrl && (
+              <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm">
+                Open in Canvas ↗
+              </a>
+            )}
           </div>
-          <button onClick={onClose} className="shrink-0 text-muted hover:text-ink" aria-label="Close">
-            <Glyph d={ICON.x} size={16} />
-          </button>
-        </div>
-        {item.status === "overdue" && <p className="mt-2 text-xs font-medium text-danger">Past due</p>}
-        <dl className="mt-3 space-y-1.5 text-xs">
-          {item.dueAt && <DetailRow k="Due" v={fmtDueLong(item.dueAt)} />}
-          {eff && <DetailRow k="Effort" v={eff} />}
-          {item.pointsPossible != null && <DetailRow k="Points" v={`${item.pointsPossible}`} />}
-          <DetailRow k="Type" v={item.type} />
-        </dl>
-        {desc ? (
-          <p className="mt-3 rounded-md bg-surface-soft px-3 py-2 text-xs text-muted">
-            <span className="font-medium text-ink">About this: </span>
-            {desc}
-          </p>
-        ) : descLoading ? (
-          <p className="mt-3 text-xs text-muted">Generating a quick description…</p>
-        ) : null}
-        {isStudyType(item.type) && item.status !== "done" && <StudyLeadEditor item={item} />}
-        <div className="mt-4 flex items-center justify-end gap-3">
-          {isStudyType(item.type) && item.status !== "done" && (
-            <Link href={`/study/${item.canvasId}`} className="btn-ghost text-sm">
-              Study for this
-            </Link>
-          )}
-          {item.htmlUrl && (
-            <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm">
-              Open in Canvas ↗
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
+        ) : undefined
+      }
+    >
+      <p className="flex items-center gap-2 text-xs text-muted">
+        <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
+        <span className="min-w-0 truncate">{item.courseName}</span>
+      </p>
+      {item.status === "overdue" && <p className="mt-2 text-xs font-medium text-danger">Past due</p>}
+      <dl className="mt-3 space-y-1.5 text-xs">
+        {item.dueAt && <DetailRow k="Due" v={<DueLabel iso={item.dueAt} format="long-time" todayYmd={today} />} />}
+        {eff && <DetailRow k="Effort" v={eff} />}
+        {item.pointsPossible != null && <DetailRow k="Points" v={`${item.pointsPossible}`} />}
+        <DetailRow k="Type" v={item.type} />
+      </dl>
+      {desc ? (
+        <p className="mt-3 rounded-md bg-surface-soft px-3 py-2 text-xs text-muted">
+          <span className="font-medium text-ink">About this: </span>
+          {desc}
+        </p>
+      ) : descLoading ? (
+        <p className="mt-3 text-xs text-muted">Generating a quick description…</p>
+      ) : null}
+      {canStudy && <StudyLeadEditor item={item} />}
+    </Sheet>
   );
 }
-function DetailRow({ k, v }: { k: string; v: string }) {
+function DetailRow({ k, v }: { k: string; v: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-muted">{k}</dt>
@@ -281,6 +281,7 @@ export function StudyLeadEditor({ item }: { item: CalendarItem }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const inputId = useId();
 
   async function apply() {
     setBusy(true);
@@ -308,9 +309,12 @@ export function StudyLeadEditor({ item }: { item: CalendarItem }) {
   const label = item.type === "exam" ? "exam/test" : "quiz";
   return (
     <div className="mt-3 rounded-md border border-line-subtle bg-surface-soft/50 p-2.5">
-      <label className="text-xs font-medium text-ink">Start studying for this {label}</label>
+      <label htmlFor={inputId} className="text-xs font-medium text-ink">
+        Start studying for this {label}
+      </label>
       <div className="mt-1.5 flex items-center gap-2">
         <input
+          id={inputId}
           type="number"
           min="1"
           max="14"
@@ -326,9 +330,15 @@ export function StudyLeadEditor({ item }: { item: CalendarItem }) {
         <button onClick={apply} disabled={busy} className={`btn-primary text-sm ${TAP_PHONE}`}>
           {busy ? "Saving…" : "Apply"}
         </button>
-        {saved && <span className="text-xs text-success">Re-planned ✓</span>}
+        {/* Always-mounted regions: one that mounts WITH its text is often not
+            announced, so these stay in the DOM and only their text changes.
+            `saved` is cleared by the next edit (onChange) and at the start of
+            every apply(), so each successful save is announced afresh. */}
+        <span aria-live="polite" className="text-xs text-success">
+          {saved ? "Re-planned ✓" : ""}
+        </span>
       </div>
-      {err && <p className="mt-1 text-xs text-danger">{err}</p>}
+      <div role="alert">{err && <p className="mt-1 text-xs text-danger">{err}</p>}</div>
       <p className="mt-1 text-[11px] text-muted">
         Study spreads across those days (with ~20 min kept the day before). Leave blank to use your Settings default.
       </p>
@@ -355,7 +365,11 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
   // handles its own Escape.)
   useEffect(() => {
     if (!open || phone) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      // A Sheet above this popover (e.g. an ItemDetail) takes the Escape.
+      if (e.key !== "Escape" || e.defaultPrevented || isSheetOpen()) return;
+      setOpen(false);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, phone]);
@@ -472,7 +486,9 @@ export interface StudyEntry {
 }
 
 /** A day expanded into a popup (from Week/Month). Lists due items (clickable →
- *  ItemDetail), study sessions, and busy blocks. Sits below ItemDetail (z-40). */
+ *  ItemDetail), study sessions, and busy blocks. A Sheet at every width; an
+ *  ItemDetail opened from it stacks on top (the Sheet stack routes Escape to the
+ *  topmost one and hands focus back when it closes). */
 export function DayPeek({
   date,
   items,
@@ -481,6 +497,7 @@ export function DayPeek({
   onSelect,
   onClose,
   onOpenDay,
+  todayYmd,
 }: {
   date: Date;
   items: CalendarItem[];
@@ -489,16 +506,12 @@ export function DayPeek({
   onSelect: (it: CalendarItem) => void;
   onClose: () => void;
   onOpenDay?: () => void;
+  todayYmd?: string;
 }) {
-  const phone = useIsPhone(); // phones: the shared bottom Sheet (it owns Escape)
-  useEffect(() => {
-    if (phone) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, phone]);
+  const phone = useIsPhone(); // phones: thumb-sized rows; the Sheet owns Escape/focus at both widths
+  // Optional for now, same fallback and reason as ItemDetail's `today` above.
+  const today = todayYmd ?? ymd(new Date());
   const empty = items.length === 0 && events.length === 0 && study.length === 0;
-  const dueShort = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const dayTitle = date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   if (phone) {
     return (
@@ -543,7 +556,7 @@ export function DayPeek({
                     <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
                     <span className="shrink-0 text-[13px] text-muted">
-                      {fmtHours(s.hours)} · due {dueShort(s.dueAt)}
+                      {fmtHours(s.hours)} · due <DueLabel iso={s.dueAt} format="short" todayYmd={today} />
                     </span>
                   </Link>
                 </li>
@@ -565,71 +578,67 @@ export function DayPeek({
     );
   }
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="card max-h-[80vh] w-full max-w-md overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">{dayTitle}</h2>
-          <button onClick={onClose} className="text-muted hover:text-ink" aria-label="Close">
-            <Glyph d={ICON.x} size={16} />
-          </button>
-        </div>
-
-        {empty && <p className="py-6 text-center text-sm text-muted">Nothing on this day.</p>}
-
-        {items.length > 0 && (
-          <section className="mt-3">
-            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Due ({items.length})</h3>
-            <div className="space-y-1.5">
-              {items.map((it) => (
-                <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {study.length > 0 && (
-          <section className="mt-3">
-            <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
-              <Glyph d={ICON.clock} size={13} /> Study plan
-            </h3>
-            <ul className="mt-1.5 space-y-1">
-              {study.map((s, i) => (
-                <li key={`peekst-${s.canvasId}-${i}`} className="flex items-center gap-2 text-sm">
-                  <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
-                  <span className="shrink-0 text-xs text-muted">
-                    {fmtHours(s.hours)} · due {dueShort(s.dueAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {events.length > 0 && (
-          <section className="mt-3">
-            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Busy</h3>
-            <div className="space-y-1.5">
-              {events.map((e, i) => (
-                <BusyRow key={`peekev-${i}`} ev={e} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {onOpenDay && (
+    <Sheet
+      open
+      onClose={onClose}
+      title={dayTitle}
+      footer={
+        onOpenDay ? (
           <button
             onClick={() => {
               onOpenDay();
               onClose();
             }}
-            className="btn-ghost mt-4 w-full text-sm"
+            className="btn-ghost w-full text-sm"
           >
             Open full day view →
           </button>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+    >
+      {empty && <p className="py-6 text-center text-sm text-muted">Nothing on this day.</p>}
+
+      {items.length > 0 && (
+        <section className="mt-1">
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Due ({items.length})</h3>
+          <div className="space-y-1.5">
+            {items.map((it) => (
+              <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {study.length > 0 && (
+        <section className="mt-3">
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+            <Glyph d={ICON.clock} size={13} /> Study plan
+          </h3>
+          <ul className="mt-1.5 space-y-1">
+            {study.map((s, i) => (
+              <li key={`peekst-${s.canvasId}-${i}`} className="flex items-center gap-2 text-sm">
+                <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
+                <span className="shrink-0 text-xs text-muted">
+                  {fmtHours(s.hours)} · due <DueLabel iso={s.dueAt} format="short" todayYmd={today} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {events.length > 0 && (
+        <section className="mt-3">
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Busy</h3>
+          <div className="space-y-1.5">
+            {events.map((e, i) => (
+              <BusyRow key={`peekev-${i}`} ev={e} />
+            ))}
+          </div>
+        </section>
+      )}
+    </Sheet>
   );
 }
 
@@ -637,18 +646,19 @@ export function DayPeek({
  *  deadline safety net — collapsible body, but the count is always visible. */
 export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
   const [open, setOpen] = useState(false);
+  const listId = useId();
   const overdue = atRisk.filter((a) => a.kind === "overdue");
   if (overdue.length === 0) return null;
   return (
     <div className="mb-3 rounded-lg border border-danger bg-surface px-3 py-2">
-      <button onClick={() => setOpen((o) => !o)} className={`flex w-full items-center justify-between gap-3 ${TAP_PHONE}`}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={listId} className={`flex w-full items-center justify-between gap-3 ${TAP_PHONE}`}>
         <span className="flex items-center gap-2 text-sm font-semibold text-danger">
           <Glyph d={ICON.alert} size={16} /> {overdue.length} overdue
         </span>
         <span className="text-xs font-medium text-danger/80">{open ? "Hide" : "Show"}</span>
       </button>
       {open && (
-        <ul className="mt-2 space-y-1">
+        <ul id={listId} className="mt-2 space-y-1">
           {overdue.map((a) => (
             <li key={`att-${a.canvasId}`} className="flex items-center justify-between gap-2 text-xs">
               <span className="flex min-w-0 items-center gap-1.5 text-ink">
@@ -705,6 +715,7 @@ export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "m
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const bodyId = useId();
   useEffect(() => {
     try {
       setOpen(localStorage.getItem("sp_coach_open") === "1");
@@ -746,7 +757,7 @@ export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "m
   }
   return (
     <div className="mb-3 rounded-lg border border-accent-soft bg-accent-soft/30 px-3 py-2">
-      <button onClick={toggle} className={`flex w-full items-center justify-between gap-3 ${TAP_PHONE}`}>
+      <button onClick={toggle} aria-expanded={open} aria-controls={bodyId} className={`flex w-full items-center justify-between gap-3 ${TAP_PHONE}`}>
         <span className="flex items-center gap-2 text-sm font-semibold text-accent">
           <Glyph d={ICON.spark} size={15} /> Study coach
         </span>
@@ -754,9 +765,13 @@ export function PeriodSummary({ view, start, days }: { view: "day" | "week" | "m
       </button>
       {open &&
         (text ? (
-          <p className="mt-1.5 text-sm leading-snug text-ink">{text}</p>
+          <p id={bodyId} className="mt-1.5 text-sm leading-snug text-ink">
+            {text}
+          </p>
         ) : (
-          <p className="mt-1.5 text-sm text-muted">Reading your {view}…</p>
+          <p id={bodyId} className="mt-1.5 text-sm text-muted">
+            Reading your {view}…
+          </p>
         ))}
     </div>
   );
@@ -785,6 +800,17 @@ export function PeriodToolbar({
   atToday: boolean;
   trailing?: React.ReactNode;
 }) {
+  // Tablist keyboard model (WAI-ARIA tabs, automatic activation), keys from the
+  // shared lib/keyboardNav rule: Left/Right wrap, Home/End jump, each moves
+  // focus AND selects; only the selected tab sits in the Tab order.
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onTabKey = (e: React.KeyboardEvent) => {
+    const next = nextIndex(e.key, views.indexOf(view), views.length, "horizontal");
+    if (next == null) return;
+    e.preventDefault();
+    onView(views[next]);
+    tabRefs.current[next]?.focus();
+  };
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-1.5">
@@ -800,12 +826,16 @@ export function PeriodToolbar({
         <span className="ml-1.5 text-sm font-semibold text-ink">{label}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div data-tour="cal-views" role="tablist" className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
-          {views.map((v) => (
+        <div data-tour="cal-views" role="tablist" aria-label="Calendar view" onKeyDown={onTabKey} className="flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
+          {views.map((v, i) => (
             <button
               key={v}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
               role="tab"
               aria-selected={v === view}
+              tabIndex={v === view || (i === 0 && !views.includes(view)) ? 0 : -1}
               onClick={() => onView(v)}
               className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${TAP_PHONE} ${
                 v === view ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"
@@ -828,6 +858,8 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const phone = useIsPhone(); // phones: the nudge opens in the shared bottom Sheet
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const popId = useId();
   useEffect(() => {
     try {
       setDismissed(sessionStorage.getItem(`sp_overload_dismissed_${weekKey}`) === "1");
@@ -835,6 +867,21 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
       /* ignore */
     }
   }, [weekKey]);
+  // The md+ popover closes on Escape and hands focus back to the chip. (On
+  // phones the Sheet does both itself.) Declared before the early return below
+  // so the hook order never changes.
+  useEffect(() => {
+    if (!open || phone) return;
+    const onKey = (e: KeyboardEvent) => {
+      // One Escape closes one layer: when a Sheet (e.g. an ItemDetail) is open
+      // above this popover, the Sheet's own handler takes it and this one waits.
+      if (e.key !== "Escape" || e.defaultPrevented || isSheetOpen()) return;
+      setOpen(false);
+      chipRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, phone]);
   if (overloadHours < 1 || dismissed) return null;
   const n = Math.round(overloadHours);
   function dismiss() {
@@ -849,8 +896,10 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
   return (
     <div className="relative">
       <button
+        ref={chipRef}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        aria-controls={open && !phone ? popId : undefined}
         aria-label={`This week is over your study budget by about ${n} hours`}
         className={`relative inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] md:after:hidden ${toneSoft.warning}`}
       >
@@ -871,7 +920,7 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
         </Sheet>
       )}
       {open && !phone && (
-        <div className="absolute right-0 z-30 mt-1.5 w-64 rounded-lg border border-warning/30 bg-warning-soft/40 px-3 py-2 text-xs shadow-md">
+        <div id={popId} className="absolute right-0 z-30 mt-1.5 w-64 rounded-lg border border-warning/30 bg-warning-soft/40 px-3 py-2 text-xs shadow-md">
           <p className="font-medium text-ink">This week needs ~{n}h more than you&apos;ve set aside.</p>
           <p className="mt-0.5 text-muted">Raise your daily study time, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
           <div className="mt-1.5 flex items-center gap-2">
@@ -954,9 +1003,14 @@ export function DoneCheck({
   // falls in the row's left padding and the list's gutter). At md+ it collapses to the circle exactly as
   // before. Unchecked, the tick is hover-only on desktop; `hover-reveal` shows it
   // on touch (tinted faint, so an unchecked circle never reads as done).
-  // Pre-existing, out of scope: this <button> sits inside the row's <Link> (a
-  // button in an anchor); the handler's preventDefault/stopPropagation keeps a tap
-  // from navigating.
+  // Row structure (#138, the target pattern): the row is a `div.relative`; this
+  // control is a SIBLING of the row's <Link> with `relative z-10`; the Link carries
+  // the text plus `after:absolute after:inset-0 after:content-['']` so the whole
+  // row stays clickable. A button inside an anchor is invalid HTML and screen
+  // readers merge the two. Callers still nesting it inside their <Link> as of
+  // #138: DashboardView (ItemRow, CatchUpRow) and CoursePage (assignment rows),
+  // both being moved by their owners. Until then the preventDefault/
+  // stopPropagation below keep a tap on the circle from navigating the row.
   return (
     <button
       type="button"
@@ -964,7 +1018,7 @@ export function DoneCheck({
       disabled={busy}
       aria-label={local ? "Mark as not done" : "Mark as done"}
       title={local ? "Mark as not done" : "Mark as done"}
-      className={`group/done ${TAP_PHONE} -my-[11px] -ml-4 -mr-1.5 grid shrink-0 cursor-pointer place-items-center rounded-full py-[11px] pl-4 pr-1.5 md:m-0 md:p-0 ${className}`}
+      className={`group/done ${TAP_PHONE} relative z-10 -my-[11px] -ml-4 -mr-1.5 grid shrink-0 cursor-pointer place-items-center rounded-full py-[11px] pl-4 pr-1.5 md:m-0 md:p-0 ${className}`}
     >
       <span className={`grid h-[22px] w-[22px] place-items-center rounded-full border-2 text-success transition ${local ? "border-success bg-success" : idle}`}>
         <svg viewBox="0 0 12 12" className={`h-3 w-3 transition-opacity ${local ? "text-white opacity-100" : "text-faint opacity-0 hover:opacity-100 hover-reveal hover:text-success"}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1013,6 +1067,9 @@ export function MarkDoneButton({ canvasId, done = false, onToggled, className }:
       type="button"
       onClick={toggle}
       disabled={busy}
+      // No aria-pressed: the visible label itself flips between the two actions
+      // ("Mark as done" / "✓ Done · undo"); pressed + a changing label would
+      // read "Done · undo, pressed".
       className={`rounded-full px-3 py-1 text-[13.5px] font-medium transition ${
         shown ? "bg-success-soft text-success hover:opacity-80" : "border border-line text-muted hover:border-success hover:text-success"
       }${className ? ` ${className}` : ""}`}

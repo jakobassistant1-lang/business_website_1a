@@ -94,7 +94,7 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
             id="grade-target"
             value={target}
             onChange={(e) => setTarget(Number(e.target.value))}
-            className="max-md:tap rounded-md border border-line bg-surface px-3 py-2 text-[14px] font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
+            className="max-md:tap rounded-md border border-line bg-surface px-3 py-2 text-[14px] font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             {TARGETS.map((t) => (
               <option key={t.value} value={t.value}>
