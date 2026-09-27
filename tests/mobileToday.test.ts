@@ -1,7 +1,7 @@
 // Ticket #39 (M2): the Dashboard and Plan on phones. The one pure rule —
 // which Plan view renders — is unit-tested; the rest are source guards so the
 // phone behaviour (no width-dependent render on the dashboard, agenda-only Plan
-// that never mounts Calendar/Timeline on a phone, catch-up Sheet, nothing
+// that never mounts Calendar/Timeline on a phone, catch-up line, nothing
 // hover-only, 44px targets) can't be quietly undone. Class checks compare TOKEN
 // SETS of one element's className, so reordering classes or attributes never
 // breaks them.
@@ -150,7 +150,7 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
     expect(focus).toContain('side="any"');
     expect(focus).not.toMatch(/Phone variant|Desktop variant/);
     // the Focus pick + its list are ONE rule the phone "This week" card also reads
-    expect(dash).toContain("pickFocus(data, liveItems, todayYmd, heldInFocus)"); // held only promotes rows the card already showed
+    expect(dash).toContain("pickFocus(data, liveItems, isDueToday, heldInFocus)"); // held only promotes rows the card already showed
     expect(dash).toContain("!inFocusCard.has(it.canvasId)");
   });
 
@@ -163,26 +163,33 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
     expect(week).not.toContain("intensity");
   });
 
-  it("catch-up on phones is a card row: 28px count, one-line subtitle, chevron", () => {
+  // #137 owner's decision: a THIN single line (44px, warning tone, "N overdue ·
+  // Catch up", chevron) that expands the overdue rows in place — not a big card row.
+  it("catch-up on phones is one thin warning-tone line that expands in place", () => {
     const entry = between(dash, "function CatchUpEntry(", "// ── Phone only: \"This week\"");
-    expectTokens(classAfter(entry, "<button"), ["card", "tap", "flex", "w-full"]);
-    expect(entry).toContain("text-[28px]");
-    expect(entry).toContain("Overdue, most important first");
-    expect(entry).toContain("ICON.chevR");
+    const btn = classAfter(entry, "<button");
+    expectTokens(btn, ["tap", "flex", "w-full"]);
+    expect(entry).toContain("${toneSoft.warning}");
+    expect(entry).toContain("aria-expanded={open}");
+    expect(entry).toContain("overdue</span> · Catch up");
+    expect(entry).toContain("CHEV_DOWN"); // a disclosure chevron, not "navigate away"
+    expect(entry).not.toContain("text-[28px]");
+    expect(entry).not.toContain("<Sheet");
+    expect(entry).toMatch(/<CatchUpList [^>]*side="phone"/);
     expect(dash).not.toContain("CatchUpPill");
   });
 
   it("DOM order is the phone's visual order", () => {
-    const order = ["<PhoneGlance", "<FocusTodayCard", "<TodayStudyCard", "<ThisWeekCard", "<CatchUpEntry", "<CatchUpCard", "<ProgressDial", "<UpcomingTestsCard"];
+    const order = ["<PhoneGlance", "<FocusTodayCard", "<TodayStudyCard", "<CatchUpEntry", "<ThisWeekCard", "<CatchUpCard", "<ProgressDial", "<UpcomingTestsCard"];
     const idx = order.map((s) => render.indexOf(s));
     for (const i of idx) expect(i).toBeGreaterThanOrEqual(0);
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
   });
 
-  it("catch-up opens a Sheet of the shared overdue rows", () => {
+  it("desktop's \"See all\" opens a Sheet of the shared overdue rows", () => {
     expect(dash).toMatch(/import \{ Sheet, useIsPhone \} from "@\/components\/Sheet"/);
     expect(render).toContain("<Sheet open={showCatchUp}");
-    expect(render).toContain("<CatchUpRow ");
+    expect(render).toMatch(/<Sheet open=\{showCatchUp\}[^>]*>\s*<CatchUpList /);
   });
 
   it("only the visible copy of a row runs the undo clock", () => {
@@ -190,9 +197,12 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
     expect(read("components/UndoToast.tsx")).toMatch(/if \(paused \|\| !clock\) return;/);
   });
 
-  it("list rows are 44px targets", () => {
-    expectTokens(classAfter(between(dash, "function ItemRow(", "function pickFocus"), "<Link"), ["tap", "flex"]);
-    expectTokens(classAfter(between(dash, "function CatchUpRow(", "function CatchUpEntry"), "<Link"), ["tap", "flex"]);
+  it("list rows are 44px targets (the row wrapper; its link is stretched over it)", () => {
+    for (const [a, b] of [["function ItemRow(", "function pickFocus"], ["function CatchUpRow(", "function CatchUpEntry"]]) {
+      const row = between(dash, a, b);
+      expectTokens(classAfter(row, "<div className"), ["tap", "flex", "relative"]);
+      expect(row).toContain("${ROW_LINK}");
+    }
   });
 });
 
