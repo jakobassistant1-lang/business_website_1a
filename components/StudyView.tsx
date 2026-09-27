@@ -75,10 +75,10 @@ export function StudyView({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <StudyAiHeader text={aiSummary} loading={summaryLoading} />
       <div className="mb-6">
         <p className="text-xl font-semibold text-ink">Study</p>
         <p className="mt-0.5 text-sm text-muted">Pick a test to get a plan, a study guide, and practice questions.</p>
+        <StudyAiHeader text={aiSummary} loading={summaryLoading} />
       </div>
 
       {/* Featured: the next-up test */}
@@ -134,7 +134,7 @@ export function StudyView({
 function StudyAiHeader({ text, loading }: { text: string | null; loading: boolean }) {
   if (!text && !loading) return null;
   return (
-    <div className="mb-6 flex items-start gap-3 rounded-2xl border border-line-subtle bg-surface-soft/60 p-4">
+    <div className="mt-4 flex items-start gap-3 rounded-2xl border border-line-subtle bg-surface-soft/60 p-4">
       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z" />
