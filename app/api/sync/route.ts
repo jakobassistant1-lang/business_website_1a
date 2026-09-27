@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { runSync, type SyncResult } from "@/lib/sync";
 import { syncDecision, parseTrigger, type SyncMode } from "@/lib/syncPolicy";
 import { messageFor, type CanvasStatus } from "@/lib/messages";
+import { logFirst } from "@/lib/funnel";
 
 // A full sync walks every course (assignments, announcements, groups, syllabus)
 // and can take longer than Vercel's default function budget on a heavy term.
@@ -103,6 +104,26 @@ export async function POST(req: Request) {
     lastFinishedAt.set(user.id, Date.now());
   });
   inFlight.set(user.id, entry);
-  after(() => entry.promise); // keep the instance alive until the run settles (even past the deadline answer)
-  return NextResponse.json(await withDeadline(entry.promise, timedOut(mode)));
+
+  // #111 activation: log the user's first COMPLETED sync (ok or failed) — only
+  // for a run THIS request owns (joiners answer "in_flight" above; "fresh" never
+  // ran), only when a credential exists and has never fully synced (a failed
+  // sync leaves syncedAt null, so a retry is still a "first"; logFirst's family
+  // check dedupes). Memoized: the inline path and after() share ONE log call.
+  const isFirstSync = cred != null && cred.syncedAt == null;
+  let firstLog: Promise<void> | undefined;
+  const logFirstSync = (r: SyncResult): Promise<void> =>
+    (firstLog ??= isFirstSync
+      ? logFirst(r.ok ? "first_sync_ok" : "first_sync_failed", user.id, { mode, status: r.status, failedCourses: r.failedCourses.length })
+      : Promise.resolve());
+
+  // Keep the instance alive until the run settles (even past the deadline
+  // answer) AND log it there — that is how a first sync that outlives the 50s
+  // deadline still gets recorded. logFirst never throws; entry.promise never rejects.
+  after(() => entry.promise.then(logFirstSync));
+  const result = await withDeadline(entry.promise, timedOut(mode));
+  // Answered in time: log before responding (awaited — Vercel may freeze work
+  // after the response). A timed-out answer is logged by after() above instead.
+  if (!result.skipped) await logFirstSync(result);
+  return NextResponse.json(result);
 }

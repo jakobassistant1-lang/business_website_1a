@@ -28,9 +28,9 @@ describe("funnel writes are awaited, never fire-and-forget (#111)", () => {
     expect(routeFiles.length).toBeGreaterThan(5);
   });
 
-  it("no file under app/ or lib/ voids logEvent or an email sender", () => {
+  it("no file under app/ or lib/ voids logEvent, logFirst or an email sender", () => {
     const offenders = serverFiles.filter((f) =>
-      /\bvoid\s+(logEvent|sendWelcomeEmail|sendTrialEndingEmail)\(/.test(readFileSync(f, "utf8")),
+      /\bvoid\s+(logEvent|logFirst|sendWelcomeEmail|sendTrialEndingEmail)\(/.test(readFileSync(f, "utf8")),
     );
     expect(offenders.map(rel)).toEqual([]);
   });
