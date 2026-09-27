@@ -102,8 +102,20 @@ export function rangeForView(view: "day" | "week" | "month", anchor: Date): { st
  *  weekday (within the week) / "Mon D". Pass the server-computed `todayYmd` so the
  *  client and server agree and there's no hydration drift. Shared by the dashboard,
  *  plan list, and course cards (one source of truth for relative due labels). */
-export function countdownLabel(dueAtIso: string, todayYmd: string): string {
-  const d = parseYmd(ymd(new Date(dueAtIso)));
+/** The calendar day ("YYYY-MM-DD") an instant falls on in a time zone. `timeZone`
+ *  undefined = the runtime's local zone (the VIEWER's, in the browser). Pass "UTC"
+ *  for a render that must be byte-identical on the server and during hydration —
+ *  components/DueLabel does exactly that, then re-renders in the viewer's zone
+ *  after mount. Local-zone `ymd(new Date(iso))` is the bug this replaces: on
+ *  Vercel the server's zone is UTC, so a US evening reads as tomorrow. */
+export function ymdInZone(iso: string | Date, timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(iso));
+  const get = (t: string) => parts.find((x) => x.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+export function countdownLabel(dueAtIso: string, todayYmd: string, timeZone?: string): string {
+  const d = parseYmd(ymdInZone(dueAtIso, timeZone));
   const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
   if (days <= 0) return "Today";
   if (days === 1) return "Tomorrow";
