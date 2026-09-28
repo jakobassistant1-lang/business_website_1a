@@ -31,7 +31,8 @@ import {
   type CanvasModuleItem,
 } from "./canvas";
 import type { Plan } from "./scheduler";
-import { ymd } from "./calendarDates";
+import { ymdInZone } from "./calendarDates";
+import { dayCount, inDays, NO_GREETING_RULE } from "./briefing";
 import { installPdfPolyfills } from "./pdfPolyfills";
 
 const TIMEOUT_MS = 25000; // study artifacts are bigger than one-liners
@@ -116,6 +117,12 @@ export interface AssessmentMeta {
   pointsPossible: number | null;
   description: string | null; // Canvas HTML
   aiSummary: string | null;
+  /** The viewer's IANA zone (validated by safeTimeZone); due and today are read in
+   *  it. Omitted = "UTC". */
+  timeZone?: string;
+  /** Effective days-ahead-to-study (the scheduler's lead time); null/undefined =
+   *  unknown. Only the plan prompt reads it. */
+  studyLeadDays?: number | null;
 }
 
 const TOTAL_BUDGET = 20000; // chars; raised from 15k to leave headroom for pinned student notes
@@ -349,7 +356,7 @@ export async function collectStudyMaterial(
 // ---------- prompts ----------
 
 function metaLines(a: AssessmentMeta): string {
-  const due = a.dueAt ? `${ymd(a.dueAt)}` : "unknown";
+  const due = a.dueAt ? ymdInZone(a.dueAt, a.timeZone ?? "UTC") : "unknown";
   return [
     `Assessment: ${a.name} (${a.type})`,
     `Course: ${a.courseName}`,
@@ -392,10 +399,45 @@ export const DEFAULT_STUDY_QUESTIONS_INSTRUCTION =
   "You are Navo's practice-question writer. Questions must test understanding of the material (not trivia about " +
   "course logistics). Vary difficulty. Explanations teach the underlying concept in 1-2 sentences.";
 
+// Plan advice is SAVED (StudyGeneration) and served again on later days while its
+// inputs hold, so it names the due DATE, not a day count that would go stale.
+export const PLAN_TIMING_RULE =
+  "Timing: when you mention when the test is, use its date (\"before Oct 12\"), not a day count — this advice is " +
+  "saved and shown again on later days. Never call the test imminent, urgent or last-minute, and never give " +
+  "cramming advice, unless it is due within 3 days.";
+
+/** What the prompt says about timing and the no-sessions case. The old text told
+ *  the model "the test is imminent" whenever no sessions were scheduled — true for
+ *  a test tomorrow, false for one 15 days out (the planner only schedules study
+ *  blocks in the days before a test). */
+function planTimingLines(a: AssessmentMeta, hasSessions: boolean, todayYmd: string): string[] {
+  const dueYmd = a.dueAt ? ymdInZone(a.dueAt, a.timeZone ?? "UTC") : null;
+  const days = dueYmd ? dayCount(dueYmd, todayYmd) : null;
+  const when = dueYmd && days != null ? `Today is ${todayYmd}. The test is due ${dueYmd} (${inDays(days)}).` : `Today is ${todayYmd}. The due date is unknown.`;
+  let task: string;
+  if (hasSessions) task = "Also include 1-2 sentences of overall `advice`.";
+  else if (days != null && days <= 3)
+    task = "There are NO scheduled sessions and the test is within 3 days. Return an empty sessions array and put a short, realistic last-minute strategy in `advice`.";
+  else {
+    const lead = a.studyLeadDays;
+    const why =
+      lead != null && lead > 0
+        ? `No study sessions are scheduled YET: the student's plan starts study time ${lead} day${lead === 1 ? "" : "s"} before the test, so sessions will appear closer to the date.`
+        : lead === 0
+          ? "No study sessions are scheduled: the student has set no study time ahead of this test."
+          : "No study sessions are scheduled right now (the planner may add some in the days before the test, depending on the student's settings).";
+    task =
+      `${why} This is NOT last-minute. Return an empty sessions array; in \`advice\`, give the first concrete ` +
+      "step to take now and when regular review should begin.";
+  }
+  return [when, task, PLAN_TIMING_RULE, NO_GREETING_RULE];
+}
+
 export function buildPlanPrompt(
   a: AssessmentMeta,
   sessions: { date: string; hours: number }[],
   instruction: string = DEFAULT_STUDY_PLAN_INSTRUCTION,
+  todayYmd: string = ymdInZone(new Date(), a.timeZone ?? "UTC"),
 ): string {
   const sess =
     sessions.length > 0
@@ -403,9 +445,7 @@ export function buildPlanPrompt(
       : "(none scheduled)";
   return [
     instruction,
-    sessions.length === 0
-      ? "There are NO scheduled sessions (the test is imminent). Return an empty sessions array and put a short, realistic last-minute strategy in `advice`."
-      : "Also include 1-2 sentences of overall `advice`.",
+    ...planTimingLines(a, sessions.length > 0, todayYmd),
     "",
     metaLines(a),
     "",
@@ -602,8 +642,9 @@ export async function generateStudyPlan(
   a: AssessmentMeta,
   sessions: { date: string; hours: number }[],
   instruction?: string,
+  todayYmd?: string,
 ): Promise<{ ok: true; content: StudyPlanContent } | StudyGenError> {
-  const res = await callGemini(buildPlanPrompt(a, sessions, instruction ?? DEFAULT_STUDY_PLAN_INSTRUCTION), 1600);
+  const res = await callGemini(buildPlanPrompt(a, sessions, instruction ?? DEFAULT_STUDY_PLAN_INSTRUCTION, todayYmd), 1600);
   if (!res.ok) return res;
   const parsed = parsePlanContent(parseJsonText(res.json), new Set(sessions.map((s) => s.date)));
   if (!parsed) return { ok: false, reason: "bad_response" };

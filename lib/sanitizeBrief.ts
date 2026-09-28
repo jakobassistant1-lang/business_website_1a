@@ -34,12 +34,17 @@
 //     plus "#frag" hrefs) is prefixed with "brief-", like GitHub's
 //     "user-content-". In-page anchors keep working.
 //   - Input is capped at MAX_BRIEF_CHARS and MAX_TAGS; nesting at NESTING_LIMIT.
+//   - #140: Canvas's screen-reader-only helpers (e.g. <span class="screenreader-only">
+//     Links to an external site.</span> inside every external link) are removed
+//     WITH their text. Because `class` is dropped, they used to render as visible
+//     text glued onto the link ("Syllabus Links to an external site.").
 //
 // Pure and synchronous; never throws (returns "" on any failure).
 //
 // Not `import "server-only"`: that package isn't installed as a top-level module
 // here (Next only aliases it inside its own bundler), so vitest/tsx couldn't load
-// this file. It's server-only by usage: only app/(app)/assignment/[id]/page.tsx
+// this file. It's server-only by usage: app/(app)/assignment/[id]/page.tsx (and,
+// for plain prompt text, app/api/assignment/approach/route.ts)
 // imports it, and a guard test keeps the client component from doing so.
 
 import sanitizeHtml from "sanitize-html";
@@ -206,8 +211,36 @@ const prefixIdList = (v: string) => v.split(/\s+/).filter(Boolean).map(prefixId)
 // "#frag" → "#brief-frag"; a bare "#" stays as-is.
 const prefixFragment = (v: string) => (v.length > 1 ? "#" + prefixId(v.slice(1)) : v);
 
-function makeTransform(origin: string | null) {
+// --- Canvas screen-reader-only helpers (#140) ----------------------------------------
+// Canvas appends a decorative <span class="external_link_icon"> (an SVG plus
+// <span class="screenreader-only">Links to an external site.</span>) to every
+// external link, and jQuery UI uses <span class="ui-helper-hidden-accessible">.
+// Only those SPANS are dropped with their text — never a teacher's own classes
+// (sr-only, visually-hidden, …) and never other elements. It only ever REMOVES
+// output. Two brakes keep a malformed helper from eating real content: a helper
+// that turns out to contain anything but spans/SVG (e.g. an unclosed span that
+// swallows the next <p>) is kept, and so is one holding more than
+// SR_HELPER_MAX_CHARS of text.
+const SR_ONLY_CLASSES = new Set(["screenreader-only", "ui-helper-hidden-accessible", "external_link_icon"]);
+const SR_HELPER_INNER_TAGS = new Set(["span", "svg"]);
+const SR_HELPER_MAX_CHARS = 120;
+const isScreenReaderOnly = (tagName: string, attribs: sanitizeHtml.Attributes) =>
+  tagName === "span" &&
+  typeof attribs.class === "string" &&
+  attribs.class.split(/\s+/).some((c) => SR_ONLY_CLASSES.has(c.toLowerCase()));
+
+/** Per-call bookkeeping for the helper strip: `drop` = helper spans (keyed by the
+ *  attribs object sanitize-html hands back to the filter), `open` = those not yet
+ *  closed, so a non-helper tag opening inside one can un-mark it. */
+interface SrState { drop: WeakSet<object>; open: Set<object> }
+
+function makeTransform(origin: string | null, sr: SrState) {
   return function transformAttributes(tagName: string, attribs: sanitizeHtml.Attributes): sanitizeHtml.Tag {
+    // Real content inside a would-be helper → it isn't one; keep it and its text.
+    if (sr.open.size && !SR_HELPER_INNER_TAGS.has(tagName)) {
+      for (const o of sr.open) sr.drop.delete(o);
+      sr.open.clear();
+    }
     const isLink = tagName === "a" || tagName === "area";
     const out: sanitizeHtml.Attributes = {};
     for (const [rawName, rawValue] of Object.entries(attribs)) {
@@ -256,11 +289,18 @@ function makeTransform(origin: string | null) {
       out.target = "_blank";
       out.rel = "noopener noreferrer";
     }
+    // Decided on the AUTHORED attributes (class is never output); the filter
+    // below drops the element because sanitize-html hands it this same object.
+    if (isScreenReaderOnly(tagName, attribs)) {
+      sr.drop.add(out);
+      sr.open.add(out);
+    }
     return { tagName, attribs: out };
   };
 }
 
 function optionsFor(origin: string | null): sanitizeHtml.IOptions {
+  const sr: SrState = { drop: new WeakSet<object>(), open: new Set<object>() };
   return {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: { "*": ALLOWED_ATTRS },
@@ -282,11 +322,15 @@ function optionsFor(origin: string | null): sanitizeHtml.IOptions {
     },
     allowProtocolRelative: false,
     selfClosing: ["img", "br", "hr", "area", "col", "wbr", "source", "track"],
-    transformTags: { "*": makeTransform(origin) },
+    transformTags: { "*": makeTransform(origin, sr) },
+    // Runs as each element closes. true = drop the element AND its contents.
+    exclusiveFilter: (frame) => {
+      sr.open.delete(frame.attribs);
+      return sr.drop.has(frame.attribs) && frame.text.length <= SR_HELPER_MAX_CHARS;
+    },
   };
 }
 
-const DEFAULT_OPTIONS = optionsFor(null);
 
 /** Canvas host ("school.instructure.com", as stored on the credential) → origin. */
 function canvasOrigin(canvasHost: string | null | undefined): string | null {
@@ -310,7 +354,7 @@ export function sanitizeBrief(html: string, canvasHost?: string | null): string 
   try {
     const input = capTags(html.length > MAX_BRIEF_CHARS ? html.slice(0, MAX_BRIEF_CHARS) : html);
     const origin = canvasOrigin(canvasHost);
-    return sanitizeHtml(input, origin ? optionsFor(origin) : DEFAULT_OPTIONS);
+    return sanitizeHtml(input, optionsFor(origin)); // fresh per call: the helper strip keeps per-document state
   } catch {
     return "";
   }

@@ -10,32 +10,25 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
+import { isPastDue } from "@/lib/dueLabel";
+import { DueLabel } from "@/components/DueLabel";
+import { useMounted } from "@/components/useMounted";
+import { useLocalToday } from "@/components/useLocalToday";
 import { cleanCourse } from "@/lib/courseName";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { TYPE_LABEL, type ItemType } from "@/lib/itemType";
 import { EffortTag, EffortEditor, MarkDoneButton } from "@/components/calendar/parts";
 import type { CanvasRubricCriterion } from "@/lib/canvas";
 
-/** Relative, do-next voice for the due date — matches the rest of the app. */
-function dueLabel(iso: string | null, todayYmd: string): string {
-  if (!iso) return "No due date";
-  const d = parseYmd(ymd(new Date(iso)));
-  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
-  const date = `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
-  if (days < 0) return `Past due · ${date}`;
-  if (days === 0) return `Due today · ${date}`;
-  if (days === 1) return `Due tomorrow · ${date}`;
-  return `Due ${date}`;
-}
-
+/** `pastDue` comes from lib/dueLabel's isPastDue, read in the same zone as the
+ *  header's DueLabel (UTC before mount, the viewer's after), so the badge and the
+ *  "Past due · …" date never disagree and server and client render the same. */
 function submissionBadge(
   state: string | null,
   score: number | null,
   points: number | null,
   submittedAt: string | null,
-  iso: string | null,
-  todayYmd: string,
+  pastDue: boolean,
   manuallyDone = false
 ): { label: string; tone: Tone } {
   if (state === "graded") {
@@ -48,8 +41,7 @@ function submissionBadge(
   // The student's own checkoff (no Canvas submission): their word, labeled as such.
   if (manuallyDone) return { label: "Marked done by you", tone: "success" };
   // Not submitted — is it already late?
-  const overdue = iso ? parseYmd(ymd(new Date(iso))).getTime() < parseYmd(todayYmd).getTime() : false;
-  return overdue ? { label: "Not submitted — overdue", tone: "danger" } : { label: "Not submitted yet", tone: "warning" };
+  return pastDue ? { label: "Not submitted, past due", tone: "danger" } : { label: "Not submitted yet", tone: "warning" };
 }
 
 export function AssignmentPage(props: {
@@ -98,7 +90,12 @@ export function AssignmentPage(props: {
     if (demo) return; // demo: render from the seeded summary; no live fetch
     let cancelled = false;
     setLoadingPlan(true);
-    fetch(`/api/assignment/approach?id=${canvasId}`)
+    // The viewer's zone, so the prompt's "today" and due day match their calendar (#140).
+    let tz = "";
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+    } catch {}
+    fetch(`/api/assignment/approach?id=${canvasId}&tz=${encodeURIComponent(tz)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (cancelled || !body) return;
@@ -129,14 +126,17 @@ export function AssignmentPage(props: {
     };
   }, [canvasId, demo]);
 
-  const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, dueAt, todayYmd, manuallyDone);
+  const mounted = useMounted();
+  const localToday = useLocalToday(todayYmd);
+  const pastDue = isPastDue(dueAt, mounted ? { todayYmd: localToday } : { todayYmd, timeZone: "UTC" });
+  const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, pastDue, manuallyDone);
   const hasPlan = Boolean(approach) || steps.length > 0;
   // Manual checkoff — hidden in demo and once Canvas itself confirms a submission.
   const canMarkDone = !demo && !(submittedAt || submissionState === "submitted" || submissionState === "pending_review" || submissionState === "graded");
   // Phones (#39): a thumb-zone action bar carries Open in Canvas + Mark as done.
   const hasActionBar = Boolean(htmlUrl) || canMarkDone;
 
-  // "← Back" returns within the app when there's history, else falls back to the
+  // "Back" returns within the app when there's history, else falls back to the
   // dashboard (so a bookmarked / shared / refreshed deep link never dead-ends out).
   const goBack = () => {
     if (onBack) return onBack(); // demo: stay inside the demo shell
@@ -145,17 +145,20 @@ export function AssignmentPage(props: {
 
   return (
     <div className={`mx-auto max-w-3xl ${hasActionBar ? "max-md:pb-20" : ""}`}>
-      <button onClick={goBack} className="max-md:tap max-md:-my-3 inline-flex items-center text-[14px] font-medium text-muted transition-colors hover:text-ink">
-        ← Back
+      <button onClick={goBack} className="max-md:tap max-md:-my-3 inline-flex items-center gap-1 text-[14px] font-medium text-muted transition-colors hover:text-ink">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Back
       </button>
 
-      <p className="mt-4 text-[13px] font-semibold uppercase tracking-wider text-muted">
+      <p className="mt-4 text-[14px] font-medium text-muted">
         {TYPE_LABEL[type]} · {cleanCourse(courseName)}
       </p>
       <h1 className="mt-1 text-[28px] font-bold leading-tight tracking-tight text-ink">{name}</h1>
 
       <div className="mt-3 flex flex-wrap items-center gap-2.5 text-[13.5px] font-medium">
-        <span className="rounded-full bg-surface-soft px-3 py-1 text-ink">{dueLabel(dueAt, todayYmd)}</span>
+        <DueLabel iso={dueAt} format="long" todayYmd={todayYmd} empty="No due date" className="rounded-full bg-surface-soft px-3 py-1 text-ink" />
         {points != null && points > 0 && <span className="rounded-full bg-surface-soft px-3 py-1 text-ink">{points} pts</span>}
         {demo ? (
           <EffortTag hours={estimatedEffortHours} className="rounded-full bg-surface-soft px-3 py-1" />

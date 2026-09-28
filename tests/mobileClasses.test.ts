@@ -143,12 +143,17 @@ describe("StudyTools (thumb- and keyboard-friendly)", () => {
     const tab = openingTag(src, 'role="tab"');
     expect(hasTap(tab)).toBe(true);
     expect(tokens(tab).has("snap-start")).toBe(true);
-    expect(tokens(tab).has("focus-visible:ring-2")).toBe(true);
+    // #140: tabs take the GLOBAL focus outline (accent, 2px offset, globals.css);
+    // no local ring overriding it, and p-1 above leaves room for it.
+    expect(tokens(tab).has("focus-visible:ring-2")).toBe(false);
+    expect(tokens(tab).has("focus-visible:outline-none")).toBe(false);
+    expect(read("app/globals.css")).toMatch(/:where\([^)]*\[role="tab"\][^)]*\):focus-visible/);
   });
   it("tablist has arrow-key navigation with a roving tabindex", () => {
     expect(openingTag(src, 'role="tablist"')).toMatch(/onKeyDown=/);
-    expect(src).toContain('"ArrowRight"');
-    expect(src).toContain('"ArrowLeft"');
+    // #140: the shared roving-focus rule (Left/Right wrap, Home/End) — no local copy
+    expect(src).toMatch(/import \{ nextIndex \} from "@\/lib\/keyboardNav"/);
+    expect(src).toMatch(/nextIndex\(e\.key,/);
     expect(openingTag(src, 'role="tab"')).toMatch(/tabIndex=/);
   });
   it("answer buttons are full-width tap targets; Regenerate has a 44px hit area", () => {
@@ -185,10 +190,11 @@ describe("Classes (course menu, grid, class page)", () => {
     expect(src).toMatch(/useIsPhone\(\)/);
     expect(src).toMatch(/<Sheet\b/);
   });
-  it("course card titles wrap to two lines on phones and the pill row wraps below", () => {
+  it("course card titles clamp to two lines at every width (audit #141: no truncation) and the pill row wraps below", () => {
     const src = read("components/CourseGrid.tsx");
-    const title = tokens(openingTag(src, "<h3"));
-    for (const c of ["max-md:line-clamp-2", "max-md:whitespace-normal", "truncate"]) expect(title.has(c), c).toBe(true);
+    const title = tokens(openingTag(src, "<h2"));
+    expect(title.has("line-clamp-2"), "line-clamp-2").toBe(true);
+    expect(title.has("truncate"), "no truncate").toBe(false);
     expect(src).toContain("max-md:flex-wrap");
   });
   it("class page: header stacks on phones, tabs are tap targets, rows are at least 44px", () => {

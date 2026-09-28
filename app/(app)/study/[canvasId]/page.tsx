@@ -8,12 +8,13 @@ export const dynamic = "force-dynamic";
 
 // One test's study tools (plan / guide / practice), reached from the hub's
 // cards or the "Study" buttons across the app. A test that isn't an upcoming
-// quiz/exam anymore (done, past due, unknown id) falls back to the hub.
+// quiz/exam anymore (done, unknown id) falls back to the hub WITH `?missing=1`,
+// so the hub can say why instead of silently swapping pages (#140).
 export default async function StudyToolsPage({ params }: { params: Promise<{ canvasId: string }> }) {
   const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
   const { canvasId } = await params;
   const id = /^[0-9]+$/.test(canvasId) ? Number(canvasId) : null;
-  if (id === null) redirect("/study");
+  if (id === null) redirect("/study?missing=1");
 
   const data = await loadCalendarData(user.id);
   if (!data.connected) redirect("/study");
@@ -25,7 +26,7 @@ export default async function StudyToolsPage({ params }: { params: Promise<{ can
   const isStudyTarget = (it: (typeof data.items)[number]) => (it.type === "quiz" || it.type === "exam") && it.status !== "done";
 
   const assessment = data.items.find((it) => it.canvasId === id && isStudyTarget(it));
-  if (!assessment) redirect("/study");
+  if (!assessment) redirect("/study?missing=1");
 
   // "Next up" = first study target in the same ranked order the hub uses.
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i]));

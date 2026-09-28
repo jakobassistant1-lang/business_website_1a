@@ -5,6 +5,8 @@ import { decryptSecret } from "@/lib/crypto";
 import { itemType, isStudyType } from "@/lib/itemType";
 import { loadCalendarData } from "@/lib/calendarData";
 import { STUDY_PROMPT_KEYS } from "@/lib/settings";
+import { ymdInZone } from "@/lib/calendarDates";
+import { dayCount, safeTimeZone } from "@/lib/briefing";
 import {
   STUDY_PROMPT_VERSION,
   collectStudyMaterial,
@@ -27,7 +29,7 @@ const REVALIDATE_MS = 24 * 60 * 60_000;
 
 type Kind = "plan" | "guide" | "questions";
 
-// POST /api/study — { canvasId, kind, questionType?, force? } → cached-or-fresh
+// POST /api/study — { canvasId, kind, questionType?, force?, tz? } → cached-or-fresh
 // generation for one assessment. Single mutation-style endpoint because even a
 // "read" may generate (and persist) content.
 export async function POST(req: Request) {
@@ -38,6 +40,8 @@ export async function POST(req: Request) {
   const canvasId = Number(body.canvasId);
   const kind = body.kind as Kind;
   const force = body.force === true;
+  // The viewer's zone (validated; "UTC" fallback): due and today are read in it (#140).
+  const tz = safeTimeZone(body.tz);
   const questionType = kind === "questions" ? body.questionType : "";
   if (!Number.isInteger(canvasId) || !["plan", "guide", "questions"].includes(kind)) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
@@ -61,6 +65,7 @@ export async function POST(req: Request) {
     pointsPossible: a.pointsPossible,
     description: a.description,
     aiSummary: a.aiSummary,
+    timeZone: tz,
   };
   const qt = kind === "questions" ? (questionType as string) : "";
   const where = { userId_canvasId_kind_questionType: { userId: user.id, canvasId, kind, questionType: qt } };
@@ -80,9 +85,20 @@ export async function POST(req: Request) {
   if (kind === "plan") {
     const data = await loadCalendarData(user.id);
     const sessions = studySessionsFor(data.plan, canvasId);
+    // The plan prompt reads the effective study lead time and the due day in the
+    // viewer's zone (#140). "timing-v1" + the within-3-days flag + the zone are
+    // PLAN-ONLY hash parts: they regenerate the old "the test is imminent" plans
+    // once without touching cached guides/questions (STUDY_PROMPT_VERSION unchanged).
+    meta.studyLeadDays = data.items.find((it) => it.canvasId === canvasId)?.studyLeadDays ?? null;
+    const todayYmd = ymdInZone(new Date(), tz);
+    const days = a.dueAt ? dayCount(ymdInZone(a.dueAt, tz), todayYmd) : null;
     const hash = studyHash([
       STUDY_PROMPT_VERSION,
       "plan",
+      "timing-v1",
+      tz,
+      days != null && days <= 3 ? "within3" : "later",
+      meta.studyLeadDays,
       canvasId,
       instruction,
       a.dueAt?.toISOString(),
@@ -93,7 +109,7 @@ export async function POST(req: Request) {
     ]);
     if (!force && cached && cached.inputHash === hash) return serve(JSON.parse(cached.content), true, cached.updatedAt);
 
-    const gen = await generateStudyPlan(meta, sessions, instruction ?? undefined);
+    const gen = await generateStudyPlan(meta, sessions, instruction ?? undefined, todayYmd);
     if (!gen.ok) return NextResponse.json({ error: gen.reason }, { status: 502 });
     const content = JSON.stringify(gen.content);
     const row = await prisma.studyGeneration.upsert({

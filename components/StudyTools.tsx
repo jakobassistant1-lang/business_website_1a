@@ -11,13 +11,15 @@
 // caused the launch bug: plan+guide fired together, guide bumped the counter,
 // and the plan's response was discarded as "stale" — an eternal skeleton.
 
-import { useCallback, useEffect, useState } from "react";
-import { useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { fmtHours, StudyLeadEditor } from "@/components/calendar/parts";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
-import { TYPE_LABEL, shortCourse, dueLabel, sessionDateLabel, StudyChip } from "@/components/studyUi";
+import { NETWORK_ERROR } from "@/lib/messages";
+import { TYPE_LABEL, shortCourse, sessionDateLabel, StudyChip, ChevronIcon, ExternalIcon, viewerTimeZone } from "@/components/studyUi";
+import { nextIndex } from "@/lib/keyboardNav";
+import { DueLabel } from "@/components/DueLabel";
 import {
   QUESTION_TYPES,
   gradeShortAnswer,
@@ -47,7 +49,7 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
     const res = await fetch("/api/study", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, tz: viewerTimeZone() }),
     });
     const json = await res.json().catch(() => null);
     if (res.ok && json?.ok) return { ok: true, content: json.content as T, cached: json.cached === true };
@@ -62,21 +64,24 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
 const ERROR_TEXT: Record<string, string> = {
   no_key: "The AI service isn't configured.",
   timeout: "Generation took too long.",
-  http_error: "The AI service had a hiccup — try again in a minute.",
-  bad_response: "The AI answer came back unreadable — try again.",
+  http_error: "The AI service didn't answer. Try again in a minute.",
+  bad_response: "The AI answer came back unreadable. Try again.",
   not_connected: "Connect your Canvas account first.",
-  network: "Couldn't reach the server.",
+  network: NETWORK_ERROR,
 };
-const errText = (code: string | null) => (code && ERROR_TEXT[code]) || "Something went wrong generating this.";
+const errText = (code: string | null) => (code && ERROR_TEXT[code]) || "This couldn't be generated. Try again.";
 
 export function StudyTools({
   assessment,
   sessions,
   isNextUp,
+  todayYmd = "",
 }: {
   assessment: CalendarItem;
   sessions: { date: string; hours: number }[];
   isNextUp: boolean;
+  /** The server's day; optional because the "long-time" due format never reads it. */
+  todayYmd?: string;
 }) {
   const [tab, setTab] = useState<Tab>("plan");
   const [plan, setPlan] = useState<Gen<StudyPlanContent>>(IDLE);
@@ -135,10 +140,26 @@ export function StudyTools({
   // (wrapping) and Home/End move focus AND select; only the selected tab is in
   // the Tab order. The focused tab is scrolled into view inside the scroller.
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const tabIds = useId();
+  const tabId = (t: Tab) => `${tabIds}-tab-${t}`;
+  const panelId = (t: Tab) => `${tabIds}-panel-${t}`;
+
+  // Phones: the tab row is wider than the screen ("Your notes" starts off-screen).
+  // While there's more to the right, the row's right edge fades out so it reads
+  // as scrollable; the fade drops once the row is scrolled to its end.
+  const tabListRef = useRef<HTMLDivElement | null>(null);
+  const [moreRight, setMoreRight] = useState(false);
+  const updateMoreRight = useCallback(() => {
+    const el = tabListRef.current;
+    if (el) setMoreRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 6); // ≥6px: sub-pixel/snap slop isn't "more"
+  }, []);
+  useEffect(() => {
+    updateMoreRight();
+    window.addEventListener("resize", updateMoreRight);
+    return () => window.removeEventListener("resize", updateMoreRight);
+  }, [updateMoreRight, noteCount]);
   const onTabKey = (e: React.KeyboardEvent) => {
-    const i = TABS.findIndex((t) => t.id === tab);
-    const last = TABS.length - 1;
-    const next = e.key === "ArrowRight" ? (i === last ? 0 : i + 1) : e.key === "ArrowLeft" ? (i === 0 ? last : i - 1) : e.key === "Home" ? 0 : e.key === "End" ? last : null;
+    const next = nextIndex(e.key, TABS.findIndex((t) => t.id === tab), TABS.length); // the shared roving-focus rule
     if (next == null) return;
     e.preventDefault();
     setTab(TABS[next].id);
@@ -149,32 +170,49 @@ export function StudyTools({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/study" className="max-md:tap max-md:-my-3 inline-flex items-center text-sm font-medium text-accent hover:underline">
-        ← All tests
+      <Link href="/study" className="max-md:tap max-md:-my-3 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
+        <ChevronIcon dir="left" />
+        All tests
       </Link>
 
       {/* Compact test header — same violet language as the hub's hero */}
-      <div className="mt-3 rounded-xl bg-accent p-5 text-white shadow-card">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">{isNextUp ? "Next up" : "Studying for"}</p>
-        <p className="mt-1 text-xl font-bold leading-tight tracking-tight sm:text-2xl">{assessment.name}</p>
-        <p className="mt-0.5 text-sm text-white/80">
+      <div className="mt-3 rounded-xl bg-accent p-5 text-accent-on shadow-card">
+        <p className="text-[13px] font-semibold text-accent-on">{isNextUp ? "Next up" : "Studying for"}</p>
+        <h1 className="mt-1 text-xl font-bold leading-tight tracking-tight sm:text-2xl">{assessment.name}</h1>
+        <p className="mt-0.5 text-sm text-accent-on">
           {TYPE_LABEL[assessment.type]} · {shortCourse(assessment.courseName)}
         </p>
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          {assessment.dueAt && <StudyChip text={`Due ${dueLabel(assessment.dueAt)}`} />}
-          {assessment.pointsPossible != null && assessment.pointsPossible > 0 && <StudyChip text={`${assessment.pointsPossible} pts`} />}
+          {assessment.dueAt && (
+            <StudyChip>
+              Due <DueLabel iso={assessment.dueAt} format="long-time" todayYmd={todayYmd} />
+            </StudyChip>
+          )}
+          {assessment.pointsPossible != null && assessment.pointsPossible > 0 && <StudyChip>{assessment.pointsPossible} pts</StudyChip>}
           {assessment.htmlUrl && (
-            <a href={assessment.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap ml-auto inline-flex items-center rounded-full border border-white/40 px-3 py-1 text-xs font-medium max-md:px-4 max-md:text-[14px] text-white transition hover:bg-white/10">
-              Open in Canvas ↗
+            <a href={assessment.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap ml-auto inline-flex items-center gap-1 rounded-full border border-accent-on/40 px-3 py-1 text-xs font-medium max-md:px-4 max-md:text-[14px] text-accent-on transition hover:bg-accent-hover">
+              Open in Canvas
+              <ExternalIcon />
             </a>
           )}
         </div>
       </div>
 
       {/* Tabs — on phones a full-width, horizontally scrolling segmented control
-          (44px tabs, snap-aligned, no scrollbar; the cut-off last tab hints at
-          more). md+ unchanged. The scroller's p-1 leaves room for the focus ring. */}
-      <div className="mt-5 inline-flex max-w-full snap-x gap-1 overflow-x-auto rounded-full bg-surface-soft p-1 max-md:flex max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Study tools" onKeyDown={onTabKey}>
+          (44px tabs, snap-aligned, no scrollbar). While more tabs sit off to the
+          right, the row's right edge fades out (a mask, so it works on any
+          background) to show it scrolls. md+ unchanged. Tabs use the GLOBAL focus
+          outline (accent, 2px offset); the scroller's p-1 leaves room for it. */}
+      <div
+        ref={tabListRef}
+        onScroll={updateMoreRight}
+        className={`mt-5 inline-flex max-w-full snap-x gap-1 overflow-x-auto rounded-full bg-surface-soft p-1 max-md:flex max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden ${
+          moreRight ? "max-md:[-webkit-mask-image:linear-gradient(to_right,black_78%,transparent)] max-md:[mask-image:linear-gradient(to_right,black_78%,transparent)]" : ""
+        }`}
+        role="tablist"
+        aria-label="Study tools"
+        onKeyDown={onTabKey}
+      >
         {TABS.map((t, i) => (
           <button
             key={t.id}
@@ -182,11 +220,13 @@ export function StudyTools({
               tabRefs.current[i] = el;
             }}
             role="tab"
+            id={tabId(t.id)}
+            aria-controls={tab === t.id ? panelId(t.id) : undefined} // only the rendered panel exists
             aria-selected={tab === t.id}
             tabIndex={tab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
-            className={`max-md:tap shrink-0 snap-start whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring max-md:text-[15px] ${
-              tab === t.id ? "bg-accent text-white" : "text-muted hover:text-ink"
+            className={`max-md:tap shrink-0 snap-start whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition max-md:text-[15px] ${
+              tab === t.id ? "bg-accent text-accent-on" : "text-muted hover:text-ink"
             }`}
           >
             {t.id === "notes" && noteCount > 0 ? `${t.label} · ${noteCount}` : t.label}
@@ -194,7 +234,7 @@ export function StudyTools({
         ))}
       </div>
 
-      <div className="mt-4">
+      <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)} tabIndex={0} className="mt-4 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
         {tab === "plan" && <PlanSection plan={plan} assessment={assessment} sessions={sessions} totalHours={totalHours} onRetry={() => load("plan")} onRegen={() => load("plan", { force: true })} />}
         {tab === "guide" && <GuideSection guide={guide} stale={stale.guide} onRetry={() => load("guide")} onRegen={() => load("guide", { force: true })} />}
         {tab === "questions" && (
@@ -227,18 +267,18 @@ function SectionShell({ title, aside, children }: { title: string; aside?: React
 
 function Skeleton({ lines }: { lines: number }) {
   return (
-    <div className="space-y-2.5" aria-label="Generating…">
+    <div role="status" aria-live="polite" className="space-y-2.5">
       {Array.from({ length: lines }, (_, i) => (
-        <div key={i} className={`h-4 animate-pulse rounded-md bg-surface-soft ${i % 3 === 2 ? "w-2/3" : "w-full"}`} />
+        <div key={i} aria-hidden="true" className={`h-4 animate-pulse rounded-md bg-surface-soft ${i % 3 === 2 ? "w-2/3" : "w-full"}`} />
       ))}
-      <p className="pt-1 text-xs text-muted">Generating with AI — usually 5-20 seconds…</p>
+      <p className="pt-1 text-xs text-muted">Generating. This usually takes 5 to 20 seconds.</p>
     </div>
   );
 }
 
 function ErrorBox({ code, onRetry }: { code: string | null; onRetry: () => void }) {
   return (
-    <div className="rounded-[14px] border border-danger/30 bg-danger-soft/40 px-4 py-3">
+    <div role="alert" className="rounded-[14px] border border-danger/30 bg-danger-soft/40 px-4 py-3">
       <p className="text-sm text-danger">{errText(code)}</p>
       <button onClick={onRetry} className="max-md:tap mt-2 inline-flex items-center text-sm font-medium text-accent hover:underline">Try again</button>
     </div>
@@ -260,7 +300,7 @@ function SourceNote({ sparse, sources, excluded = [], noteCount = 0 }: { sparse:
     <div className="mt-4 space-y-1.5">
       {sparse ? (
         <p className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>
-          Limited Canvas material — generated from the test&apos;s own info. Check with your teacher on exact coverage.
+          Canvas has little material for this test, so this is built from its title and description. Check coverage with your teacher.
         </p>
       ) : basedOn ? (
         <p className="text-xs text-muted">
@@ -314,7 +354,7 @@ function PlanSection({
   const header =
     sessions.length > 0
       ? `Your plan reserves ${sessions.length} session${sessions.length === 1 ? "" : "s"} · ${fmtHours(totalHours)} total before the test.`
-      : "No study blocks are scheduled before this test — here's how to use the time you have.";
+      : "No study blocks are scheduled for this test yet. Here's how to use the time you have.";
 
   return (
     <SectionShell title="How to study this" aside={plan.status === "ready" ? <RegenButton onClick={onRegen} /> : undefined}>
@@ -453,7 +493,7 @@ function QuestionsSection({
             ))}
             {answered === questions.content!.questions.length && (
               <p className="rounded-[14px] bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-                {correct} / {questions.content!.questions.length} correct{correct === questions.content!.questions.length ? " — you're ready for this one." : " — review the explanations above, then try a new set."}
+                {correct} of {questions.content!.questions.length} correct. {correct === questions.content!.questions.length ? "You're ready for this one." : "Review the explanations above, then try a new set."}
               </p>
             )}
             <SourceNote sparse={questions.content!.sparse} sources={[]} excluded={questions.content!.excluded} noteCount={questions.content!.noteCount} />
@@ -464,11 +504,16 @@ function QuestionsSection({
   );
 }
 
+// After an answer the choices stay FOCUSABLE (aria-disabled, clicks ignored by
+// the `done` guard) so keyboard focus doesn't fall back to <body>. The result is
+// spelled out in text ("Correct answer" / "Your answer"), not by colour alone, and
+// the verdict sits in a status region that screen readers announce.
 function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number; onResult: (ok: boolean) => void }) {
   const [picked, setPicked] = useState<number | boolean | null>(null);
   const [saText, setSaText] = useState("");
   const [saResult, setSaResult] = useState<boolean | null>(null);
   const done = picked !== null || saResult !== null;
+  const inputId = useId();
 
   function answerMcq(i: number) {
     if (done || q.kind !== "multiple_choice") return;
@@ -488,9 +533,15 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
     onResult(ok);
   }
 
-  const verdict = (ok: boolean) => (
-    <p className={`mt-2 text-sm font-semibold ${ok ? "text-success" : "text-danger"}`}>{ok ? "Correct!" : "Not quite."}</p>
-  );
+  const gotIt = q.kind === "short_answer" ? saResult === true : picked === q.answer;
+  const choiceCls = (isAnswer: boolean, isPicked: boolean) =>
+    !done
+      ? "border-line bg-surface hover:border-accent-ring"
+      : isAnswer
+        ? "border-success bg-success-soft text-success"
+        : isPicked
+          ? "border-danger bg-danger-soft text-danger"
+          : "border-line-subtle bg-surface opacity-60";
 
   return (
     <div className="rounded-[14px] border border-line-subtle bg-surface-soft/50 px-4 py-3.5">
@@ -503,16 +554,10 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
           {q.choices.map((c, i) => {
             const isAnswer = i === q.answer;
             const isPicked = picked === i;
-            const cls = !done
-              ? "border-line bg-surface hover:border-accent-ring"
-              : isAnswer
-                ? "border-success bg-success-soft text-success"
-                : isPicked
-                  ? "border-danger bg-danger-soft text-danger"
-                  : "border-line-subtle bg-surface opacity-60";
             return (
-              <button key={i} onClick={() => answerMcq(i)} disabled={done} className={`max-md:tap block w-full rounded-[14px] border px-3.5 py-2 text-left text-sm transition max-md:py-2.5 max-md:text-[15px] ${cls}`}>
-                {c}
+              <button key={i} onClick={() => answerMcq(i)} aria-disabled={done || undefined} className={`max-md:tap flex w-full items-center justify-between gap-3 rounded-[14px] border px-3.5 py-2 text-left text-sm transition max-md:py-2.5 max-md:text-[15px] aria-disabled:cursor-default ${choiceCls(isAnswer, isPicked)}`}>
+                <span className="min-w-0">{c}</span>
+                {done && <AnswerMark isAnswer={isAnswer} isPicked={isPicked} />}
               </button>
             );
           })}
@@ -524,16 +569,10 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
           {([true, false] as const).map((v) => {
             const isAnswer = v === q.answer;
             const isPicked = picked === v;
-            const cls = !done
-              ? "border-line bg-surface hover:border-accent-ring"
-              : isAnswer
-                ? "border-success bg-success-soft text-success"
-                : isPicked
-                  ? "border-danger bg-danger-soft text-danger"
-                  : "border-line-subtle bg-surface opacity-60";
             return (
-              <button key={String(v)} onClick={() => answerTf(v)} disabled={done} className={`max-md:tap rounded-[14px] border px-5 py-2 text-sm font-medium transition max-md:w-full max-md:text-[15px] ${cls}`}>
+              <button key={String(v)} onClick={() => answerTf(v)} aria-disabled={done || undefined} className={`max-md:tap inline-flex items-center justify-center gap-2 rounded-[14px] border px-5 py-2 text-sm font-medium transition max-md:w-full max-md:justify-between max-md:text-[15px] aria-disabled:cursor-default ${choiceCls(isAnswer, isPicked)}`}>
                 {v ? "True" : "False"}
+                {done && <AnswerMark isAnswer={isAnswer} isPicked={isPicked} />}
               </button>
             );
           })}
@@ -542,9 +581,12 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
 
       {q.kind === "short_answer" && (
         <form onSubmit={checkSa} className="mt-2.5">
+          <label htmlFor={inputId} className="mb-1 block text-[13px] font-medium text-muted">
+            Your answer
+          </label>
           <div className="flex gap-2">
-            <input className="field flex-1" value={saText} onChange={(e) => setSaText(e.target.value)} placeholder="Type your answer…" disabled={done} />
-            <button type="submit" disabled={done || !saText.trim()} className="btn-primary max-md:tap text-sm">Check</button>
+            <input id={inputId} className="field flex-1" value={saText} onChange={(e) => setSaText(e.target.value)} placeholder="Type your answer" readOnly={done} />
+            <button type="submit" aria-disabled={done || !saText.trim() || undefined} className="btn-primary max-md:tap text-sm aria-disabled:cursor-not-allowed aria-disabled:opacity-50">Check</button>
           </div>
           {saResult !== null && (
             <p className="mt-2 text-[13px] text-muted">
@@ -555,12 +597,29 @@ function QuestionCard({ q, index, onResult }: { q: StudyQuestion; index: number;
         </form>
       )}
 
-      {done && (
-        <>
-          {verdict(q.kind === "multiple_choice" ? picked === q.answer : q.kind === "true_false" ? picked === q.answer : saResult === true)}
-          {q.explanation && <p className="mt-1 text-[13px] text-muted">{q.explanation}</p>}
-        </>
-      )}
+      {/* Always mounted, so the verdict is announced when it appears. */}
+      <div role="status">
+        {done && (
+          <>
+            <p className={`mt-2 text-sm font-semibold ${gotIt ? "text-success" : "text-danger"}`}>{gotIt ? "Correct." : "Not quite."}</p>
+            {q.explanation && <p className="mt-1 text-[13px] text-muted">{q.explanation}</p>}
+          </>
+        )}
+      </div>
     </div>
+  );
+}
+
+/** The text + icon that says which choice was right and which one you picked. */
+function AnswerMark({ isAnswer, isPicked }: { isAnswer: boolean; isPicked: boolean }) {
+  if (!isAnswer && !isPicked) return null;
+  const label = isAnswer && isPicked ? "Your answer, correct" : isAnswer ? "Correct answer" : "Your answer";
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" aria-hidden="true">
+        <path d={isAnswer ? "M5 12.5l4.5 4.5L19 7.5" : "M7 7l10 10M17 7L7 17"} strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {label}
+    </span>
   );
 }

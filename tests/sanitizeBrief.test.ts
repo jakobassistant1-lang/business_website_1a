@@ -229,6 +229,73 @@ describe("sanitizeBrief: normal brief formatting survives", () => {
   });
 });
 
+describe("sanitizeBrief: Canvas screen-reader-only helpers are removed (#140)", () => {
+  // Canvas's real external-link markup: the link text, then a decorative icon
+  // wrapper holding an SVG and hidden text for screen readers.
+  const CANVAS_LINK =
+    '<a class="external" href="https://example.test/syllabus" target="_blank"><span>Syllabus</span>' +
+    '<span class="external_link_icon" style="margin-inline-start: 5px; display: inline-block;" role="presentation">' +
+    '<svg viewBox="0 0 1920 1920"><path d="M1226 0v112"></path></svg>' +
+    '<span class="screenreader-only">Links to an external site.</span></span></a>';
+
+  it("an external link keeps its text but loses the glued-on 'Links to an external site.'", () => {
+    const out = sanitizeBrief(`<p>Read the ${CANVAS_LINK} first.</p>`, HOST);
+    expect(out).toBe(`<p>Read the <a href="https://example.test/syllabus" ${EXT}><span>Syllabus</span></a> first.</p>`);
+    expect(out).not.toContain("Links to an external site");
+  });
+
+  it("a bare screenreader-only span is dropped with its text, even without the icon wrapper", () => {
+    expect(sanitizeBrief('<a href="https://x.test">Rubric<span class="screenreader-only">Links to an external site.</span></a>')).toBe(
+      `<a href="https://x.test" ${EXT}>Rubric</a>`
+    );
+  });
+
+  it("only Canvas's own helper SPANS are dropped (screenreader-only, ui-helper-hidden-accessible, external_link_icon)", () => {
+    for (const cls of ["screenreader-only", "ui-helper-hidden-accessible", "external_link_icon", "Screenreader-Only"]) {
+      expect(sanitizeBrief(`<p>a<span class="x ${cls} y">Links to an external site.</span>b</p>`), cls).toBe("<p>ab</p>");
+    }
+  });
+
+  it("a teacher's own sr-only / visually-hidden text is kept (not Canvas classes)", () => {
+    expect(sanitizeBrief('<p>Read <span class="sr-only">chapter 4</span> and <span class="visually-hidden">5</span>.</p>')).toBe(
+      "<p>Read <span>chapter 4</span> and <span>5</span>.</p>"
+    );
+  });
+
+  it("a Canvas class on a non-span (div, p) is kept", () => {
+    expect(sanitizeBrief('<div class="screenreader-only"><p>Write 500 words.</p></div>')).toBe("<div><p>Write 500 words.</p></div>");
+  });
+
+  // The #140 review's three probes.
+  it("probe 1 — a helper class wrapping the whole brief does not delete the brief", () => {
+    const brief = '<span class="screenreader-only"><h2>Essay 2</h2><p>Write 500 words on the reading.</p><ul><li>Cite two sources</li></ul></span>';
+    expect(sanitizeBrief(brief)).toBe("<span><h2>Essay 2</h2><p>Write 500 words on the reading.</p><ul><li>Cite two sources</li></ul></span>");
+    expect(sanitizeBrief('<span class="sr-only"><p>Whole brief here.</p></span>')).toBe("<span><p>Whole brief here.</p></span>");
+  });
+
+  it("probe 2 — an unclosed helper span can't swallow the rest of the brief", () => {
+    expect(sanitizeBrief('<p>Intro<span class="screenreader-only">Links to an external site.</p><p>Rest of the brief.</p><p>Due Friday.</p>')).toContain(
+      "<p>Rest of the brief.</p><p>Due Friday.</p>"
+    );
+    expect(sanitizeBrief('<p>Intro <span class="sr-only">note</p><p>Rest of the brief.</p>')).toContain("<p>Rest of the brief.</p>");
+    const tail = "Then answer all six questions on the worksheet and bring it to class. ".repeat(3);
+    expect(sanitizeBrief(`<span class="screenreader-only">${tail}`)).toContain("Then answer all six questions");
+  });
+
+  it("probe 3 — nested inside a link, only the helper goes; the link and its text stay", () => {
+    expect(sanitizeBrief(`<ul><li>${CANVAS_LINK}</li></ul>`)).toBe(`<ul><li><a href="https://example.test/syllabus" ${EXT}><span>Syllabus</span></a></li></ul>`);
+  });
+
+  it("look-alike classes are NOT stripped and class is still never output", () => {
+    expect(sanitizeBrief('<span class="screenreader-onlyish">keep</span><span class="only">me</span>')).toBe("<span>keep</span><span>me</span>");
+  });
+
+  it("the strip only removes output: dangerous content next to it is still sanitized", () => {
+    const out = sanitizeBrief('<span class="screenreader-only">x</span><img src="https://x.test/a.png" onerror="alert(1)"><a href="javascript:alert(1)">go</a>');
+    expect(out).toBe('<img src="https://x.test/a.png" /><a>go</a>');
+  });
+});
+
 describe("sanitizeBrief: never throws, bounded work", () => {
   it("malformed / unclosed input", () => {
     expect(() => sanitizeBrief('<div><p>unclosed <b>bold <a href="https://x')).not.toThrow();

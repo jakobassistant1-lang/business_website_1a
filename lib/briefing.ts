@@ -7,6 +7,7 @@
 import type { ScoredAssignment } from "./priority";
 import { deterministicIntensity, resolveIntensity, type Intensity, type WeekLoad } from "./intensity";
 import { geminiPost, GEMINI_URL, geminiKey } from "./geminiFetch";
+import { ymd, parseYmd } from "./calendarDates";
 
 const TIMEOUT_MS = 6000;
 
@@ -153,37 +154,83 @@ export async function generatePeriodBriefing(
   return runGemini(`${instruction}\n\n${buildPeriodPrompt(input)}`, 320);
 }
 
+// --- Shared trust rules for the student-facing coach lines (#140) -------------
+// The Study hub line once called a quiz 15 days out "imminent" and opened with
+// "Hey Calvin, take a deep breath!". These rules live in the prompt BUILDERS (not
+// only in admin-editable instructions) so a custom instruction can't drop them.
+
+/** The viewer's IANA zone as sent by the client (`Intl.DateTimeFormat().
+ *  resolvedOptions().timeZone`), or "UTC" when it's missing or not a zone this
+ *  runtime knows. Prompts compute "today" and due days in THIS zone, so a quiz
+ *  due 11:59 PM ET on Oct 12 reaches the model as Oct 12, not UTC's Oct 13. */
+export function safeTimeZone(tz: unknown): string {
+  if (typeof tz !== "string" || !tz || tz.length > 64) return "UTC";
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return tz;
+  } catch {
+    return "UTC";
+  }
+}
+
+/** Whole calendar days from `todayYmd` to `dueYmd` (both "YYYY-MM-DD"). */
+export function dayCount(dueYmd: string, todayYmd: string): number {
+  return Math.round((parseYmd(dueYmd).getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
+}
+
+/** "today" · "tomorrow" · "in 15 days" · "3 days ago". */
+export function inDays(n: number): string {
+  if (n === 0) return "today";
+  if (n === 1) return "tomorrow";
+  if (n === -1) return "yesterday";
+  return n > 0 ? `in ${n} days` : `${-n} days ago`;
+}
+
+export const TIMING_RULE =
+  "Timing: use the exact day count or date given (\"in 15 days\", \"tomorrow\", \"by Oct 12\"). Never call anything " +
+  "imminent, urgent, last-minute or \"right around the corner\" unless it is due within 3 days.";
+
+export const NO_GREETING_RULE =
+  "Open with the concrete next action. No greeting, no name, and no reassurance clichés " +
+  "(no \"take a deep breath\", \"don't worry\", \"you've got this\", \"no need to stress\").";
+
 // --- Study hub orientation (the /study page header) --------------------------
-// A warm, 2-3 sentence orientation for the Study hub, written for a student who
-// may feel OVERWHELMED by their upcoming tests: reassure, point them to what to
-// study first, and remind them prep is already broken into small spaced sessions.
+// One sentence: the concrete first move for the test at the top of the list,
+// with its real timing. Calm by being specific, not by reassuring.
 
 export const STUDY_HUB_INSTRUCTION =
   "You are Navo's study coach, speaking to a student on their Study page, where their upcoming tests and " +
-  "quizzes are listed in priority order. Write ONE warm, inviting sentence (max ~30 words) for a student who may " +
-  "feel overwhelmed: reassure them they don't have to study everything at once, and point them to the test at the " +
-  "TOP of their list to start with. Be specific to their actual top test when given, but do NOT invent tests, " +
-  "dates, or details. Warm and encouraging, never alarming. Plain English. No markdown, no lists, no headings.";
+  "quizzes are listed in priority order. Write ONE plain sentence (max ~30 words) that tells them the concrete " +
+  "next action for the test at the TOP of their list (for example: \"Start the Unit 3 quiz prep, due in 15 days, " +
+  "by writing out the key formulas from memory.\"). Be specific to their actual top test, but do NOT invent " +
+  "tests, dates, topics, or details. Plain English. No markdown, no lists, no headings.";
 
 export interface StudyHubItem {
   name: string;
   courseName: string;
   type: string; // quiz | exam
-  dueLabel: string; // "in 3 days", "tomorrow"
+  dueLabel: string; // "in 3 days", "tomorrow" — the exact day count
+  dueYmd?: string; // the due date itself, when the caller has it
 }
 export interface StudyHubInput {
-  firstName: string;
+  firstName: string; // kept for callers; deliberately NOT sent (it invited "Hey <name>!" openers)
   count: number; // total upcoming tests/quizzes
   top: StudyHubItem[]; // priority-ordered (first = the next-up / featured test)
+  todayYmd?: string; // defaults to the server's day
 }
 
 export function buildStudyHubPrompt(input: StudyHubInput): string {
-  const lines = [`Student: ${input.firstName || "there"}. Upcoming tests/quizzes: ${input.count}.`];
+  const today = input.todayYmd ?? ymd(new Date());
+  const lines = [`Today is ${today}. Upcoming tests/quizzes: ${input.count}.`];
   if (input.top.length) {
     lines.push("Their tests, in the priority order we've already set (study #1 first):");
-    input.top.forEach((t, i) => lines.push(`${i + 1}. ${t.name} (${t.courseName}) [${t.type}] — due ${t.dueLabel}`));
+    input.top.forEach((t, i) =>
+      lines.push(`${i + 1}. ${t.name} (${t.courseName}) [${t.type}] — due ${t.dueLabel}${t.dueYmd ? ` (${t.dueYmd})` : ""}`),
+    );
   }
-  lines.push("Write the study-page orientation.");
+  lines.push(NO_GREETING_RULE);
+  lines.push(TIMING_RULE);
+  lines.push("Write the study-page line.");
   return lines.join("\n");
 }
 
@@ -201,18 +248,56 @@ export interface AssignmentDescInput {
   courseName: string;
   type: string; // assignment | quiz | exam | other
   points: number | null;
-  dueLabel: string | null;
+  dueLabel: string | null; // "YYYY-MM-DD" (gets an exact day count) or already words ("Mon, Oct 12")
+  /** The Canvas brief as PLAIN text. undefined = the caller didn't supply it;
+   *  "" or a few words = Canvas really has little to go on. */
+  brief?: string | null;
+  todayYmd?: string; // defaults to the server's day
+}
+
+/** Under this many characters the brief is "short": the model is told to say it's guessing. */
+export const SHORT_BRIEF_CHARS = 200;
+const BRIEF_PROMPT_CHARS = 4000;
+export const SHORT_BRIEF_PREFIX = "The brief is short, so this is a guess:";
+
+/** The facts block + the trust rules shared by the one-line description and the
+ *  "how to approach" plan. Pure (unit-tested). */
+export function assignmentFacts(i: AssignmentDescInput): string {
+  const today = i.todayYmd ?? ymd(new Date());
+  const bits = [`Assignment: "${i.name}" in ${i.courseName}.`, `Type: ${i.type}.`];
+  if (i.points != null) bits.push(`Worth ${i.points} points.`);
+  if (i.dueLabel) {
+    bits.push(/^\d{4}-\d{2}-\d{2}$/.test(i.dueLabel) ? `Due ${i.dueLabel} (${inDays(dayCount(i.dueLabel, today))}).` : `Due ${i.dueLabel}.`);
+  }
+  bits.push(`Today is ${today}.`);
+  const lines = [bits.join(" ")];
+
+  const brief = typeof i.brief === "string" ? i.brief.replace(/\s+/g, " ").trim() : null;
+  if (brief === null) {
+    lines.push(
+      "Only the title is given. State the first move directly (\"Start by…\"). Don't describe what the assignment " +
+        "\"likely\" or \"probably\" involves, and don't invent requirements, page numbers or rubric criteria.",
+    );
+  } else if (brief.length >= SHORT_BRIEF_CHARS) {
+    lines.push(`Assignment brief from Canvas:\n${brief.slice(0, BRIEF_PROMPT_CHARS)}`);
+    lines.push(
+      "You have the brief, so state the approach directly, starting with the first action (\"Start by…\"). No " +
+        "hedging words (\"likely\", \"probably\", \"may involve\"). Use only requirements the brief states.",
+    );
+  } else {
+    if (brief) lines.push(`Assignment brief from Canvas (short): ${brief}`);
+    lines.push(`The brief is too thin to know the details. Begin with exactly "${SHORT_BRIEF_PREFIX}" and then give the approach.`);
+  }
+  lines.push(NO_GREETING_RULE);
+  lines.push(TIMING_RULE);
+  return lines.join("\n");
 }
 
 export function buildDescriptionPrompt(i: AssignmentDescInput): string {
-  const bits = [`Assignment: "${i.name}" in ${i.courseName}.`, `Type: ${i.type}.`];
-  if (i.points != null) bits.push(`Worth ${i.points} points.`);
-  if (i.dueLabel) bits.push(`Due ${i.dueLabel}.`);
   return (
-    bits.join(" ") +
-    "\nIn ONE plain-English sentence, describe what this assignment most likely involves and how a " +
-    "student should approach it. Be concrete but do NOT invent specific page numbers, prompts, or " +
-    "requirements you cannot know from the title. No preamble, no markdown."
+    assignmentFacts(i) +
+    "\nIn ONE plain-English sentence, say what the student will do and how to start. Be concrete but do NOT " +
+    "invent specific page numbers, prompts, or requirements you cannot know. No preamble, no markdown."
   );
 }
 
@@ -226,14 +311,20 @@ export async function generateAssignmentDescription(input: AssignmentDescInput):
 export const DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION =
   "You are Navo's study coach. For the assignment below, reply with ONLY a JSON object " +
   '{"approach": string, "steps": string[]}. "approach" is 1-2 plain-English sentences on how to ' +
-  'tackle it well. "steps" is 3-5 short, concrete sub-steps in the order to do them (each a short ' +
-  "imperative phrase). Be specific to the assignment's title and type, but do NOT invent precise " +
+  "tackle it, opening with the first concrete action (\"Start by…\"), never with \"This assignment likely " +
+  'involves…". "steps" is 3-5 short, concrete sub-steps in the order to do them (each a short ' +
+  "imperative phrase). Be specific to the assignment's brief, title and type, but do NOT invent precise " +
   "requirements, page numbers, or rubric criteria you cannot know. No markdown.";
 
 export type AssignmentPlan = { approach: string | null; steps: string[]; source: "gemini" | "none" };
 
+/** The full "how to approach" prompt: instruction + facts + trust rules. Pure. */
+export function buildAssignmentPlanPrompt(input: AssignmentDescInput, instruction: string = DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION): string {
+  return `${instruction}\n\n${assignmentFacts(input)}`;
+}
+
 export async function generateAssignmentPlan(input: AssignmentDescInput, instruction: string = DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION): Promise<AssignmentPlan> {
-  const res = await runGemini(`${instruction}\n\n${buildDescriptionPrompt(input)}`, 320, true);
+  const res = await runGemini(buildAssignmentPlanPrompt(input, instruction), 320, true);
   if (!res.ok) return { approach: null, steps: [], source: "none" };
   try {
     const parsed = JSON.parse(res.text) as { approach?: unknown; steps?: unknown };
