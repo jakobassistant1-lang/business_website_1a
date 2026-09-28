@@ -195,7 +195,7 @@ describe("Classes (course menu, grid, class page)", () => {
     const title = tokens(openingTag(src, "<h2"));
     expect(title.has("line-clamp-2"), "line-clamp-2").toBe(true);
     expect(title.has("truncate"), "no truncate").toBe(false);
-    expect(src).toContain("max-md:flex-wrap");
+    expect(src).toContain("flex-wrap");
   });
   it("class page: header stacks on phones, tabs are tap targets, rows are at least 44px", () => {
     const src = read("components/CoursePage.tsx");

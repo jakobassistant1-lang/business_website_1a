@@ -149,11 +149,11 @@ export function StudyView({
           <StudyChip>{fSessions.length > 0 ? `${fmtHours(totalHours)} of study scheduled` : "No study blocks scheduled yet"}</StudyChip>
         </div>
         <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
-          <Link href={`/study/${featured.canvasId}`} className="max-md:tap inline-flex items-center justify-center rounded-[14px] bg-accent-on px-5 py-2.5 text-center text-sm font-semibold text-accent transition hover:bg-accent-on/90">
+          <Link href={`/study/${featured.canvasId}`} className="max-md:tap focus-visible:outline-accent-on inline-flex items-center justify-center rounded-[14px] bg-accent-on px-5 py-2.5 text-center text-sm font-semibold text-accent transition hover:bg-accent-on/90">
             Study
           </Link>
           {featured.htmlUrl && (
-            <a href={featured.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-accent-on/40 px-5 py-2.5 text-center text-sm font-medium text-accent-on transition hover:bg-accent-hover">
+            <a href={featured.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap focus-visible:outline-accent-on inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-accent-on/40 px-5 py-2.5 text-center text-sm font-medium text-accent-on transition hover:bg-accent-hover">
               Open in Canvas
               <ExternalIcon />
             </a>

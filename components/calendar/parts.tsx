@@ -423,7 +423,7 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
                   disabled={busy}
                   onClick={() => save(h)}
                   aria-pressed={active}
-                  className={`tap rounded-full px-2 text-[15px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-white" : "bg-surface-soft text-ink"}`}
+                  className={`tap rounded-full px-2 text-[15px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-accent-on" : "bg-surface-soft text-ink"}`}
                 >
                   {fmtHours(h)}
                 </button>
@@ -453,7 +453,7 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
                     key={h}
                     disabled={busy}
                     onClick={() => save(h)}
-                    className={`rounded-full px-2.5 py-1 text-[13px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-white" : "bg-surface-soft text-ink hover:bg-line-subtle"}`}
+                    className={`rounded-full px-2.5 py-1 text-[13px] font-medium transition disabled:opacity-50 ${active ? "bg-accent text-accent-on" : "bg-surface-soft text-ink hover:bg-line-subtle"}`}
                   >
                     {fmtHours(h)}
                   </button>

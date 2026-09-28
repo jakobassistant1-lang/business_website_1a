@@ -11,6 +11,7 @@
 
 import Link from "next/link";
 import { relativeDay } from "@/lib/calendarDates";
+import { useMounted } from "@/components/useMounted";
 import { cleanCourse } from "@/lib/courseName";
 import { EffortTag } from "@/components/calendar/parts";
 import { CourseMenu, ExcludedCoursesRow } from "@/components/CourseExclude";
@@ -70,6 +71,7 @@ export function CourseGrid({ data, todayYmd, demo = false }: { data: CalendarDat
 }
 
 function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, anchor, demo }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; meta: CourseMeta | undefined; rank: Map<number, number>; todayYmd: string; anchor?: string; demo?: boolean }) {
+  const mounted = useMounted(); // announcement day: UTC pre-mount, viewer's zone after (hydration-safe)
   const overdue = items.filter((it) => it.status === "overdue").length;
   const normal = items.filter((it) => it.status === "normal");
   // Do-next: the most important RANKED item in this class, not the soonest by
@@ -85,8 +87,10 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
     >
       {/* The title may take two lines at every width (never "MANAGERIAL …"); on
           phones the grade pill + menu wrap below it instead of squeezing it. */}
-      <div className="flex items-start justify-between gap-3 max-md:flex-wrap max-md:gap-y-2">
-        <div className="min-w-0 flex-1">
+      {/* Wraps at every width: the title keeps at least 12rem, so in a narrow grid column the
+          grade pill + menu drop below it instead of squeezing "MANAGERIAL ECONOMICS" into a clamp. */}
+      <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
+        <div className="min-w-0 flex-1 basis-[12rem]">
           {/* Always two lines tall (`2lh`), so a one-line title's "Do next"
               row lines up with its neighbours'. */}
           <h2 className="line-clamp-2 min-h-[2lh] break-words text-[17px] font-semibold leading-snug text-ink">
@@ -129,7 +133,7 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
         <div className="mt-4 flex items-center gap-2 text-[13px] text-muted" title={meta.latestAnnouncement.title}>
           <BellIcon />
           <span className="min-w-0 flex-1 truncate">{meta.latestAnnouncement.title}</span>
-          <span className="shrink-0">{relativeDay(meta.latestAnnouncement.postedAt, todayYmd)}</span>
+          <span className="shrink-0">{relativeDay(meta.latestAnnouncement.postedAt, todayYmd, mounted ? undefined : "UTC")}</span>
         </div>
       )}
 

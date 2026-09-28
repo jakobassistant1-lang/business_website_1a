@@ -27,10 +27,10 @@
   --on-accent: 255 255 255;
 
   /* feedback */
-  --success: 47 158 107;      --success-soft: 216 240 227;
+  --success: 31 122 82;       --success-soft: 216 240 227; /* #1f7a52 — 4.6:1 on the soft fill (was 2.8:1) */
   /* "warning" retired from amber → calm violet-grey (on-theme, AA on its soft bg) */
   --warning: 95 87 117;       --warning-soft: 239 236 245;
-  --danger: 214 69 61;        --danger-soft: 246 220 218;
+  --danger: 192 57 47;        --danger-soft: 246 220 218; /* #c0392f — 4.6:1 on the soft fill (was 3.4:1) */
 
   /* charcoal sidebar — two-tone anchor, dark in BOTH themes */
   --sidebar: 22 22 25;        /* #161619 */

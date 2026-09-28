@@ -560,7 +560,7 @@ function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }:
         // No rationale line at any width: the chips already say why.
         <div className="rounded-b-2xl bg-accent px-5 py-5 text-accent-on md:px-8 md:py-7">
           <p className="text-[12px] font-semibold uppercase tracking-wider text-accent-on">Focus now</p>
-          <Link href={href} className="mt-1.5 block max-w-full text-left">
+          <Link href={href} className="mt-1.5 block max-w-full text-left focus-visible:outline-accent-on">
             <span className="block text-[1.4rem] font-bold leading-[1.12] tracking-tight md:text-[2.15rem]">{focusItem.name}</span>
           </Link>
           <div className="mt-3 flex items-center justify-between gap-3 md:block">
@@ -573,7 +573,7 @@ function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }:
               {focusItem.pointsPossible != null && focusItem.pointsPossible > 0 && <Chip>{focusItem.pointsPossible} pts</Chip>}
             </div>
             <div className="shrink-0 md:mt-5">
-              <Link href={href} className="inline-block rounded-[14px] bg-accent-on px-5 py-3 text-[15px] font-semibold text-accent transition hover:bg-accent-on/90 md:py-2.5">
+              <Link href={href} className="inline-block rounded-[14px] bg-accent-on px-5 py-3 text-[15px] font-semibold text-accent transition focus-visible:outline-accent-on hover:bg-accent-on/90 md:py-2.5">
                 Open<span className="sr-only"> {focusItem.name}</span>
               </Link>
             </div>

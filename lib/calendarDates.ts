@@ -129,8 +129,8 @@ export function countdownLabel(dueAtIso: string, todayYmd: string, timeZone?: st
 /** Human "time since" for an announcement's posted date, day-granularity so it
  *  stays hydration-safe (pass the server-computed `todayYmd`): Today / Yesterday /
  *  "{n}d ago" within a week / "Mon D" beyond. Future dates clamp to Today. */
-export function relativeDay(postedAtIso: string, todayYmd: string): string {
-  const d = parseYmd(ymd(new Date(postedAtIso)));
+export function relativeDay(postedAtIso: string, todayYmd: string, timeZone?: string): string {
+  const d = parseYmd(ymdInZone(postedAtIso, timeZone));
   const days = Math.round((parseYmd(todayYmd).getTime() - d.getTime()) / 86_400_000);
   if (days <= 0) return "Today";
   if (days === 1) return "Yesterday";

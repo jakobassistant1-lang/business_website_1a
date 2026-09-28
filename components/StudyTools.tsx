@@ -190,7 +190,7 @@ export function StudyTools({
           )}
           {assessment.pointsPossible != null && assessment.pointsPossible > 0 && <StudyChip>{assessment.pointsPossible} pts</StudyChip>}
           {assessment.htmlUrl && (
-            <a href={assessment.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap ml-auto inline-flex items-center gap-1 rounded-full border border-accent-on/40 px-3 py-1 text-xs font-medium max-md:px-4 max-md:text-[14px] text-accent-on transition hover:bg-accent-hover">
+            <a href={assessment.htmlUrl} target="_blank" rel="noreferrer" className="max-md:tap focus-visible:outline-accent-on ml-auto inline-flex items-center gap-1 rounded-full border border-accent-on/40 px-3 py-1 text-xs font-medium max-md:px-4 max-md:text-[14px] text-accent-on transition hover:bg-accent-hover">
               Open in Canvas
               <ExternalIcon />
             </a>
