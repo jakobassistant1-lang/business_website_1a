@@ -18,7 +18,9 @@ const nextConfig = {
       destination: "https://app.navolearning.com/:path*",
       permanent: true,
     });
-    return [toNavo("pinnavel.com"), toNavo("www.pinnavel.com")];
+    // The page is titled "Classes" (2026-09-28) but lives at /courses; catch the guessed URL.
+    const classes = { source: "/classes", destination: "/courses", permanent: false };
+    return [toNavo("pinnavel.com"), toNavo("www.pinnavel.com"), classes];
   },
 };
 
