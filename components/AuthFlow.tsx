@@ -104,7 +104,7 @@ export function AuthFlow({
           <div className="mb-5">
             <a
               href="/api/auth/google/start"
-              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring max-md:tap"
+              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent max-md:tap"
             >
               <GoogleGlyph />
               Continue with Google
@@ -371,7 +371,7 @@ function SignupForm({ role, inviteConfigured, onDone }: { role: Role; inviteConf
           <input
             ref={(el) => { refs.current.tos = el; }} id="tos" name="tos" type="checkbox"
             checked={tos} onChange={(e) => { setTos(e.target.checked); if (e.target.checked) setErrors((prev) => ({ ...prev, tos: undefined })); }}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-accent focus:ring-accent-ring" {...a11y("tos")}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-accent focus:ring-accent" {...a11y("tos")}
           />
           <label htmlFor="tos">
             I agree to the <LegalLinks />

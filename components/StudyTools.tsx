@@ -314,7 +314,7 @@ function SourceNote({ sparse, sources, excluded = [], noteCount = 0 }: { sparse:
         </p>
       )}
       {excluded.length > 0 && (
-        <p className="text-xs text-faint">
+        <p className="text-xs text-muted">
           Not included (judged off-topic): {excluded.slice(0, 4).join(" · ")}
           {excluded.length > 4 ? " · …" : ""}
         </p>

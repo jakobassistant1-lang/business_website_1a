@@ -70,7 +70,7 @@ export function FirstSyncProgress() {
   return (
     <div className="mt-4">
       {ORDER.map((s, i) => (
-        <p key={s} className={`flex items-center gap-2.5 py-1 text-[14.5px] ${i < stageIdx ? "text-muted" : i === stageIdx ? "font-medium text-ink" : "text-faint"}`}>
+        <p key={s} className={`flex items-center gap-2.5 py-1 text-[14.5px] ${i < stageIdx ? "text-muted" : i === stageIdx ? "font-medium text-ink" : "text-muted"}`}>
           {i < stageIdx ? (
             <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-success" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 8.5 6.5 12 13 4.5" /></svg>
           ) : i === stageIdx && !error ? (

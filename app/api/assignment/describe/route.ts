@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { formatDue } from "@/lib/dueLabel";
+import { ymdInZone } from "@/lib/calendarDates";
+import { safeTimeZone } from "@/lib/briefing";
 import { requireActiveUser } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { itemType } from "@/lib/itemType";
@@ -18,7 +21,9 @@ export async function GET(req: Request) {
   const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const id = Number(new URL(req.url).searchParams.get("id"));
+  const params = new URL(req.url).searchParams;
+  const id = Number(params.get("id"));
+  const tz = safeTimeZone(params.get("tz")); // UTC when the client doesn't send its zone
   if (!Number.isInteger(id)) return NextResponse.json({ text: null });
 
   const a = await prisma.assignment.findFirst({
@@ -39,7 +44,8 @@ export async function GET(req: Request) {
     courseName: a.course.name,
     type: itemType(a.submissionType, a.name),
     points: a.pointsPossible,
-    dueLabel: a.dueAt ? a.dueAt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : null,
+    // Server zone is UTC on Vercel — read the day in the student's zone (sent as `tz`, validated) like the other AI routes.
+    dueLabel: a.dueAt ? formatDue(a.dueAt.toISOString(), "short", { todayYmd: ymdInZone(new Date(), tz), timeZone: tz }) : null,
   });
 
   if (result.ok) {

@@ -205,7 +205,7 @@ export function StandupLog({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-faint">{label}</dt>
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted">{label}</dt>
       <dd className="mt-0.5 whitespace-pre-wrap break-words text-ink">{value}</dd>
     </div>
   );

@@ -193,7 +193,7 @@ export function ExcludeCourseAction({ courseCanvasId }: { courseCanvasId: number
       onClick={exclude}
       disabled={busy}
       title="Hides this class's work from your plan and lists. Undo anytime."
-      className="max-md:tap inline-flex items-center gap-1.5 text-[13px] font-medium text-faint transition hover:text-muted disabled:opacity-50"
+      className="max-md:tap inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition hover:text-ink disabled:opacity-50"
     >
       <EyeOffIcon className="h-3.5 w-3.5" />
       {busy ? "Excluding…" : "Exclude from my plan"}
