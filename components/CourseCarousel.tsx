@@ -1,6 +1,6 @@
 "use client";
 
-// Phone-only (< md) Classes carousel: one course card centred per screen, the
+// Phone-only (< md) Classes carousel: one class card centred per screen, the
 // neighbours' edges peeking in (dimmed) so it's obvious you can swipe, and
 // Instagram-style dots below. CourseGrid renders this AND the md+ grid, with CSS
 // (`md:hidden` / `hidden md:grid`) choosing — so there's no first-paint swap —
@@ -93,7 +93,7 @@ export function CourseCarousel({ children }: { children: ReactNode }) {
         aria-roledescription="carousel"
         aria-label="Your classes"
         onKeyDown={onKeyDown}
-        className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth py-2 [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-ring motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
+        className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth py-2 [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
       >
         <div aria-hidden className={SPACER} />
         {slides.map((slide, i) => (
@@ -129,7 +129,7 @@ export function CourseCarousel({ children }: { children: ReactNode }) {
               aria-label={dotLabel(i, n)}
               aria-current={i === active ? "true" : undefined}
               // 44px hit areas overlap (-mx-2.5) so the dots sit 24px apart, like a photo carousel.
-              className="tap -mx-2.5 flex items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
+              className="tap -mx-2.5 flex items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <span aria-hidden className={`h-2 w-2 rounded-full transition-colors duration-200 motion-reduce:transition-none ${i === active ? "bg-accent" : "bg-line"}`} />
             </button>

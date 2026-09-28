@@ -20,11 +20,11 @@
 import { useEffect, useState } from "react";
 import { useLocalToday } from "@/components/useLocalToday";
 import Link from "next/link";
-import { countdownLabel } from "@/lib/calendarDates";
 import { shortCourse } from "@/lib/courseName";
-import { CalendarView } from "@/components/CalendarView";
+import { CalendarView, writeCalendarPlace } from "@/components/CalendarView";
 import { TimelineView } from "@/components/TimelineView";
 import { StudyWeekStrip } from "@/components/StudyWeekStrip";
+import { DueLabel } from "@/components/DueLabel";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import { DEFAULT_PLAN_VIEW, isPlanView, resolvePlanView, type PlanViewKey } from "@/lib/planView";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
@@ -74,6 +74,8 @@ export function PlanSurface({ data, todayYmd: serverToday, demo = false, initial
 
   function pick(v: View) {
     setView(v);
+    // Leaving the Calendar: its ?view=&date= no longer describe the page.
+    if (v !== "calendar" && !demo) writeCalendarPlace(null);
     try {
       localStorage.setItem("sp_plan_view", v);
     } catch {
@@ -150,21 +152,24 @@ function PlanList({ data, todayYmd, isPhone = false }: { data: CalendarData; tod
   );
 }
 
-// The phone's #1 row wears the dashboard Focus card's violet — the same
-// background/text/chip classes (DashboardView FocusTodayCard + Chip), nothing else.
-const FOCUS_CHIP = "bg-white/15 text-white ring-1 ring-inset ring-white/25";
+// The phone's #1 row wears the dashboard Focus card's violet — the same chip as
+// DashboardView's Chip and studyUi's StudyChip. Text is the accent's own
+// foreground token at FULL strength (never literal white, never /80): white turns
+// dark in dark mode, and a faded foreground or a translucent chip fill drops
+// under 4.5:1 in light mode (#141).
+const FOCUS_CHIP = "bg-accent-hover text-accent-on ring-1 ring-inset ring-accent-on/25";
 
 function PlanRow({ item, n, todayYmd, focus = false }: { item: CalendarItem; n: number; todayYmd: string; focus?: boolean }) {
   const overdue = item.status === "overdue";
   return (
     <Link
       href={itemHref(item.canvasId, item.type, item.status)}
-      className={`card tap flex items-center gap-3.5 px-3 py-3 transition ${focus ? "border-accent bg-accent text-white" : "hover:bg-surface-soft"}`}
+      className={`card tap flex items-center gap-3.5 px-3 py-3 transition ${focus ? "border-accent bg-accent text-accent-on" : "hover:bg-surface-soft"}`}
     >
       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${focus ? FOCUS_CHIP : "bg-accent-soft text-accent"}`}>{n}</span>
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-[16px] font-medium ${focus ? "text-white" : "text-ink"}`}>{item.name}</span>
-        <span className={`block truncate text-[13px] ${focus ? "text-white/80" : "text-muted"}`}>
+        <span className={`block truncate text-[16px] font-medium ${focus ? "text-accent-on" : "text-ink"}`}>{item.name}</span>
+        <span className={`block truncate text-[13px] ${focus ? "text-accent-on" : "text-muted"}`}>
           {TYPE_LABEL[item.type]} · {shortCourse(item.courseName)}
           {item.pointsPossible != null && item.pointsPossible > 0 ? ` · ${item.pointsPossible} pts` : ""}
         </span>
@@ -172,7 +177,7 @@ function PlanRow({ item, n, todayYmd, focus = false }: { item: CalendarItem; n: 
       {overdue ? (
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[12px] font-medium ${focus ? FOCUS_CHIP : "bg-warning-soft text-warning"}`}>Past due</span>
       ) : item.dueAt ? (
-        <span className={`shrink-0 text-[14px] font-medium ${focus ? "text-white" : "text-ink"}`}>{countdownLabel(item.dueAt, todayYmd)}</span>
+        <DueLabel iso={item.dueAt} format="countdown" todayYmd={todayYmd} className={`shrink-0 text-[14px] font-medium ${focus ? "text-accent-on" : "text-ink"}`} />
       ) : null}
     </Link>
   );

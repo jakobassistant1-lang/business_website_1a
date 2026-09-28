@@ -477,7 +477,7 @@ function PhoneGlance({ intensity, done, total, className = "" }: { intensity: In
 // `accent-on` token (white in light mode, ink in dark — white on the lighter
 // dark-mode violet is only 3.5:1).
 function Chip({ children }: { children: ReactNode }) {
-  return <span className="rounded-full bg-accent-on/15 px-2.5 py-1 text-xs font-medium text-accent-on ring-1 ring-inset ring-accent-on/25">{children}</span>;
+  return <span className="rounded-full bg-accent-hover px-2.5 py-1 text-xs font-medium text-accent-on ring-1 ring-inset ring-accent-on/25">{children}</span>;
 }
 
 // A held (just-checked-off) row keeps its place but reads as finished, with the
@@ -559,7 +559,7 @@ function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }:
         // Phones: compact — smaller padding and title, chips inline with Open.
         // No rationale line at any width: the chips already say why.
         <div className="rounded-b-2xl bg-accent px-5 py-5 text-accent-on md:px-8 md:py-7">
-          <p className="text-[12px] font-semibold uppercase tracking-wider text-accent-on/80">Focus now</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-accent-on">Focus now</p>
           <Link href={href} className="mt-1.5 block max-w-full text-left">
             <span className="block text-[1.4rem] font-bold leading-[1.12] tracking-tight md:text-[2.15rem]">{focusItem.name}</span>
           </Link>

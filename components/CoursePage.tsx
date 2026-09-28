@@ -1,15 +1,16 @@
 "use client";
 
-// One class's full assignment list — opened from a Course overview card.
+// One class's full assignment list — opened from a card on the Classes page.
 // Overdue / Upcoming / Completed sections; each row navigates to that item's
 // detail leaf (/assignment/:id, or /study/:id for exams & quizzes).
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import Link from "next/link";
-import { ymd, parseYmd, WEEKDAYS_FULL, MONTHS_SHORT } from "@/lib/calendarDates";
+import { useRouter } from "next/navigation";
 import { cleanCourse } from "@/lib/courseName";
 import { GradePill } from "@/components/GradePill";
 import { GradeCalculator } from "@/components/GradeCalculator";
+import { DueLabel } from "@/components/DueLabel";
 import type { CourseGrade } from "@/lib/courseGrade";
 import type { GradeInput } from "@/lib/gradeCalc";
 import type { CalendarItem } from "@/lib/calendarData";
@@ -17,17 +18,35 @@ import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import { EffortTag, DoneCheck } from "@/components/calendar/parts";
 import { ExcludeCourseAction, ExcludedBanner } from "@/components/CourseExclude";
 
-function dueLabel(iso: string | null, todayYmd: string): string {
-  if (!iso) return "No due date";
-  const d = parseYmd(ymd(new Date(iso)));
-  const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
-  const date = `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
-  if (days === 0) return `Today · ${date}`;
-  if (days === 1) return `Tomorrow · ${date}`;
-  return date;
+export type ClassTab = "assignments" | "grades";
+const TABS: { id: ClassTab; label: string }[] = [
+  { id: "assignments", label: "Assignments" },
+  { id: "grades", label: "Grades" },
+];
+
+/** True when "back" would land on a page of this app. `history.length > 1`
+ *  alone can't tell (a new tab opened from an email has two entries), so also
+ *  require an in-app origin: a same-origin referrer, or — because client-side
+ *  navigation never updates `document.referrer` — a document first loaded at a
+ *  different path than this one (we got here through an in-app link). */
+function canGoBackInApp(): boolean {
+  if (window.history.length <= 1) return false;
+  try {
+    if (document.referrer && new URL(document.referrer).origin === window.location.origin) return true;
+  } catch {
+    /* malformed referrer → fall through */
+  }
+  const nav = performance.getEntriesByType?.("navigation")[0];
+  if (!nav) return false;
+  try {
+    return new URL(nav.name).pathname !== window.location.pathname;
+  } catch {
+    return false;
+  }
 }
 
-export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd, demo = false, courseCanvasId, excludedCourse = false }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string; demo?: boolean; courseCanvasId?: number; excludedCourse?: boolean }) {
+export function CoursePage({ courseName, grade, active, completed, rankedIds, todayYmd, demo = false, courseCanvasId, excludedCourse = false, initialTab = "assignments", onBack }: { courseName: string; grade?: CourseGrade; active: CalendarItem[]; completed: CalendarItem[]; rankedIds: number[]; todayYmd: string; demo?: boolean; courseCanvasId?: number; excludedCourse?: boolean; initialTab?: ClassTab; onBack?: () => void }) {
+  const router = useRouter();
   // Do-next ordering — by importance rank, never by due date.
   const rank = new Map(rankedIds.map((id, i) => [id, i] as const));
   const byRank = (a: CalendarItem, b: CalendarItem) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9);
@@ -43,12 +62,53 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
     groupWeight: it.groupWeight,
   }));
   const hasGradeables = gradeItems.some((i) => i.pointsPossible > 0);
-  const [tab, setTab] = useState<"assignments" | "grades">("assignments");
+  const [tab, setTab] = useState<ClassTab>(initialTab);
+
+  // The active tab lives in the URL (`?tab=grades`) so a refresh or a shared link
+  // keeps the place. replaceState: switching tabs isn't a history step.
+  const selectTab = (t: ClassTab) => {
+    setTab(t);
+    if (demo) return; // the demo frame owns its own URL
+    const url = new URL(window.location.href);
+    if (t === "assignments") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", t);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
+  // Tablist keyboard model (WAI-ARIA tabs, automatic activation — the same as
+  // StudyTools): Left/Right wrap, Home/End jump; focus AND selection move, and
+  // only the selected tab is in the Tab order.
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onTabKey = (e: KeyboardEvent) => {
+    const i = TABS.findIndex((t) => t.id === tab);
+    const last = TABS.length - 1;
+    const next = e.key === "ArrowRight" ? (i === last ? 0 : i + 1) : e.key === "ArrowLeft" ? (i === 0 ? last : i - 1) : e.key === "Home" ? 0 : e.key === "End" ? last : null;
+    if (next == null) return;
+    e.preventDefault();
+    selectTab(TABS[next].id);
+    tabRefs.current[next]?.focus();
+  };
+
+  // "← Back" (a stable label, server and client): to wherever the student came
+  // from inside the app (Dashboard, Plan, Classes…), else the link's own href,
+  // /courses — never out of the app. Mirrors AssignmentPage. Only the BEHAVIOUR
+  // is decided after mount; the text never flips.
+  const [inAppBack, setInAppBack] = useState(false);
+  useEffect(() => setInAppBack(!demo && canGoBackInApp()), [demo]);
+  const goBack = (e: MouseEvent) => {
+    if (onBack) {
+      e.preventDefault();
+      onBack();
+    } else if (inAppBack) {
+      e.preventDefault();
+      router.back();
+    }
+  };
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/dashboard" className="max-md:tap max-md:-my-3 inline-flex items-center text-[14px] font-medium text-accent hover:underline">
-        ← Dashboard
+      <Link href="/courses" onClick={goBack} className="max-md:tap max-md:-my-3 inline-flex items-center text-[14px] font-medium text-accent hover:underline">
+        ← Back
       </Link>
       {/* Phones: the grade pill sits under the (wrapping) title so it never clips. */}
       <div className="mt-3 flex items-start justify-between gap-4 max-md:flex-col max-md:gap-2">
@@ -72,30 +132,39 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
       {excludedCourse && courseCanvasId != null && <ExcludedBanner courseCanvasId={courseCanvasId} />}
 
       {hasGradeables && (
-        <div role="tablist" aria-label="Course view" className="mt-5 inline-flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
-          {(["assignments", "grades"] as const).map((t) => (
+        <div role="tablist" aria-label="Class view" onKeyDown={onTabKey} className="mt-5 inline-flex gap-1 rounded-lg border border-line-subtle bg-surface-soft p-1">
+          {TABS.map((t, i) => (
             <button
-              key={t}
+              key={t.id}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
+              type="button"
               role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className={`max-md:tap rounded-md px-3.5 py-1.5 text-sm font-medium capitalize transition max-md:px-5 max-md:text-[15px] ${tab === t ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"}`}
+              id={`class-tab-${t.id}`}
+              aria-selected={tab === t.id}
+              aria-controls="class-tabpanel"
+              tabIndex={tab === t.id ? 0 : -1}
+              onClick={() => selectTab(t.id)}
+              className={`max-md:tap rounded-md px-3.5 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-soft max-md:px-5 max-md:text-[15px] ${tab === t.id ? "bg-accent text-accent-on" : "text-muted hover:bg-surface"}`}
             >
-              {t}
+              {t.label}
             </button>
           ))}
         </div>
       )}
 
-      {hasGradeables && tab === "grades" ? (
-        <GradeCalculator items={gradeItems} official={grade} />
-      ) : (
-        <div className="mt-7 space-y-7">
-          {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger demo={demo} />}
-          <Section title="Upcoming" items={upcoming} todayYmd={todayYmd} empty="Nothing upcoming — you're clear." demo={demo} />
-          {completed.length > 0 && <Section title="Completed" items={completed} todayYmd={todayYmd} done demo={demo} />}
-        </div>
-      )}
+      <div {...(hasGradeables ? { role: "tabpanel", id: "class-tabpanel", "aria-labelledby": `class-tab-${tab}` } : {})}>
+        {hasGradeables && tab === "grades" ? (
+          <GradeCalculator items={gradeItems} official={grade} />
+        ) : (
+          <div className="mt-7 space-y-7">
+            {overdue.length > 0 && <Section title="Overdue" items={overdue} todayYmd={todayYmd} danger demo={demo} />}
+            <Section title="Upcoming" items={upcoming} todayYmd={todayYmd} empty="Nothing upcoming — you're clear." demo={demo} />
+            {completed.length > 0 && <Section title="Completed" items={completed} todayYmd={todayYmd} done demo={demo} />}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -136,12 +205,19 @@ function Section({
 }
 
 function Row({ item, todayYmd, done, demo }: { item: CalendarItem; todayYmd: string; done?: boolean; demo?: boolean }) {
+  // Stretched-link row (#141): the done circle is a SIBLING of the <Link> (never a
+  // control inside a link), raised with `relative z-10`; the link's `after:`
+  // overlay makes the rest of the row open the item.
   return (
-    <Link href={itemHref(item.canvasId, item.type, item.status)} className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60">
+    <div className="relative flex items-center gap-3 rounded-lg px-3 py-3.5 transition hover:bg-surface-soft/60 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-accent">
       {!done ? (
-        <DoneCheck canvasId={item.canvasId} disabled={demo} />
+        <span className="relative z-10 flex shrink-0">
+          <DoneCheck canvasId={item.canvasId} disabled={demo} />
+        </span>
       ) : item.manuallyDone ? (
-        <DoneCheck canvasId={item.canvasId} checked disabled={demo} />
+        <span className="relative z-10 flex shrink-0">
+          <DoneCheck canvasId={item.canvasId} checked disabled={demo} />
+        </span>
       ) : (
         // Canvas-verified submission — done-ness isn't the student's claim, so no un-check.
         <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-2 border-success/40 text-success" aria-hidden title="Submitted in Canvas">
@@ -150,17 +226,31 @@ function Row({ item, todayYmd, done, demo }: { item: CalendarItem; todayYmd: str
           </svg>
         </span>
       )}
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate text-[16px] ${done ? "text-muted line-through" : "font-medium text-ink"}`}>{item.name}</span>
-        <span className="flex items-center gap-1.5 truncate text-[13px] text-muted">
-          <span className="truncate">
-            {TYPE_LABEL[item.type]}
-            {item.pointsPossible != null && item.pointsPossible > 0 ? ` · ${item.pointsPossible} pts` : ""}
+      <Link
+        href={itemHref(item.canvasId, item.type, item.status)}
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none"
+      >
+        <span className="min-w-0 flex-1">
+          <span className={`line-clamp-2 break-words text-[16px] ${done ? "text-muted line-through" : "font-medium text-ink"}`}>{item.name}</span>
+          <span className="flex items-center gap-1.5 truncate text-[13px] text-muted">
+            <span className="truncate">
+              {TYPE_LABEL[item.type]}
+              {item.pointsPossible != null && item.pointsPossible > 0 ? ` · ${item.pointsPossible} pts` : ""}
+            </span>
+            <EffortTag hours={item.estimatedEffortHours} className="text-[13px]" />
           </span>
-          <EffortTag hours={item.estimatedEffortHours} className="text-[13px]" />
         </span>
-      </span>
-      <span className={`shrink-0 text-[14px] font-medium ${done ? "text-success" : "text-ink"}`}>{done ? "Done" : dueLabel(item.dueAt, todayYmd)}</span>
-    </Link>
+        {done ? (
+          <span className="shrink-0 text-[14px] font-medium text-success">Done</span>
+        ) : (
+          // Phones: the compact "Wed 9/30" so the title keeps its room; md+: the
+          // full "Wednesday, Sep 30". Both rendered, CSS picks (no first-paint swap).
+          <span className="shrink-0 text-right text-[14px] font-medium text-ink">
+            <DueLabel iso={item.dueAt} format="short" todayYmd={todayYmd} empty="No due date" className="md:hidden" />
+            <DueLabel iso={item.dueAt} format="long-plain" todayYmd={todayYmd} empty="No due date" className="max-md:hidden" />
+          </span>
+        )}
+      </Link>
+    </div>
   );
 }

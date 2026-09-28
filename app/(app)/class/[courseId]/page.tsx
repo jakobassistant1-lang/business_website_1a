@@ -6,11 +6,13 @@ import { CoursePage } from "@/components/CoursePage";
 
 export const dynamic = "force-dynamic";
 
-// /class/[courseId] — the full assignment list for one class, opened from the
-// dashboard's "By class" overview cards.
-export default async function ClassDetailPage({ params }: { params: Promise<{ courseId: string }> }) {
+// /class/[courseId] — the full assignment list for one class, opened from a
+// card on the Classes page. `?tab=grades` opens the grade calculator (the tab
+// lives in the URL so a refresh keeps the place).
+export default async function ClassDetailPage({ params, searchParams }: { params: Promise<{ courseId: string }>; searchParams: Promise<{ tab?: string | string[] }> }) {
   const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
   const { courseId } = await params;
+  const { tab } = await searchParams;
   const id = Number(courseId);
   if (!Number.isFinite(id)) notFound();
 
@@ -23,6 +25,9 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ co
   if (active.length === 0 && completed.length === 0 && !meta) notFound();
 
   const courseName = (active[0] ?? completed[0])?.courseName ?? meta!.name;
+  // Parsed here, not by a helper exported from CoursePage: that's a client
+  // module, and a server component can't call its functions.
+  const initialTab = tab === "grades" ? "grades" : "assignments";
   return (
     <CoursePage
       courseName={courseName}
@@ -33,6 +38,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ co
       todayYmd={ymd(new Date())}
       courseCanvasId={id}
       excludedCourse={meta?.excluded ?? false}
+      initialTab={initialTab}
     />
   );
 }

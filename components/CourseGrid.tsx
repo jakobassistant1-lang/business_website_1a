@@ -1,17 +1,22 @@
 "use client";
 
-// The "By class" overview grid — its own surface (the Courses page). Each card
-// leads with the student's real Canvas grade (the thing the old page lacked and
-// Canvas itself buries), then the do-next item, and links into the course's full
-// assignment list at /class/[id].
+// The "By class" overview grid — its own surface (the Classes page, /courses).
+// Each card leads with the student's real Canvas grade (the thing the old page
+// lacked and Canvas itself buries), then the do-next item, and links into the
+// class's full assignment list at /class/[id].
+//
+// Card = a `div.relative`; the title <Link> stretches over the whole card with an
+// `after:` overlay, and the class menu is a SIBLING (`relative z-10`) — never a
+// control nested inside a link (#141).
 
 import Link from "next/link";
-import { countdownLabel, relativeDay } from "@/lib/calendarDates";
+import { relativeDay } from "@/lib/calendarDates";
 import { cleanCourse } from "@/lib/courseName";
 import { EffortTag } from "@/components/calendar/parts";
 import { CourseMenu, ExcludedCoursesRow } from "@/components/CourseExclude";
 import { CourseCarousel } from "@/components/CourseCarousel";
 import { GradePill } from "@/components/GradePill";
+import { DueLabel } from "@/components/DueLabel";
 import type { CalendarData, CalendarItem, CourseMeta } from "@/lib/calendarData";
 
 function BellIcon() {
@@ -74,16 +79,21 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
   const next = normal.filter((it) => rank.has(it.canvasId)).sort((a, b) => rank.get(a.canvasId)! - rank.get(b.canvasId)!)[0];
 
   return (
-    <Link
-      href={`/class/${courseCanvasId}`}
+    <div
       data-tour={anchor}
-      className="card group flex flex-col p-5 transition hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
+      className="card group relative flex flex-col p-5 transition hover:border-accent/40 hover:shadow-md has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-accent"
     >
-      {/* Phones: the title may take two lines and the grade pill + menu wrap
-          below it, instead of the pill squeezing the title to a few letters. */}
+      {/* The title may take two lines at every width (never "MANAGERIAL …"); on
+          phones the grade pill + menu wrap below it instead of squeezing it. */}
       <div className="flex items-start justify-between gap-3 max-md:flex-wrap max-md:gap-y-2">
-        <div className="min-w-0">
-          <h3 className="truncate text-[17px] font-semibold leading-snug text-ink max-md:line-clamp-2 max-md:whitespace-normal max-md:break-words">{cleanCourse(courseName)}</h3>
+        <div className="min-w-0 flex-1">
+          {/* Always two lines tall (`2lh`), so a one-line title's "Do next"
+              row lines up with its neighbours'. */}
+          <h2 className="line-clamp-2 min-h-[2lh] break-words text-[17px] font-semibold leading-snug text-ink">
+            <Link href={`/class/${courseCanvasId}`} className="after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:outline-none">
+              {cleanCourse(courseName)}
+            </Link>
+          </h2>
           <p className="mt-1 text-[12px] font-medium">
             {overdue > 0 ? (
               <span className="inline-flex items-center gap-1.5 text-muted">
@@ -96,7 +106,7 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
             )}
           </p>
         </div>
-        <span className="flex shrink-0 items-center gap-1.5">
+        <span className="relative z-10 flex shrink-0 items-center gap-1.5">
           {meta && <GradePill grade={meta.grade} />}
           {!demo && <CourseMenu courseCanvasId={courseCanvasId} />}
         </span>
@@ -107,7 +117,7 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
           <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">Do next</p>
           <div className="mt-0.5 flex items-baseline gap-2">
             <span className="min-w-0 truncate text-[16px] font-medium text-ink">{next.name}</span>
-            {next.dueAt && <span className="shrink-0 text-[14px] font-medium text-accent">{countdownLabel(next.dueAt, todayYmd)}</span>}
+            {next.dueAt && <DueLabel iso={next.dueAt} format="countdown" todayYmd={todayYmd} className="shrink-0 text-[14px] font-medium text-accent" />}
             <EffortTag hours={next.estimatedEffortHours} className="shrink-0 self-center" />
           </div>
         </div>
@@ -125,8 +135,10 @@ function CourseCard({ courseCanvasId, courseName, items, meta, rank, todayYmd, a
 
       <div className="mt-4 flex items-center justify-between border-t border-line-subtle pt-3 text-[13px]">
         <span className="text-muted">{normal.length} upcoming</span>
-        <span className="font-medium text-accent group-hover:underline">View all →</span>
+        <span className="font-medium text-accent group-hover:underline" aria-hidden>
+          View all →
+        </span>
       </div>
-    </Link>
+    </div>
   );
 }

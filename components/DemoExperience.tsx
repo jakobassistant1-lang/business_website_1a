@@ -56,7 +56,7 @@ const NAV: { section: string; label: string; icon: string; first: DemoView }[] =
   { section: "dashboard", label: "Dashboard", icon: "M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z", first: "dashboard" },
   { section: "plan", label: "Plan", icon: "M8 6h12M8 12h12M8 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01", first: "plan-list" },
   { section: "study", label: "Study", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15ZM4 19.5A2.5 2.5 0 0 0 6.5 22H20M8 7h8", first: "study" },
-  { section: "courses", label: "Courses", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z", first: "courses" },
+  { section: "courses", label: "Classes", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z", first: "courses" },
 ];
 const sectionOf = (v: DemoView): string => (v.startsWith("plan") ? "plan" : v);
 
@@ -475,8 +475,8 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
                 )}
                 {view === "courses" && (
                   <div className="mx-auto max-w-7xl">
-                    <h1 className="text-[28px] font-bold tracking-tight text-ink">Courses</h1>
-                    <p className="mt-1 text-[15px] text-muted">Your classes at a glance — open one for its full assignment list.</p>
+                    <h1 className="text-[28px] font-bold tracking-tight text-ink">Classes</h1>
+                    <p className="mt-1 text-[15px] text-muted">Your grade and what to do next in each class. Open one to see all its work.</p>
                     <div className="mt-7">
                       <CourseGrid data={data} todayYmd={todayYmd} demo />
                     </div>
@@ -607,8 +607,10 @@ function DemoDetail({
   if (detail.kind === "course") {
     const active = data.items.filter((it) => it.courseCanvasId === detail.id);
     const completed = data.completed.filter((it) => it.courseCanvasId === detail.id);
-    const courseName = [...active, ...completed][0]?.courseName ?? "Course";
+    const courseName = [...active, ...completed][0]?.courseName ?? "Class";
     const grade = data.courses.find((c) => c.canvasId === detail.id)?.grade;
+    // onBack: the demo blocks real links, so "← Back" closes this detail and
+    // returns to the demo view it was opened from.
     return (
       <CoursePage
         courseName={courseName}
@@ -618,6 +620,7 @@ function DemoDetail({
         rankedIds={data.ranked.map((r) => r.canvasId)}
         todayYmd={todayYmd}
         demo
+        onBack={onBack}
       />
     );
   }

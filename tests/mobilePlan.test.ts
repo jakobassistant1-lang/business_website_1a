@@ -99,11 +99,11 @@ describe("PlanSurface — separated rows, violet #1 on phones, study strip on to
     expect(row.match(/<Link[\s\S]*?className=\{`([^`]*)`\}/)?.[1].split(/\s+/)).toEqual(expect.arrayContaining(["card", "tap", "flex"]));
   });
 
-  it("the phone's first row carries the Focus card's violet classes", () => {
+  it("the phone's first row carries the Focus card's violet, with the accent's own foreground token (#141 dark-mode contrast)", () => {
     expect(src).toContain("focus={isPhone && i === 0}");
     const row = src.slice(src.indexOf("function PlanRow("));
-    expect(row).toContain('focus ? "border-accent bg-accent text-white"');
-    expect(src).toContain('const FOCUS_CHIP = "bg-white/15 text-white ring-1 ring-inset ring-white/25"');
+    expect(row).toContain('focus ? "border-accent bg-accent text-accent-on"');
+    expect(src).toContain('const FOCUS_CHIP = "bg-accent-hover text-accent-on ring-1 ring-inset ring-accent-on/25"');
   });
 });
 

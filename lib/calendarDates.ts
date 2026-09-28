@@ -91,10 +91,13 @@ export function daysInMonth(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 }
 
-/** The {start, days} window the period-coach API should summarize for a view. */
+/** The {start, days} window a Calendar view shows (and the period-coach API
+ *  summarizes). Week is a ROLLING 7 days starting on the anchor day — today + 6
+ *  on the "Today" button, like the "Study this week" strip — not Mon–Sun, which
+ *  on a Sunday evening showed six past days (#141). Month stays calendar-shaped. */
 export function rangeForView(view: "day" | "week" | "month", anchor: Date): { start: Date; days: number } {
   if (view === "day") return { start: startOfDay(anchor), days: 1 };
-  if (view === "week") return { start: weekStart(anchor), days: 7 };
+  if (view === "week") return { start: startOfDay(anchor), days: 7 };
   return { start: new Date(anchor.getFullYear(), anchor.getMonth(), 1), days: daysInMonth(anchor) };
 }
 
@@ -166,8 +169,8 @@ export function rangeLabel(view: "day" | "week" | "month", anchor: Date, now: Da
     return `${WEEKDAYS[anchor.getDay()]}, ${MONTHS_LONG[anchor.getMonth()]} ${anchor.getDate()}`;
   }
   if (view === "month") return `${MONTHS_LONG[anchor.getMonth()]} ${anchor.getFullYear()}`;
-  const s = weekStart(anchor);
-  const e = addDays(s, 6);
+  const { start: s, days } = rangeForView("week", anchor);
+  const e = addDays(s, days - 1);
   const left = `${MONTHS_SHORT[s.getMonth()]} ${s.getDate()}`;
   const right = s.getMonth() === e.getMonth() ? `${e.getDate()}` : `${MONTHS_SHORT[e.getMonth()]} ${e.getDate()}`;
   return `${left} – ${right}`;

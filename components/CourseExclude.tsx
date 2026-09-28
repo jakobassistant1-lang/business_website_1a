@@ -1,7 +1,7 @@
 "use client";
 
-// Course exclusion UI (#60): the kebab menu on course cards, the "Excluded from
-// your plan" row under the class grid, and the course-page banner/action. All
+// Class exclusion UI (#60): the kebab menu on class cards, the "Excluded from
+// your plan" list under the class grid, and the class-page banner/action. All
 // call PATCH /api/course/exclude; the data chokepoint (lib/calendarData /
 // lib/plan) does the rest, so every surface updates together on refresh.
 
@@ -32,10 +32,11 @@ async function setExcluded(courseCanvasId: number, excluded: boolean): Promise<b
   }
 }
 
-/** The ⋯ menu on a course card. Lives inside the card <Link>, so every click
- *  stops propagation — opening the menu never navigates. On phones (#39) the
- *  popover is a bottom Sheet; React events from the portal still bubble to the
- *  wrapper span below, so taps inside the sheet never reach the card link. */
+/** The ⋯ menu on a class card. A SIBLING of the card's stretched title link
+ *  (`relative z-10` in CourseGrid, #141), never inside it. Clicks still stop at
+ *  the wrapper span: on phones (#39) the popover is a bottom Sheet whose portal
+ *  events bubble through React to here, and they must not reach the carousel
+ *  slide or the card underneath. */
 export function CourseMenu({ courseCanvasId }: { courseCanvasId: number }) {
   const router = useRouter();
   const phone = useIsPhone();
@@ -124,30 +125,34 @@ export function ExcludedCoursesRow({ courses, demo = false }: { courses: { canva
   };
 
   return (
-    <div className="mt-4 rounded-lg border border-dashed border-line px-4 py-2.5">
-      {courses.map((c) => (
-        <div key={c.canvasId} className="flex items-center justify-between gap-3 py-1">
-          <p className="min-w-0 truncate text-[13.5px] text-muted">
-            <EyeOffIcon className="mr-1.5 inline h-3.5 w-3.5 align-[-2px]" />
-            Excluded from your plan: <span className="text-ink">{cleanCourse(c.name)}</span>
-          </p>
-          {!demo && (
-            <button
-              type="button"
-              onClick={() => include(c.canvasId)}
-              disabled={busyId != null}
-              className="max-md:tap inline-flex shrink-0 items-center justify-end text-[13.5px] font-medium text-accent hover:underline disabled:opacity-50"
-            >
-              {busyId === c.canvasId ? "Including…" : "Include again"}
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
+    <section aria-labelledby="excluded-classes-heading" className="mt-4 rounded-lg border border-dashed border-line px-4 py-2.5">
+      <h2 id="excluded-classes-heading" className="flex items-center gap-1.5 py-1 text-[13.5px] font-medium text-muted">
+        <EyeOffIcon className="h-3.5 w-3.5 shrink-0" />
+        Excluded from your plan
+      </h2>
+      <ul>
+        {courses.map((c) => (
+          <li key={c.canvasId} className="flex items-center justify-between gap-3 py-1">
+            <p className="min-w-0 break-words text-[13.5px] text-ink">{cleanCourse(c.name)}</p>
+            {!demo && (
+              <button
+                type="button"
+                onClick={() => include(c.canvasId)}
+                disabled={busyId != null}
+                className="max-md:tap inline-flex shrink-0 items-center justify-end text-[13.5px] font-medium text-accent hover:underline disabled:opacity-50"
+              >
+                {busyId === c.canvasId ? "Including…" : "Include again"}
+                <span className="sr-only">: {cleanCourse(c.name)}</span>
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
-/** Course-page banner shown when this class is excluded. */
+/** Class-page banner shown when this class is excluded. */
 export function ExcludedBanner({ courseCanvasId }: { courseCanvasId: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -171,7 +176,7 @@ export function ExcludedBanner({ courseCanvasId }: { courseCanvasId: number }) {
   );
 }
 
-/** Small, out-of-the-way exclude action for the course page header. */
+/** Small, out-of-the-way exclude action for the class page header. */
 export function ExcludeCourseAction({ courseCanvasId }: { courseCanvasId: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

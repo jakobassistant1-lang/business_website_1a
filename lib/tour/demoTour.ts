@@ -2,7 +2,7 @@
 // components/DemoExperience). Client-safe — NO node imports.
 //
 // The tour walks the new app surfaces: Dashboard → Plan (List · Calendar ·
-// Timeline) → Study → Courses. Plan's three sub-views are separate tour "pages"
+// Timeline) → Study → Classes. Plan's three sub-views are separate tour "pages"
 // (the sidebar still shows one "Plan"). A few SHORT, specific coachmarks per page
 // teach what things mean and how to use them — depth from coverage, not long copy
 // (each body is one tight, benefit-first line). Every `selector` matches a
@@ -33,7 +33,7 @@ export const DEMO_VIEW_LABEL: Record<DemoView, string> = {
   "plan-calendar": "Calendar",
   "plan-timeline": "Timeline",
   study: "Study",
-  courses: "Courses",
+  courses: "Classes",
 };
 
 // `side`/`align` mirror driver.js's popover placement. We set them explicitly on

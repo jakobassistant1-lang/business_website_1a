@@ -4,17 +4,20 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAutoSync } from "@/components/useAutoSync";
 import { useIsPhone } from "@/components/Sheet";
+import { DueLabel } from "@/components/DueLabel";
+import { shortCourse } from "@/lib/courseName";
 import {
   startOfDay,
   addDays,
   ymd,
   parseYmd,
   sameDay,
-  weekStart,
   monthGrid,
   rangeForView,
   rangeLabel,
   WEEKDAYS,
+  WEEKDAYS_FULL,
+  MONTHS_LONG,
 } from "@/lib/calendarDates";
 import {
   AttentionBanner,
@@ -37,6 +40,40 @@ import type { PlanDay } from "@/lib/scheduler";
 
 type View = "day" | "week" | "month";
 
+// Month grid column heads, Monday first — derived from the shared WEEKDAYS
+// (single source), matching monthGrid's Monday start.
+const WEEKDAYS_MON_FIRST = [...WEEKDAYS.slice(1), WEEKDAYS[0]];
+
+/** "Wednesday, September 30" — the accessible name of a day control. */
+function fullDate(d: Date): string {
+  return `${WEEKDAYS_FULL[d.getDay()]}, ${MONTHS_LONG[d.getMonth()]} ${d.getDate()}`;
+}
+
+/** `?view=&date=` → the Calendar's place (nulls for anything missing or
+ *  malformed), so a refresh or shared link reopens the same view and day. */
+export function calendarPlaceFromSearch(search: string): { view: View | null; date: string | null } {
+  const p = new URLSearchParams(search);
+  const v = p.get("view");
+  const d = p.get("date");
+  return {
+    view: v === "day" || v === "week" || v === "month" ? v : null,
+    date: d && /^\d{4}-\d{2}-\d{2}$/.test(d) && ymd(parseYmd(d)) === d ? d : null,
+  };
+}
+
+/** Write the Calendar's place into the current URL (replaceState: moving around
+ *  the calendar isn't a history step). `view: null` clears both params — PlanSurface
+ *  calls that when the student leaves the Calendar for List/Timeline. `date` is
+ *  dropped when it's today, so the everyday URL stays clean. */
+export function writeCalendarPlace(view: View | null, date?: string, todayYmd?: string): void {
+  const url = new URL(window.location.href);
+  if (view) url.searchParams.set("view", view);
+  else url.searchParams.delete("view");
+  if (view && date && date !== todayYmd) url.searchParams.set("date", date);
+  else url.searchParams.delete("date");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 function group<T>(arr: T[], key: (t: T) => string | null): Map<string, T[]> {
   const m = new Map<string, T[]>();
   for (const t of arr) {
@@ -54,8 +91,17 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
   // first render agree — no hydration mismatch — and it's consistent with the
   // app's server-time day handling.
   const [now] = useState(() => parseYmd(todayYmd));
-  const [view, setView] = useState<View>(defaultView);
-  const [anchor, setAnchor] = useState(() => parseYmd(todayYmd));
+  // The view and anchor day live in the URL (`?view=week&date=2026-09-30`) so a
+  // refresh keeps the place. Read in the initializers, so the first frame and the
+  // first briefing fetch already use the right range. Hydration-safe: outside the
+  // demo, PlanSurface mounts CalendarView client-side only (after it knows the
+  // width), so there's no server render to disagree with; the demo (which can
+  // server-render it) never reads the URL.
+  const [urlPlace] = useState(() =>
+    !demo && typeof window !== "undefined" ? calendarPlaceFromSearch(window.location.search) : { view: null, date: null },
+  );
+  const [view, setView] = useState<View>(urlPlace.view ?? defaultView);
+  const [anchor, setAnchor] = useState(() => parseYmd(urlPlace.date ?? todayYmd));
   const [selected, setSelected] = useState<CalendarItem | null>(null);
   const [peek, setPeek] = useState<Date | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
@@ -77,22 +123,26 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
   }, [data.plan.days]);
   const undated = useMemo(() => data.items.filter((it) => !it.dueAt), [data.items]);
 
+  // Written only when the student moves. The demo owns its own URL.
+  function goTo(nextView: View, nextAnchor: Date) {
+    setView(nextView);
+    setAnchor(nextAnchor);
+    if (!demo) writeCalendarPlace(nextView, ymd(nextAnchor), todayYmd);
+  }
+
+  // Week is a rolling 7 days from the anchor (lib/calendarDates.rangeForView), so
+  // ‹ › step 7 days and "Today" puts today in the first column.
   function navigate(dir: -1 | 1) {
-    if (view === "day") setAnchor((a) => addDays(a, dir));
-    else if (view === "week") setAnchor((a) => addDays(a, dir * 7));
-    else setAnchor((a) => new Date(a.getFullYear(), a.getMonth() + dir, 1));
+    if (view === "day") goTo(view, addDays(anchor, dir));
+    else if (view === "week") goTo(view, addDays(anchor, dir * 7));
+    else goTo(view, new Date(anchor.getFullYear(), anchor.getMonth() + dir, 1));
   }
   function openDay(d: Date) {
-    setAnchor(startOfDay(d));
-    setView("day");
+    goTo("day", startOfDay(d));
   }
 
   const atToday =
-    view === "day"
-      ? sameDay(anchor, now)
-      : view === "week"
-        ? sameDay(weekStart(anchor), weekStart(now))
-        : anchor.getMonth() === now.getMonth() && anchor.getFullYear() === now.getFullYear();
+    view === "month" ? anchor.getMonth() === now.getMonth() && anchor.getFullYear() === now.getFullYear() : sameDay(anchor, now);
   const { start, days } = rangeForView(view, anchor);
 
   const statusPill = !data.connected
@@ -139,11 +189,11 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
           <PeriodToolbar
             view={view}
             views={["day", "week", "month"]}
-            onView={(v) => setView(v as View)}
+            onView={(v) => goTo(v as View, anchor)}
             label={rangeLabel(view, anchor, now)}
             onPrev={() => navigate(-1)}
             onNext={() => navigate(1)}
-            onToday={() => setAnchor(now)}
+            onToday={() => goTo(view, now)}
             atToday={atToday}
           />
           <PeriodSummary view={view} start={ymd(start)} days={days} />
@@ -156,6 +206,7 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
               events={eventsByDay.get(ymd(anchor)) ?? []}
               planDay={planByDay.get(ymd(anchor))}
               atRiskCount={data.atRisk.length}
+              todayYmd={todayYmd}
               onSelect={setSelected}
             />
           )}
@@ -191,13 +242,16 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
               {data.completed.length > 0 && (
                 <section>
                   <button
+                    type="button"
                     onClick={() => setShowCompleted((s) => !s)}
+                    aria-expanded={showCompleted}
+                    aria-controls="calendar-completed"
                     className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-success"
                   >
-                    <Glyph d={ICON.check} size={14} /> Completed ({data.completed.length}) {showCompleted ? "▾" : "▸"}
+                    <Glyph d={ICON.check} size={14} /> Completed ({data.completed.length}) <span aria-hidden>{showCompleted ? "▾" : "▸"}</span>
                   </button>
                   {showCompleted && (
-                    <div className="mt-2 space-y-1.5">
+                    <div id="calendar-completed" className="mt-2 space-y-1.5">
                       {data.completed.map((it) => (
                         <ItemPill key={`done-${it.canvasId}`} item={it} onSelect={setSelected} showTime={false} />
                       ))}
@@ -227,9 +281,10 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
           }}
           onClose={() => setPeek(null)}
           onOpenDay={() => openDay(peek)}
+          todayYmd={todayYmd}
         />
       )}
-      {selected && <ItemDetail item={selected} onClose={() => setSelected(null)} />}
+      {selected && <ItemDetail item={selected} onClose={() => setSelected(null)} todayYmd={todayYmd} />}
     </div>
   );
 }
@@ -241,6 +296,7 @@ function DayView({
   events,
   planDay,
   atRiskCount,
+  todayYmd,
   onSelect,
 }: {
   date: Date;
@@ -249,6 +305,7 @@ function DayView({
   events: CalendarEvent[];
   planDay?: PlanDay;
   atRiskCount: number;
+  todayYmd: string;
   onSelect: (it: CalendarItem) => void;
 }) {
   // Interleave coursework (by due time) and busy events (by start time).
@@ -265,7 +322,7 @@ function DayView({
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-ink">
             {sameDay(date, now) && <span className="text-accent">Today · </span>}
-            {date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+            {fullDate(date)}
           </p>
         </div>
         <div className="mt-4 space-y-1.5">
@@ -296,7 +353,7 @@ function DayView({
                   <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(b.courseName) }} aria-hidden />
                   <span className="min-w-0 flex-1 truncate text-ink">Study: {b.name}</span>
                   <span className="shrink-0 text-xs text-muted">
-                    {fmtHours(b.hours)} · due {new Date(b.dueAt).toLocaleDateString(undefined, { weekday: "short" })}
+                    {fmtHours(b.hours)} · <DueLabel iso={b.dueAt} format="chip" todayYmd={todayYmd} />
                   </span>
                 </li>
               ))}
@@ -331,8 +388,9 @@ function WeekView({
   onSelect: (it: CalendarItem) => void;
   onPeek: (d: Date) => void;
 }) {
-  const start = weekStart(anchor);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  // Rolling: the anchor day (today, from the "Today" button) and the six after it.
+  const { start, days: n } = rangeForView("week", anchor);
+  const days = Array.from({ length: n }, (_, i) => addDays(start, i));
   const MAX = 6;
   // Tag the first populated day so the demo tour can spotlight a real, compact
   // target (highlighting the whole week grid reads as "off").
@@ -357,11 +415,11 @@ function WeekView({
               <span className={`text-sm font-semibold ${isToday ? "text-accent" : "text-ink"}`}>
                 {WEEKDAYS[d.getDay()]} {d.getDate()}
               </span>
-              {isToday && <span className="text-xs font-semibold text-accent">TODAY</span>}
+              {isToday && <span className="text-xs font-semibold text-accent">Today</span>}
             </button>
             <div className="mt-2 space-y-1.5">
               {shown.map((it) => (
-                <ItemPill key={`w-${it.canvasId}`} item={it} onSelect={onSelect} showTime={false} compact />
+                <WeekChip key={`w-${it.canvasId}`} item={it} onSelect={onSelect} />
               ))}
               {more > 0 && (
                 <button onClick={() => onPeek(d)} className="w-full rounded-md px-2 py-1 text-left text-xs font-medium text-accent hover:bg-accent-soft">
@@ -377,8 +435,8 @@ function WeekView({
                 </button>
               )}
               {items.length === 0 && events.length === 0 && (
-                <button onClick={() => onPeek(d)} className="px-1 py-3 text-left text-xs text-faint hover:text-muted">
-                  —
+                <button type="button" onClick={() => onPeek(d)} aria-label={`Nothing due ${fullDate(d)}. Open this day`} className="px-1 py-3 text-left text-xs text-faint hover:text-muted">
+                  <span aria-hidden>—</span>
                 </button>
               )}
             </div>
@@ -386,6 +444,33 @@ function WeekView({
         );
       })}
     </div>
+  );
+}
+
+/** A coursework chip sized for a narrow week column: the course colour rail and
+ *  the title on up to two lines — never "TO…" (#141). Overdue is never colour
+ *  alone: the red border comes with the alert glyph (as ItemPill's), and the
+ *  accessible name says "past due" and carries the readable class name. */
+function WeekChip({ item, onSelect }: { item: CalendarItem; onSelect: (it: CalendarItem) => void }) {
+  const overdue = item.status === "overdue";
+  const done = item.status === "done";
+  const course = shortCourse(item.courseName);
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(item)}
+      title={`${course} · ${item.name}${overdue ? " · Past due" : ""}`}
+      aria-label={`${item.name}, ${course}${overdue ? ", past due" : done ? ", done" : ""}`}
+      className={`flex w-full items-stretch gap-2 rounded-lg border bg-surface px-2 py-1.5 text-left transition hover:shadow-sm ${overdue ? "border-danger" : "border-line-subtle"} ${done ? "opacity-60" : ""}`}
+    >
+      <span className="w-1.5 shrink-0 rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
+      {overdue && (
+        <span className="mt-px shrink-0 text-danger" aria-hidden>
+          <Glyph d={ICON.alert} size={13} />
+        </span>
+      )}
+      <span className={`line-clamp-2 min-w-0 flex-1 break-words text-[13px] leading-snug ${done ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
+    </button>
   );
 }
 
@@ -413,7 +498,7 @@ function MonthView({
       <div className="overflow-x-auto md:overflow-visible">
         <div className="min-w-[560px] md:min-w-0">
           <div className="mb-1.5 grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted">
-            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => (
+            {WEEKDAYS_MON_FIRST.map((w) => (
               <div key={w}>{w}</div>
             ))}
           </div>
@@ -428,7 +513,16 @@ function MonthView({
               return (
                 <button
                   key={key}
+                  type="button"
                   onClick={() => onPeek(d)}
+                  aria-label={[
+                    fullDate(d) + (isToday ? ", today" : ""),
+                    items.length > 0 ? `${items.length} due` : "nothing due",
+                    atRisk > 0 ? `${atRisk} overdue` : "",
+                    hasBusy ? "busy" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
                   className={`flex min-h-[5.5rem] flex-col rounded-md border p-1.5 text-left transition hover:border-accent ${
                     inMonth ? "border-line-subtle bg-surface" : "border-transparent bg-surface-soft"
                   }`}

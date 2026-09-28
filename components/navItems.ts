@@ -19,7 +19,7 @@ export const navItems: readonly NavItem[] = [
   { href: "/dashboard", label: "Dashboard", tabLabel: "Dashboard", icon: "dashboard" },
   { href: "/plan", label: "Plan", tabLabel: "Plan", icon: "plan" },
   { href: "/study", label: "Study", tabLabel: "Study", icon: "study" },
-  { href: "/courses", label: "Courses", tabLabel: "Classes", icon: "courses" },
+  { href: "/courses", label: "Classes", tabLabel: "Classes", icon: "courses" },
 ];
 
 /** The phone tab bar: exactly the first four daily-use destinations. */
