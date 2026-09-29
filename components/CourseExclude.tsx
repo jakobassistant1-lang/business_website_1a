@@ -1,7 +1,7 @@
 "use client";
 
-// Class exclusion UI (#60): the kebab menu on class cards, the "Excluded from
-// your plan" list under the class grid, and the class-page banner/action. All
+// Course exclusion UI (#60): the kebab menu on course cards, the "Excluded from
+// your plan" list under the course grid, and the course-page banner/action. All
 // call PATCH /api/course/exclude; the data chokepoint (lib/calendarData /
 // lib/plan) does the rest, so every surface updates together on refresh.
 
@@ -32,7 +32,7 @@ async function setExcluded(courseCanvasId: number, excluded: boolean): Promise<b
   }
 }
 
-/** The ⋯ menu on a class card. A SIBLING of the card's stretched title link
+/** The ⋯ menu on a course card. A SIBLING of the card's stretched title link
  *  (`relative z-10` in CourseGrid, #141), never inside it. Clicks still stop at
  *  the wrapper span: on phones (#39) the popover is a bottom Sheet whose portal
  *  events bubble through React to here, and they must not reach the carousel
@@ -62,7 +62,7 @@ export function CourseMenu({ courseCanvasId }: { courseCanvasId: number }) {
     <span className="relative" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
       <button
         type="button"
-        aria-label="Class options"
+        aria-label="Course options"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="max-md:tap max-md:-m-2 grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition hover:bg-surface-soft hover:text-ink"
@@ -72,7 +72,7 @@ export function CourseMenu({ courseCanvasId }: { courseCanvasId: number }) {
         </svg>
       </button>
       {phone ? (
-        <Sheet open={open} onClose={() => setOpen(false)} title="Class options">
+        <Sheet open={open} onClose={() => setOpen(false)} title="Course options">
           <button
             type="button"
             onClick={exclude}
@@ -109,8 +109,8 @@ export function CourseMenu({ courseCanvasId }: { courseCanvasId: number }) {
   );
 }
 
-/** The quiet dashed row under the class grid — the entire management UI for
- *  excluded classes. Invisible when nothing is excluded. */
+/** The quiet dashed row under the course grid — the entire management UI for
+ *  excluded courses. Invisible when nothing is excluded. */
 export function ExcludedCoursesRow({ courses, demo = false }: { courses: { canvasId: number; name: string }[]; demo?: boolean }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -125,8 +125,8 @@ export function ExcludedCoursesRow({ courses, demo = false }: { courses: { canva
   };
 
   return (
-    <section aria-labelledby="excluded-classes-heading" className="mt-4 rounded-lg border border-dashed border-line px-4 py-2.5">
-      <h2 id="excluded-classes-heading" className="flex items-center gap-1.5 py-1 text-[13.5px] font-medium text-muted">
+    <section aria-labelledby="excluded-courses-heading" className="mt-4 rounded-lg border border-dashed border-line px-4 py-2.5">
+      <h2 id="excluded-courses-heading" className="flex items-center gap-1.5 py-1 text-[13.5px] font-medium text-muted">
         <EyeOffIcon className="h-3.5 w-3.5 shrink-0" />
         Excluded from your plan
       </h2>
@@ -152,7 +152,7 @@ export function ExcludedCoursesRow({ courses, demo = false }: { courses: { canva
   );
 }
 
-/** Class-page banner shown when this class is excluded. */
+/** Course-page banner shown when this course is excluded. */
 export function ExcludedBanner({ courseCanvasId }: { courseCanvasId: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -167,7 +167,7 @@ export function ExcludedBanner({ courseCanvasId }: { courseCanvasId: number }) {
     <div className="mt-5 flex items-center justify-between gap-3 rounded-lg border border-dashed border-line bg-surface-soft px-4 py-3">
       <p className="min-w-0 text-[14px] text-muted">
         <EyeOffIcon className="mr-1.5 inline h-4 w-4 align-[-3px]" />
-        This class is excluded from your plan — its work doesn&apos;t appear in your lists or schedule.
+        This course is excluded from your plan — its work doesn&apos;t appear in your lists or schedule.
       </p>
       <button type="button" onClick={include} disabled={busy} className="max-md:tap inline-flex shrink-0 items-center text-[14px] font-medium text-accent hover:underline disabled:opacity-50">
         {busy ? "Including…" : "Include again"}
@@ -176,7 +176,7 @@ export function ExcludedBanner({ courseCanvasId }: { courseCanvasId: number }) {
   );
 }
 
-/** Small, out-of-the-way exclude action for the class page header. */
+/** Small, out-of-the-way exclude action for the course page header. */
 export function ExcludeCourseAction({ courseCanvasId }: { courseCanvasId: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -192,7 +192,7 @@ export function ExcludeCourseAction({ courseCanvasId }: { courseCanvasId: number
       type="button"
       onClick={exclude}
       disabled={busy}
-      title="Hides this class's work from your plan and lists. Undo anytime."
+      title="Hides this course's work from your plan and lists. Undo anytime."
       className="max-md:tap inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition hover:text-ink disabled:opacity-50"
     >
       <EyeOffIcon className="h-3.5 w-3.5" />

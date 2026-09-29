@@ -1,9 +1,9 @@
 // The student's course grade as a compact pill — shared by the Courses grid and
-// the class-detail header so the two never drift. Three honest states only: a real
+// the course page header so the two never drift. Three honest states only: a real
 // Canvas total, an explicit "hidden by the instructor", or "no grades yet". Never
 // a guessed/estimated number (see lib/courseGrade).
 
-import { gradeBand, type CourseGrade, type GradeBand } from "@/lib/courseGrade";
+import { gradeBand, gradePercentText, type CourseGrade, type GradeBand } from "@/lib/courseGrade";
 
 // Band → background tint only. The number itself stays text-ink for crisp AA
 // contrast (band-colored text on a same-hue soft fill ran ~2.8:1 — too low for
@@ -30,7 +30,7 @@ export function GradePill({ grade, size = "md" }: { grade: CourseGrade; size?: "
   if (grade.state === "graded" && grade.score != null) {
     return (
       <span className={`inline-flex shrink-0 items-baseline gap-1.5 rounded-xl ${lg ? "px-3.5 py-2" : "px-3 py-1.5"} ${BAND_BG[gradeBand(grade.score)]}`}>
-        <span className={`${lg ? "text-[22px]" : "text-[18px]"} font-bold leading-none tabular-nums text-ink`}>{Math.round(grade.score)}%</span>
+        <span className={`${lg ? "text-[22px]" : "text-[18px]"} font-bold leading-none tabular-nums text-ink`}>{gradePercentText(grade.score)}</span>
         {grade.letter && <span className={`${lg ? "text-[15px]" : "text-[13px]"} font-semibold leading-none text-muted`}>{grade.letter}</span>}
       </span>
     );

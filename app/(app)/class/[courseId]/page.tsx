@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { requirePageAccess } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
-import { ymd } from "@/lib/calendarDates";
+import { dataToday, dataZone } from "@/lib/studentZone";
 import { CoursePage } from "@/components/CoursePage";
 
 export const dynamic = "force-dynamic";
 
-// /class/[courseId] — the full assignment list for one class, opened from a
-// card on the Classes page. `?tab=grades` opens the grade calculator (the tab
+// /class/[courseId] — the full assignment list for one course, opened from a
+// card on the Courses page. `?tab=grades` opens the grade calculator (the tab
 // lives in the URL so a refresh keeps the place).
 export default async function ClassDetailPage({ params, searchParams }: { params: Promise<{ courseId: string }>; searchParams: Promise<{ tab?: string | string[] }> }) {
   const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
@@ -19,7 +19,7 @@ export default async function ClassDetailPage({ params, searchParams }: { params
   const data = await loadCalendarData(user.id);
   const active = data.items.filter((it) => it.courseCanvasId === id);
   const completed = data.completed.filter((it) => it.courseCanvasId === id);
-  // Excluded classes have no items (filtered at the data chokepoint) but must
+  // Excluded courses have no items (filtered at the data chokepoint) but must
   // stay reachable so "Include again" has a home — fall back to the course meta.
   const meta = data.courses.find((c) => c.canvasId === id);
   if (active.length === 0 && completed.length === 0 && !meta) notFound();
@@ -35,7 +35,8 @@ export default async function ClassDetailPage({ params, searchParams }: { params
       active={active}
       completed={completed}
       rankedIds={data.ranked.map((r) => r.canvasId)}
-      todayYmd={ymd(new Date())}
+      todayYmd={dataToday(data)}
+      timeZone={dataZone(data)}
       courseCanvasId={id}
       excludedCourse={meta?.excluded ?? false}
       initialTab={initialTab}

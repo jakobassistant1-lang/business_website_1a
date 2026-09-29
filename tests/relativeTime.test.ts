@@ -53,24 +53,27 @@ describe("relativeTime", () => {
   });
 });
 
-describe("Connections tab shows when data was last refreshed", () => {
+describe("Connections tab shows when Navo last checked Canvas", () => {
   const form = readFileSync("components/ConnectionsForm.tsx", "utf8");
   const page = readFileSync("app/(app)/connections/page.tsx", "utf8");
+  const loader = readFileSync("lib/calendarData.ts", "utf8");
 
-  it("ConnectionsForm renders the 'Last synced' line (with a never-synced fallback)", () => {
-    expect(form).toMatch(/Last synced \$\{relativeTime\(initial\.syncedAt\)\}/);
-    expect(form).toContain("Never synced yet");
-    expect(form).toMatch(/Checked \$\{relativeTime\(initial\.lastValidatedAt\)\}/);
+  it("ONE freshness line, 'Last checked Canvas' (owner, 2026-09-28), on the viewer's clock, with a fallback", () => {
+    expect(form).toMatch(/Last checked Canvas <LocalRelativeTime iso=\{initial\.lastCheckedAt\} \/>/);
+    expect(form).toContain("Not checked yet");
+    // the two older claims ("Last synced …" + "Checked …") disagreed with the sync card
+    expect(form).not.toMatch(/Last synced/);
+    expect(form).not.toMatch(/Checked \$\{relativeTime/);
   });
 
-  it("uses the shared helper and the muted token — no private date math, no hardcoded color", () => {
-    expect(form).toContain('import { relativeTime } from "@/lib/calendarDates"');
-    expect(form).toContain('text-[13px] text-muted');
+  it("uses the muted token — no private date math, no hardcoded color", () => {
+    expect(form).toContain("text-[13px] text-muted");
     expect(form).not.toMatch(/toLocaleString|toLocaleDateString|86_?400_?000/);
   });
 
-  it("the page feeds it both timestamps", () => {
-    expect(page).toMatch(/syncedAt: cred\?\.syncedAt/);
-    expect(page).toMatch(/lastValidatedAt: cred\?\.lastValidatedAt/);
+  it("the timestamp has ONE source: lastCheckedAtOf, used by the page and by CalendarData", () => {
+    expect(page).toContain("const lastCheckedAt = lastCheckedAtOf(cred);");
+    expect(page).toMatch(/<SyncReportPanel report=\{syncReport\} lastCheckedAt=\{lastCheckedAt\}/);
+    expect(loader).toContain("lastCheckedAt: lastCheckedAtOf(cred),");
   });
 });

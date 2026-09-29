@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { buildDemoCalendarData } from "@/lib/demoData";
 import { studySessionsFor } from "@/lib/study";
 import { upcomingAssessments } from "@/lib/calendarData";
+import { dataToday, dataZone } from "@/lib/studentZone";
 import { DemoExperience } from "@/components/DemoExperience";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,11 @@ export default async function DemoPage() {
   const studyAssessments = upcomingAssessments(data);
 
   const studySessions: Record<number, { date: string; hours: number }[]> = {};
-  for (const it of studyAssessments) studySessions[it.canvasId] = studySessionsFor(data.plan, it.canvasId);
+  // Sessions through the ONE rule (lib/study → isStudySessionBlock), in the demo
+  // data's own zone and today — never lib/study's defaults.
+  const zone = dataZone(data);
+  const today = dataToday(data);
+  for (const it of studyAssessments) studySessions[it.canvasId] = studySessionsFor(data.plan, it.canvasId, { todayYmd: today, zone });
 
   return (
     <DemoExperience

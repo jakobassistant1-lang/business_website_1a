@@ -3,19 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toneSoft } from "@/lib/tone";
+import { LocalRelativeTime } from "@/components/LocalRelativeTime";
 
 /** Shown when the server has no Google OAuth client set up (one wording for the card and the post-redirect notice). */
 const UNAVAILABLE = "Google Calendar sync isn't available yet.";
-
-function fmt(iso: string | null) {
-  if (!iso) return "never";
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 function friendly(reason?: string): string {
   if (reason === "rate_limited") return "Google is rate-limiting us. Try again in a minute.";
@@ -125,7 +116,7 @@ export function GoogleCalendarCard({
       {!connected ? (
         <>
           <p className="text-sm text-muted">
-            Sync your Google Calendar so your classes, meetings, and commitments sit alongside your coursework —
+            Sync your Google Calendar so your lectures, meetings, and commitments sit alongside your coursework —
             for smarter planning around the time you actually have.
           </p>
           <ul className="mt-3 space-y-1 text-xs text-muted">
@@ -152,8 +143,9 @@ export function GoogleCalendarCard({
               <dd className="text-ink">{eventCount}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-muted">Last synced</dt>
-              <dd className="text-ink">{fmt(syncedAt)}</dd>
+              {/* Same relative formatter as Canvas's "Last checked Canvas" line. */}
+              <dt className="text-muted">Last checked Google</dt>
+              <dd className="text-ink">{syncedAt ? <LocalRelativeTime iso={syncedAt} /> : "Not yet"}</dd>
             </div>
           </dl>
           <div className="mt-4 flex items-center gap-3">

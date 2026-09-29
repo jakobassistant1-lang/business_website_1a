@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { NETWORK_ERROR } from "@/lib/messages";
 import { normalizeHost } from "@/lib/host";
-import { relativeTime } from "@/lib/calendarDates";
+import { LocalRelativeTime } from "@/components/LocalRelativeTime";
 import { SchoolPicker } from "@/components/SchoolPicker";
 import { FirstSyncProgress } from "@/components/FirstSyncProgress";
 import type { School } from "@/lib/schools";
@@ -14,10 +14,9 @@ interface Initial {
   hasToken: boolean;
   status: string | null;
   accountName: string | null;
-  /** Last completed full Canvas sync (ISO), null until the first one lands. */
-  syncedAt: string | null;
-  /** Last time the stored token was checked against Canvas (ISO). */
-  lastValidatedAt: string | null;
+  /** When Navo last checked Canvas (ISO) — the most recent run of any kind; null
+   *  until the first one lands. THE freshness timestamp (the page computes it). */
+  lastCheckedAt: string | null;
 }
 
 const STATUS_PILL: Record<string, { text: string; tone: Tone }> = {
@@ -158,11 +157,16 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
               Connected{accountName ? ` · ${accountName}` : ""}
             </span>
           </div>
-          {/* Freshness, quietly: the "last synced" time students lost when PlanView
-              was retired. Relative text moves by the minute, so let hydration differ. */}
-          <p className="mb-4 text-right text-[13px] text-muted" suppressHydrationWarning>
-            {initial.syncedAt ? `Last synced ${relativeTime(initial.syncedAt)}` : "Never synced yet"}
-            {initial.lastValidatedAt ? ` · Checked ${relativeTime(initial.lastValidatedAt)}` : ""}
+          {/* ONE freshness line (owner, 2026-09-28): the most recent check of any
+              kind, on the viewer's clock (LocalRelativeTime renders after mount). */}
+          <p className="mb-4 text-right text-[13px] text-muted">
+            {initial.lastCheckedAt ? (
+              <>
+                Last checked Canvas <LocalRelativeTime iso={initial.lastCheckedAt} />
+              </>
+            ) : (
+              "Not checked yet"
+            )}
           </p>
           <dl className="space-y-1.5 text-sm">
             <div className="flex justify-between gap-3">

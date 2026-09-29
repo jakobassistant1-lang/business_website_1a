@@ -9,11 +9,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { round1 } from "@/lib/round";
-import { ymd } from "@/lib/calendarDates";
+import { todayInZone } from "@/lib/studentZone";
 import { fmtHours } from "@/components/calendar/parts";
 import { DueLabel } from "@/components/DueLabel";
 import { usePathname } from "next/navigation";
-import { TYPE_LABEL, shortCourse, StudyChip, ChevronIcon, ExternalIcon, studyCoachCacheKey, viewerTimeZone } from "@/components/studyUi";
+import { TYPE_LABEL, shortCourse, StudyChip, ChevronIcon, ExternalIcon, studyCoachCacheKey, studySessionCount } from "@/components/studyUi";
 import type { CalendarItem } from "@/lib/calendarData";
 
 export function StudyView({
@@ -21,15 +21,20 @@ export function StudyView({
   assessments,
   sessions,
   todayYmd = "",
+  timeZone,
   missing = false,
   demo = false,
 }: {
   connected: boolean;
   assessments: CalendarItem[];
+  /** Each test's study sessions — lib/study.studySessionsFor (the one
+   *  isStudySessionBlock rule), never by reading `.study` here. */
   sessions: Record<number, { date: string; hours: number }[]>;
-  /** The server's day ("YYYY-MM-DD"). Optional because the "long-time" due format
-   *  used here never reads it (the first-run demo renders this without one). */
+  /** Today in the student's zone ("YYYY-MM-DD"). */
   todayYmd?: string;
+  /** The student's Canvas zone (lib/studentZone). Due dates render in it and the
+   *  coach line turns over at ITS midnight. */
+  timeZone?: string;
   /** Arrived from /study/[canvasId] for a test that's no longer in the plan. */
   missing?: boolean;
   /** First-run demo: sample data, so no AI coach line (it would describe the
@@ -56,9 +61,9 @@ export function StudyView({
   const testsSig = assessments.map((a) => `${a.canvasId}@${a.dueAt ?? ""}`).join("|");
   useEffect(() => {
     if (isDemo || !connected || assessments.length === 0) return;
-    // Keyed on the viewer's own day, so the line turns over at local midnight.
+    // Keyed on today in the student's zone, so the line turns over at their midnight.
     const key = studyCoachCacheKey(
-      ymd(new Date()),
+      timeZone ? todayInZone(timeZone) : todayYmd,
       assessments.map((a) => ({ canvasId: a.canvasId, dueAt: a.dueAt })),
     );
     let stored: string | null = null;
@@ -71,7 +76,7 @@ export function StudyView({
     }
     let cancelled = false;
     setSummaryLoading(true);
-    fetch(`/api/study-summary?tz=${encodeURIComponent(viewerTimeZone())}`)
+    fetch("/api/study-summary") // the server reads the student's zone itself (#145)
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (cancelled || !body || typeof body.summary !== "string") return;
@@ -88,7 +93,7 @@ export function StudyView({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- testsSig stands in for `assessments`
-  }, [isDemo, connected, testsSig]);
+  }, [isDemo, connected, testsSig, timeZone]);
 
   const notice = showMissing ? <MissingNotice /> : null;
 
@@ -142,11 +147,11 @@ export function StudyView({
         <div className="mt-3 flex flex-wrap gap-2">
           {featured.dueAt && (
             <StudyChip>
-              Due <DueLabel iso={featured.dueAt} format="long-time" todayYmd={todayYmd} />
+              Due <DueLabel iso={featured.dueAt} format="long-time" todayYmd={todayYmd} timeZone={timeZone} />
             </StudyChip>
           )}
           {featured.pointsPossible != null && featured.pointsPossible > 0 && <StudyChip>{featured.pointsPossible} pts</StudyChip>}
-          <StudyChip>{fSessions.length > 0 ? `${fmtHours(totalHours)} of study scheduled` : "No study blocks scheduled yet"}</StudyChip>
+          <StudyChip>{fSessions.length > 0 ? `${studySessionCount(fSessions.length)} · ${fmtHours(totalHours)} scheduled` : "No study sessions scheduled yet"}</StudyChip>
         </div>
         <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
           <Link href={`/study/${featured.canvasId}`} className="max-md:tap focus-visible:outline-accent-on inline-flex items-center justify-center rounded-[14px] bg-accent-on px-5 py-2.5 text-center text-sm font-semibold text-accent transition hover:bg-accent-on/90">
@@ -174,7 +179,7 @@ export function StudyView({
                     {TYPE_LABEL[a.type]} · {shortCourse(a.courseName)}
                   </span>
                 </span>
-                {a.dueAt && <DueLabel iso={a.dueAt} format="long-time" todayYmd={todayYmd} className="shrink-0 text-[13px] font-medium text-ink" />}
+                {a.dueAt && <DueLabel iso={a.dueAt} format="long-time" todayYmd={todayYmd} timeZone={timeZone} className="shrink-0 text-[13px] font-medium text-ink" />}
                 <span className="inline-flex shrink-0 items-center gap-0.5 text-sm font-medium text-accent">
                   Study
                   <ChevronIcon />

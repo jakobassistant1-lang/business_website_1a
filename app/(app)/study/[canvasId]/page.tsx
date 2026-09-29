@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requirePageAccess } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
 import { studySessionsFor } from "@/lib/study";
+import { dataToday, dataZone } from "@/lib/studentZone";
 import { StudyTools } from "@/components/StudyTools";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +41,17 @@ export default async function StudyToolsPage({ params }: { params: Promise<{ can
     return ta - tb;
   })[0];
 
+  // Today + zone are the student's (lib/studentZone); sessions come through the
+  // ONE study-session rule (lib/studyWeek.isStudySessionBlock).
+  const todayYmd = dataToday(data);
+  const timeZone = dataZone(data);
   return (
     <StudyTools
       assessment={assessment}
-      sessions={studySessionsFor(data.plan, id)}
+      sessions={studySessionsFor(data.plan, id, { todayYmd, zone: timeZone })}
       isNextUp={first?.canvasId === assessment.canvasId}
+      todayYmd={todayYmd}
+      timeZone={timeZone}
     />
   );
 }

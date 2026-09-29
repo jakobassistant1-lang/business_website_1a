@@ -1,16 +1,22 @@
 "use client";
 
-// Grade calculator on the course page — the answers Canvas hides: a "what do I
-// need on the rest to hit my target" solver, a live what-if simulator, and a
-// weighted-category breakdown. All math lives in lib/gradeCalc (pure + tested);
-// this is just UI + local state. Renders nothing when the course has no
-// point-bearing work to reason about.
+// The Grades tab on the course page. GRADE CANON (owner, 2026-09-28): the number
+// labelled "Current grade" is ALWAYS Canvas's own number and letter — the same one
+// GradePill shows (lib/courseGrade) — never this calculator's recomputation. Below
+// it sits a "What-if" calculator that STARTS from that number: a "what do I need on
+// the rest to hit my target" solver, per-item what-if sliders and a projection,
+// plus the weighted-category breakdown. When the teacher hides the course total,
+// the headline keeps its honest label, "Estimated from your graded work"
+// (lib/gradeCalc.gradeHeadline is the one rule). All math is pure in lib/gradeCalc;
+// this is UI + local state. Renders nothing when the course has no point-bearing work.
 
 import { useMemo, useState } from "react";
-import { currentGrade, projectGrade, neededUniformScore, categoryBreakdown, gradeMode, type GradeInput, type NeededResult } from "@/lib/gradeCalc";
+import { gradedWorkEstimate, gradeHeadline, anchoredProjection, anchoredNeeded, keepUpScores, whatIfOffset, categoryBreakdown, gradeMode, type GradeHeadline, type GradeInput, type NeededResult } from "@/lib/gradeCalc";
+import { gradePercentText, type CourseGrade } from "@/lib/courseGrade";
 import { toneSoft } from "@/lib/tone";
-import type { CourseGrade } from "@/lib/courseGrade";
 
+// The standard letter scale — stated on screen under the picker, since a course's
+// own cutoffs can differ.
 const TARGETS = [
   { label: "A (93%)", value: 93 },
   { label: "A− (90%)", value: 90 },
@@ -19,63 +25,60 @@ const TARGETS = [
   { label: "C (73%)", value: 73 },
 ];
 
-function letterFor(p: number): string {
-  if (p >= 93) return "A";
-  if (p >= 90) return "A−";
-  if (p >= 87) return "B+";
-  if (p >= 83) return "B";
-  if (p >= 80) return "B−";
-  if (p >= 77) return "C+";
-  if (p >= 73) return "C";
-  if (p >= 70) return "C−";
-  if (p >= 60) return "D";
-  return "F";
-}
-
 export function GradeCalculator({ items, official }: { items: GradeInput[]; official?: CourseGrade }) {
   const gradeables = useMemo(() => items.filter((i) => i.pointsPossible > 0), [items]);
   const remaining = useMemo(() => gradeables.filter((i) => i.score == null), [gradeables]);
   const mode = gradeMode(gradeables);
-  const cur = currentGrade(gradeables);
+  const estimate = gradedWorkEstimate(gradeables);
+  const head = gradeHeadline(official, estimate);
+  // Anchor (lib/gradeCalc.whatIfOffset): every what-if figure is shifted by
+  // Canvas's number minus our estimate, so the untouched what-if IS Canvas's number.
+  const offset = whatIfOffset(official, estimate);
 
-  // Default to the NEAREST grade above the current one (the next achievable bump),
-  // not the highest. TARGETS is descending, so reverse to find the lowest one above.
+  // Default to the NEAREST target above where the student stands now (the next
+  // achievable bump), not the highest. TARGETS is descending, so reverse it.
   const defaultTarget = useMemo(() => {
-    if (cur == null) return 90;
-    return ([...TARGETS].reverse().find((t) => t.value > cur) ?? TARGETS[0]).value;
-  }, [cur]);
+    if (head.start == null) return 90;
+    return ([...TARGETS].reverse().find((t) => t.value > head.start!) ?? TARGETS[0]).value;
+  }, [head.start]);
   const [target, setTarget] = useState(defaultTarget);
-  // Seed the what-if sliders at the current grade ("if you keep this up"), so the
-  // projection opens at today's grade instead of an arbitrary number that drags it down.
-  const [assume, setAssume] = useState<Map<number, number>>(() => new Map(remaining.map((r) => [r.canvasId, Math.round(cur ?? 85)])));
+  // The what-if starts from the headline number ("keep it up"): each slider opens
+  // at its category's current average, which reproduces today's grade exactly.
+  const startPct = Math.round(head.start ?? 85);
+  const seeds = useMemo(() => keepUpScores(gradeables), [gradeables]);
+  const seedOf = (id: number) => seeds.get(id) ?? startPct;
+  const [assume, setAssume] = useState<Map<number, number>>(() => new Map(remaining.map((r) => [r.canvasId, seedOf(r.canvasId)])));
   const [showWhatIf, setShowWhatIf] = useState(false); // per-item sliders collapsed by default — the headline answer leads
 
   if (gradeables.length === 0) return null;
 
-  const projected = projectGrade(gradeables, assume);
-  const needed = neededUniformScore(gradeables, target);
+  const projected = anchoredProjection(gradeables, assume, offset);
+  const needed = anchoredNeeded(gradeables, target, offset);
   const need = neededView(needed, remaining.length); // ONE reading, shared by the phone tile + the desktop line
   const targetLetter = (TARGETS.find((t) => t.value === target)?.label ?? `${target}%`).split(" ")[0];
   const cats = mode === "weighted" ? categoryBreakdown(gradeables).filter((c) => c.weight && c.weight > 0) : [];
   const setScore = (id: number, v: number) => setAssume((m) => new Map(m).set(id, v));
+  const values = remaining.map((r) => assume.get(r.canvasId) ?? seedOf(r.canvasId));
+  const untouched = remaining.every((r) => (assume.get(r.canvasId) ?? seedOf(r.canvasId)) === seedOf(r.canvasId));
+  const uniform = values.length > 0 && values.every((v) => v === values[0]) ? Math.round(values[0]) : null;
+  const projectionLabel = untouched ? "If you keep up your current averages" : uniform != null ? `If you score ${uniform}% on everything left` : "With the scores you set above";
 
   return (
     <section data-tour="grade-calculator" className="card mt-6 p-5">
-      <div className="flex items-center gap-2">
-        <CalcIcon />
-        <h2 className="text-[16px] font-semibold text-ink">Grade calculator</h2>
-      </div>
-
-      {/* Phones (#39): the two answers lead as big tiles — where you stand, and what
-          the rest of the term asks of you for the target picked below. */}
-      <div className="mt-4 grid grid-cols-2 gap-3 md:hidden">
+      {/* The headline: Canvas's number (or the honestly-labelled estimate). Phones
+          lead with two tiles — where you stand, and what the target below asks of
+          the rest; md+ shows the same headline as one row. Both read `head`. */}
+      <div className="grid grid-cols-2 gap-3 md:hidden">
         <div className="rounded-lg bg-surface-soft p-3.5">
-          <p className="text-[13px] font-medium text-muted">Current grade</p>
-          <p className="mt-1 text-[30px] font-bold leading-none tabular-nums text-ink">{cur != null ? `${Math.round(cur)}%` : "—"}</p>
-          <p className="mt-1.5 text-[14px] font-medium text-accent">{cur != null ? letterFor(cur) : "Nothing graded yet"}</p>
+          <p className="text-[13px] font-medium text-muted">{head.label}</p>
+          <p className="mt-1 text-[30px] font-bold leading-none tabular-nums text-ink">{head.value}</p>
+          <p className="mt-1.5 text-[14px] text-muted">
+            {head.letter && <span className="mr-1.5 font-semibold text-ink">{head.letter}</span>}
+            {head.note}
+          </p>
         </div>
         <div className="rounded-lg bg-surface-soft p-3.5">
-          <p className="text-[13px] font-medium text-muted">Needed for {targetLetter}</p>
+          <p className="text-[13px] font-medium text-muted">What-if: needed for {targetLetter}</p>
           <p className={`mt-1 font-bold leading-none tabular-nums text-ink ${/^\d/.test(need.big) ? "text-[30px]" : "text-[22px]"}`}>{need.big}</p>
           {need.chip ? (
             <span className={`mt-1.5 inline-block rounded-md px-2 py-0.5 text-[13px] font-medium ${CHIP[need.tone]}`}>{need.chip}</span>
@@ -84,6 +87,13 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
           )}
         </div>
       </div>
+      <Headline head={head} />
+
+      <div className="mt-5 flex items-center gap-2 border-t border-line-subtle pt-4">
+        <CalcIcon />
+        <h2 className="text-[16px] font-semibold text-ink">What-if</h2>
+      </div>
+      <p className="mt-1 text-[14px] text-muted">Starts from {head.start != null ? gradePercentText(head.start) : "your grade"}. Try scores on what&rsquo;s left and see where you&rsquo;d finish.</p>
 
       <div className="mt-4 rounded-lg bg-surface-soft p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -103,6 +113,7 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
             ))}
           </select>
         </div>
+        <p className="mt-1.5 text-[13px] text-muted">Targets use the standard scale: A 93, A− 90, B+ 87, B 83, C 73.</p>
         <div className="hidden md:block">
           <NeededLine view={need} />
         </div>
@@ -136,28 +147,24 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
                     min={0}
                     max={100}
                     step={1}
-                    value={assume.get(r.canvasId) ?? 85}
+                    value={Math.round(assume.get(r.canvasId) ?? seedOf(r.canvasId))}
                     onChange={(e) => setScore(r.canvasId, Number(e.target.value))}
-                    aria-label={`${r.name} hypothetical score`}
+                    aria-label={`${r.name} what-if score`}
                     className="flex-[1.2] accent-accent max-md:h-11"
                   />
-                  <span className="w-[44px] shrink-0 text-right text-[14px] font-medium tabular-nums text-ink">{assume.get(r.canvasId) ?? 85}%</span>
+                  <span className="w-[44px] shrink-0 text-right text-[14px] font-medium tabular-nums text-ink">{Math.round(assume.get(r.canvasId) ?? seedOf(r.canvasId))}%</span>
                 </div>
               ))}
             </div>
           )}
+          <div className="mt-4 flex items-baseline justify-between gap-3 border-t border-line-subtle pt-4">
+            <span className="text-[14px] text-muted">{projectionLabel}</span>
+            <span className="text-[26px] font-bold tabular-nums text-ink">{projected != null ? gradePercentText(projected) : "—"}</span>
+          </div>
         </div>
       ) : (
-        <p className="mt-4 text-[14px] text-muted">All your work is graded — this grade is locked in for the term.</p>
+        <p className="mt-4 text-[14px] text-muted">All your work is graded, so nothing left can change this grade.</p>
       )}
-
-      <div className="mt-4 flex items-baseline justify-between border-t border-line-subtle pt-4">
-        <span className="text-[14px] text-muted">{remaining.length > 0 ? "Projected final grade" : "Current grade"}</span>
-        <span>
-          <span className="text-[26px] font-bold tabular-nums text-ink">{projected != null ? `${Math.round(projected)}%` : "—"}</span>
-          {projected != null && <span className="ml-1.5 text-[14px] font-medium text-accent">{letterFor(projected)}</span>}
-        </span>
-      </div>
 
       {cats.length > 0 && (
         <div className="mt-4 border-t border-line-subtle pt-4">
@@ -179,11 +186,34 @@ export function GradeCalculator({ items, official }: { items: GradeInput[]; offi
         </div>
       )}
 
-      <p className="mt-4 text-[12px] text-muted">
-        {mode === "weighted" ? "Estimated from your Canvas category weights." : "Based on raw points — your course may weight categories differently."}
-        {official?.state === "graded" && official.score != null ? ` Your official Canvas grade is ${Math.round(official.score)}%.` : ""}
+      {/* What the calculator does, stated plainly — and why a what-if can land a
+          little off Canvas's own number. */}
+      <p className="mt-4 flex gap-2 text-[13px] leading-snug text-muted">
+        <InfoIcon />
+        <span>
+          {mode === "weighted" ? "What-ifs use your Canvas category weights and each assignment’s points." : "What-ifs add up points across all your work; this course has no category weights in Canvas."}{" "}
+          {offset !== 0
+            ? "They’re lined up with Canvas’s number, which can also count dropped low scores, extra credit and excused work."
+            : "Canvas’s own number can also count dropped low scores, extra credit and excused work."}
+        </span>
       </p>
     </section>
+  );
+}
+
+/** md+ headline row — the same reading as the phone tile. */
+function Headline({ head }: { head: GradeHeadline }) {
+  return (
+    <div className="hidden items-baseline justify-between gap-4 md:flex">
+      <div>
+        <p className="text-[14px] font-medium text-muted">{head.label}</p>
+        <p className="mt-0.5 text-[13px] text-muted">{head.note}</p>
+      </div>
+      <p className="shrink-0">
+        <span className="text-[30px] font-bold leading-none tabular-nums text-ink">{head.value}</span>
+        {head.letter && <span className="ml-2 text-[16px] font-semibold text-muted">{head.letter}</span>}
+      </p>
+    </div>
   );
 }
 
@@ -220,6 +250,15 @@ function Result({ big, tone, chip, suffix }: { big: string; tone: keyof typeof C
       <span className={`rounded-md px-2 py-0.5 text-[12px] font-medium ${CHIP[tone]}`}>{chip}</span>
       <span className="w-full text-[13px] text-muted">{suffix}</span>
     </div>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="mt-px h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8v.01" />
+    </svg>
   );
 }
 

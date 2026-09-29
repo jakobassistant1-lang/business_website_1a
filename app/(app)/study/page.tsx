@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { requirePageAccess } from "@/lib/access";
 import { loadCalendarData, upcomingAssessments } from "@/lib/calendarData";
 import { studySessionsFor } from "@/lib/study";
-import { ymd } from "@/lib/calendarDates";
+import { dataToday, dataZone } from "@/lib/studentZone";
 import { StudyView } from "@/components/StudyView";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +23,12 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
   // of truth so the Study hub and the demo never drift).
   const upcoming = upcomingAssessments(data);
 
+  // Today + zone are the student's (lib/studentZone), never the server's.
+  const todayYmd = dataToday(data);
+  const timeZone = dataZone(data);
+  // Study sessions through the ONE rule (lib/studyWeek.isStudySessionBlock).
   const sessions: Record<number, { date: string; hours: number }[]> = {};
-  for (const it of upcoming) sessions[it.canvasId] = studySessionsFor(data.plan, it.canvasId);
+  for (const it of upcoming) sessions[it.canvasId] = studySessionsFor(data.plan, it.canvasId, { todayYmd, zone: timeZone });
 
-  return <StudyView connected={data.connected} assessments={upcoming} sessions={sessions} todayYmd={ymd(new Date())} missing={missing === "1"} />;
+  return <StudyView connected={data.connected} assessments={upcoming} sessions={sessions} todayYmd={todayYmd} timeZone={timeZone} missing={missing === "1"} />;
 }

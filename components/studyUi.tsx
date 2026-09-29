@@ -10,6 +10,13 @@ import { WEEKDAYS, MONTHS_SHORT, parseYmd } from "@/lib/calendarDates";
 export { TYPE_LABEL } from "@/lib/itemType";
 export { shortCourse } from "@/lib/courseName";
 
+/** "3 study sessions" — one wording for the count. The sessions themselves come
+ *  from lib/study.studySessionsFor, which reads the plan only through
+ *  lib/studyWeek.isStudySessionBlock (THE study-session rule). */
+export function studySessionCount(n: number): string {
+  return `${n} study session${n === 1 ? "" : "s"}`;
+}
+
 /** A plan session's calendar day ("YYYY-MM-DD", zone-free) in words. */
 export function sessionDateLabel(ymdStr: string): string {
   const d = parseYmd(ymdStr);
@@ -31,17 +38,6 @@ export function studyCoachCacheKey(todayYmd: string, tests: { canvasId: number; 
   let h = 5381;
   for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
   return `navo:study-coach:${(h >>> 0).toString(36)}`;
-}
-
-/** The viewer's IANA time zone, sent to the AI routes so "today" and due days in
- *  prompts match the student's calendar (#140). Client-only; "" if unavailable
- *  (the routes then fall back to UTC). */
-export function viewerTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
-  } catch {
-    return "";
-  }
 }
 
 /** Small drawn icons for the Study pages' links (no unicode arrows). */

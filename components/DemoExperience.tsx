@@ -23,6 +23,8 @@ import { NavIcon } from "@/components/NavIcon";
 import { TAB_ITEMS } from "@/components/navItems";
 import { cleanCourse } from "@/lib/courseName";
 import { TYPE_LABEL } from "@/lib/itemType";
+import { dataToday, dataZone } from "@/lib/studentZone";
+import { doneReasonOf } from "@/lib/courseCounts";
 import {
   DEMO_STEPS,
   DEMO_VIEW_ORDER,
@@ -44,6 +46,8 @@ interface Props {
   todayYmd: string;
   firstName: string;
   studyAssessments: CalendarItem[];
+  /** Built by app/demo with lib/study.studySessionsFor — the same one
+   *  isStudySessionBlock rule the live Study pages use. */
   studySessions: Record<number, { date: string; hours: number }[]>;
 }
 
@@ -56,7 +60,7 @@ const NAV: { section: string; label: string; icon: string; first: DemoView }[] =
   { section: "dashboard", label: "Dashboard", icon: "M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z", first: "dashboard" },
   { section: "plan", label: "Plan", icon: "M8 6h12M8 12h12M8 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01", first: "plan-list" },
   { section: "study", label: "Study", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15ZM4 19.5A2.5 2.5 0 0 0 6.5 22H20M8 7h8", first: "study" },
-  { section: "courses", label: "Classes", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z", first: "courses" },
+  { section: "courses", label: "Courses", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z", first: "courses" },
 ];
 const sectionOf = (v: DemoView): string => (v.startsWith("plan") ? "plan" : v);
 
@@ -74,7 +78,11 @@ const TAB_VIEW: Record<string, DemoView> = {
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export function DemoExperience({ data, todayYmd, firstName, studyAssessments, studySessions }: Props) {
+export function DemoExperience({ data, todayYmd: todayProp, firstName, studyAssessments, studySessions }: Props) {
+  // The demo derives like live data: ONE zone and "today", from the payload
+  // (lib/studentZone) — the same pair every live page passes down.
+  const timeZone = dataZone(data);
+  const todayYmd = data.todayYmd ? dataToday(data) : todayProp;
   const [view, setView] = useState<DemoView>("dashboard");
   const [phase, setPhase] = useState<Phase>("welcome");
   const [ending, setEnding] = useState(false);
@@ -460,7 +468,7 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
               shows). */}
           <main ref={mainRef} onClickCapture={onMainClick} className="min-w-0 flex-1 overflow-auto px-6 py-8 lg:px-10 lg:py-10 max-md:min-h-0 max-md:overflow-x-hidden max-md:px-4 max-md:py-5">
             {detail ? (
-              <DemoDetail detail={detail} data={data} todayYmd={todayYmd} onBack={() => setDetail(null)} />
+              <DemoDetail detail={detail} data={data} todayYmd={todayYmd} timeZone={timeZone} onBack={() => setDetail(null)} />
             ) : (
               <>
                 {view === "dashboard" && <DashboardView data={data} todayYmd={todayYmd} firstName={firstName} demo />}
@@ -469,16 +477,16 @@ export function DemoExperience({ data, todayYmd, firstName, studyAssessments, st
                 {view === "plan-timeline" && <PlanSurface key="pt" data={data} todayYmd={todayYmd} demo initialView="timeline" />}
                 {view === "study" && (
                   <>
-                    <StudyView connected assessments={studyAssessments} sessions={studySessions} />
+                    <StudyView connected assessments={studyAssessments} sessions={studySessions} todayYmd={todayYmd} timeZone={timeZone} demo />
                     <DemoStudyTools />
                   </>
                 )}
                 {view === "courses" && (
                   <div className="mx-auto max-w-7xl">
-                    <h1 className="text-[28px] font-bold tracking-tight text-ink">Classes</h1>
-                    <p className="mt-1 text-[15px] text-muted">Your grade and what to do next in each class. Open one to see all its work.</p>
+                    <h1 className="text-[28px] font-bold tracking-tight text-ink">Courses</h1>
+                    <p className="mt-1 text-[15px] text-muted">Your grade and what to do next in each course. Open one to see all its work.</p>
                     <div className="mt-7">
-                      <CourseGrid data={data} todayYmd={todayYmd} demo />
+                      <CourseGrid data={data} demo />
                     </div>
                   </div>
                 )}
@@ -597,17 +605,19 @@ function DemoDetail({
   detail,
   data,
   todayYmd,
+  timeZone,
   onBack,
 }: {
   detail: { kind: "assignment" | "study" | "course"; id: number };
   data: CalendarData;
   todayYmd: string;
+  timeZone: string;
   onBack: () => void;
 }) {
   if (detail.kind === "course") {
     const active = data.items.filter((it) => it.courseCanvasId === detail.id);
     const completed = data.completed.filter((it) => it.courseCanvasId === detail.id);
-    const courseName = [...active, ...completed][0]?.courseName ?? "Class";
+    const courseName = [...active, ...completed][0]?.courseName ?? "Course";
     const grade = data.courses.find((c) => c.canvasId === detail.id)?.grade;
     // onBack: the demo blocks real links, so "← Back" closes this detail and
     // returns to the demo view it was opened from.
@@ -619,6 +629,7 @@ function DemoDetail({
         completed={completed}
         rankedIds={data.ranked.map((r) => r.canvasId)}
         todayYmd={todayYmd}
+        timeZone={timeZone}
         demo
         onBack={onBack}
       />
@@ -650,11 +661,16 @@ function DemoDetail({
       estimatedEffortHours={item.estimatedEffortHours}
       htmlUrl={null}
       safeHtml={null}
-      submissionState={item.status === "done" ? "submitted" : null}
+      // Same done rule as live and the course page (lib/courseCounts.doneReasonOf):
+      // a scored item reads "Graded · 36/40 pts", not "Submitted".
+      submissionState={null}
       submittedAt={null}
-      submissionScore={null}
+      submissionScore={item.score}
+      done={item.status === "done"}
+      doneReason={item.status === "done" ? doneReasonOf(item) : null}
       summary={item.summary}
       todayYmd={todayYmd}
+      timeZone={timeZone}
     />
   );
 }

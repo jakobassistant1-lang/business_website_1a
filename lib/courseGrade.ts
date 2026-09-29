@@ -38,6 +38,13 @@ export function deriveCourseGrade(
   return { state: "none", score: null, letter: null };
 }
 
+/** How a course percentage is printed everywhere ("88%"): the grade pill, the
+ *  Grades tab's "Current grade", and its what-if figures. One rounding rule, so
+ *  the same number never reads 87.6% in one place and 88% in another. */
+export function gradePercentText(score: number): string {
+  return `${Math.round(score)}%`;
+}
+
 export type GradeBand = "high" | "good" | "fair" | "low";
 
 /** Coarse performance band — used for color only, and respects the no-amber

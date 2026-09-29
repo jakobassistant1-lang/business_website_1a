@@ -186,7 +186,7 @@ describe("NotesSection (sheets on phones)", () => {
 describe("Classes (course menu, grid, class page)", () => {
   it("the course kebab is a 44px target and becomes a Sheet on phones", () => {
     const src = read("components/CourseExclude.tsx");
-    expect(hasTap(openingTag(src, 'aria-label="Class options"'))).toBe(true);
+    expect(hasTap(openingTag(src, 'aria-label="Course options"'))).toBe(true);
     expect(src).toMatch(/useIsPhone\(\)/);
     expect(src).toMatch(/<Sheet\b/);
   });

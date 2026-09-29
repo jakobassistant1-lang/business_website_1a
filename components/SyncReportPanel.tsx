@@ -10,7 +10,7 @@ import {
 } from "@/lib/syncReport";
 
 /** Inert reasons (fix themselves next run) stay neutral; the rest get the calm
- *  violet-grey warning tone — never red for a single class. */
+ *  violet-grey warning tone — never red for a single course. */
 const REASON_TONE: Record<SyncReportReason, Tone> = {
   out_of_time: "neutral",
   throttled: "neutral",
@@ -22,20 +22,22 @@ const REASON_TONE: Record<SyncReportReason, Tone> = {
 };
 
 /**
- * "Last sync" card on /connections (#132): when the last Canvas sync ran, which
- * classes it refreshed (with assignment counts) and a plain-English reason for any
+ * "Last check" card on /connections (#132): when Navo last checked Canvas, which
+ * courses it refreshed (with assignment counts) and a plain-English reason for any
  * it couldn't. Reads the persisted CanvasCredential.lastSyncReport, so it survives
- * a reload. Server component; only the relative time is client-rendered (viewer's clock).
+ * a reload. The time is the page's ONE `lastCheckedAt` (the same one the Canvas
+ * card's "Last checked Canvas" line shows). Server component; only the relative
+ * time is client-rendered (viewer's clock).
  */
-export function SyncReportPanel({ report }: { report: SyncReport }) {
+export function SyncReportPanel({ report, lastCheckedAt }: { report: SyncReport; lastCheckedAt: string }) {
   const skipped = skippedNonStudentText(report.skippedNonStudent);
   const run = runSummary(report);
   return (
     <div className="card mt-4 max-w-xl p-5 sm:p-6">
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <span className="text-sm font-medium text-ink">Last sync</span>
+        <span className="text-sm font-medium text-ink">Last check</span>
         <span className="min-w-0 truncate text-[13px] text-muted">
-          <LocalRelativeTime iso={report.at} /> · {report.mode === "quick" ? "quick refresh" : "full sync"}
+          <LocalRelativeTime iso={lastCheckedAt} /> · {report.mode === "quick" ? "quick check" : "full check"}
         </span>
       </div>
 
@@ -57,11 +59,11 @@ export function SyncReportPanel({ report }: { report: SyncReport }) {
           ))}
         </ul>
       ) : (
-        !run && <p className="text-sm text-muted">No classes to refresh this time.</p>
+        !run && <p className="text-sm text-muted">No courses to refresh this time.</p>
       )}
 
       {report.mode === "quick" && report.courses.length > 0 && (
-        <p className="mt-3 text-[13px] text-muted">A quick refresh only checks classes with work due recently or upcoming.</p>
+        <p className="mt-3 text-[13px] text-muted">A quick check only looks at courses with work due recently or coming up.</p>
       )}
       {skipped && <p className="mt-3 text-[13px] text-muted">{skipped}</p>}
     </div>

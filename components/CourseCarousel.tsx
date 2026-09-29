@@ -1,6 +1,6 @@
 "use client";
 
-// Phone-only (< md) Classes carousel: one class card centred per screen, the
+// Phone-only (< md) Courses carousel: one course card centred per screen, the
 // neighbours' edges peeking in (dimmed) so it's obvious you can swipe, and
 // Instagram-style dots below. CourseGrid renders this AND the md+ grid, with CSS
 // (`md:hidden` / `hidden md:grid`) choosing — so there's no first-paint swap —
@@ -91,7 +91,7 @@ export function CourseCarousel({ children }: { children: ReactNode }) {
         tabIndex={0}
         role="region"
         aria-roledescription="carousel"
-        aria-label="Your classes"
+        aria-label="Your courses"
         onKeyDown={onKeyDown}
         className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth py-2 [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
       >

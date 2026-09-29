@@ -8,6 +8,7 @@ import { isGoogleConfigured } from "@/lib/googleCalendar/auth";
 import { Container } from "@/components/Container";
 import { SyncReportPanel } from "@/components/SyncReportPanel";
 import { parseSyncReport } from "@/lib/syncReport";
+import { lastCheckedAtOf } from "@/lib/lastChecked";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,10 @@ export default async function ConnectionsPage() {
   ]);
   // Persisted report of the last Canvas sync (#132); a missing/garbled one → no panel.
   const syncReport = cred ? parseSyncReport(cred.lastSyncReport) : null;
+  // THE freshness timestamp ("Last checked Canvas", lib/lastChecked — the same
+  // function CalendarData uses), computed once here and passed down, so the form
+  // and the "Last check" card can't disagree.
+  const lastCheckedAt = lastCheckedAtOf(cred);
 
   return (
     <Container>
@@ -32,13 +37,10 @@ export default async function ConnectionsPage() {
           hasToken: !!cred,
           status: cred?.lastValidationStatus ?? null,
           accountName: cred?.accountName ?? null,
-          // Freshness line under the status chip (#13/#19 regression): the literal
-          // "last synced" time only survived in the retired PlanView.
-          syncedAt: cred?.syncedAt ? cred.syncedAt.toISOString() : null,
-          lastValidatedAt: cred?.lastValidatedAt ? cred.lastValidatedAt.toISOString() : null,
+          lastCheckedAt,
         }}
       />
-      {syncReport && <SyncReportPanel report={syncReport} />}
+      {syncReport && lastCheckedAt && <SyncReportPanel report={syncReport} lastCheckedAt={lastCheckedAt} />}
       <Suspense fallback={null}>
         <GoogleCalendarCard
           configured={isGoogleConfigured()}

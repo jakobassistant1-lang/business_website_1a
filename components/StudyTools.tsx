@@ -17,7 +17,7 @@ import { fmtHours, StudyLeadEditor } from "@/components/calendar/parts";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
 import { NETWORK_ERROR } from "@/lib/messages";
-import { TYPE_LABEL, shortCourse, sessionDateLabel, StudyChip, ChevronIcon, ExternalIcon, viewerTimeZone } from "@/components/studyUi";
+import { TYPE_LABEL, shortCourse, sessionDateLabel, StudyChip, ChevronIcon, ExternalIcon, studySessionCount } from "@/components/studyUi";
 import { nextIndex } from "@/lib/keyboardNav";
 import { DueLabel } from "@/components/DueLabel";
 import {
@@ -49,7 +49,7 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
     const res = await fetch("/api/study", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, tz: viewerTimeZone() }),
+      body: JSON.stringify(body), // the server reads the student's zone itself (#145)
     });
     const json = await res.json().catch(() => null);
     if (res.ok && json?.ok) return { ok: true, content: json.content as T, cached: json.cached === true };
@@ -76,12 +76,17 @@ export function StudyTools({
   sessions,
   isNextUp,
   todayYmd = "",
+  timeZone,
 }: {
   assessment: CalendarItem;
+  /** This test's study sessions — lib/study.studySessionsFor (the one
+   *  isStudySessionBlock rule), never by reading `.study` here. */
   sessions: { date: string; hours: number }[];
   isNextUp: boolean;
-  /** The server's day; optional because the "long-time" due format never reads it. */
+  /** Today in the student's zone ("YYYY-MM-DD"). */
   todayYmd?: string;
+  /** The student's Canvas zone (lib/studentZone): the due date renders in it. */
+  timeZone?: string;
 }) {
   const [tab, setTab] = useState<Tab>("plan");
   const [plan, setPlan] = useState<Gen<StudyPlanContent>>(IDLE);
@@ -185,7 +190,7 @@ export function StudyTools({
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
           {assessment.dueAt && (
             <StudyChip>
-              Due <DueLabel iso={assessment.dueAt} format="long-time" todayYmd={todayYmd} />
+              Due <DueLabel iso={assessment.dueAt} format="long-time" todayYmd={todayYmd} timeZone={timeZone} />
             </StudyChip>
           )}
           {assessment.pointsPossible != null && assessment.pointsPossible > 0 && <StudyChip>{assessment.pointsPossible} pts</StudyChip>}
@@ -300,7 +305,7 @@ function SourceNote({ sparse, sources, excluded = [], noteCount = 0 }: { sparse:
     <div className="mt-4 space-y-1.5">
       {sparse ? (
         <p className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${toneSoft.warning}`}>
-          Canvas has little material for this test, so this is built from its title and description. Check coverage with your teacher.
+          Canvas has little material for this test, so this is built from its title, description and the subject.
         </p>
       ) : basedOn ? (
         <p className="text-xs text-muted">
@@ -353,8 +358,8 @@ function PlanSection({
 }) {
   const header =
     sessions.length > 0
-      ? `Your plan reserves ${sessions.length} session${sessions.length === 1 ? "" : "s"} · ${fmtHours(totalHours)} total before the test.`
-      : "No study blocks are scheduled for this test yet. Here's how to use the time you have.";
+      ? `Your plan has ${studySessionCount(sessions.length)} · ${fmtHours(totalHours)} before the test.`
+      : "No study sessions are scheduled for this test yet. Here's how to use the time you have.";
 
   return (
     <SectionShell title="How to study this" aside={plan.status === "ready" ? <RegenButton onClick={onRegen} /> : undefined}>
@@ -374,7 +379,7 @@ function PlanSection({
                   <div key={`${s.date}-${i}`} className="rounded-[14px] border-l-[3px] border-accent bg-accent-soft/40 px-4 py-3">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <p className="text-sm font-semibold text-ink">
-                        Session {i + 1} · {sessionDateLabel(s.date)}
+                        Study session {i + 1} · {sessionDateLabel(s.date)}
                       </p>
                       <span className="text-[13px] font-medium text-accent">{fmtHours(s.hours)}</span>
                     </div>
