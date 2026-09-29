@@ -2,8 +2,7 @@
 // and the /api/dashboard-summary endpoint (Gemini's fallback AND its clamp). Pure:
 // no Gemini, no env, no node imports, so it can be bundled into the browser.
 
-import { effectiveEffort } from "./effort";
-import { round1 } from "./round";
+import { roundHours } from "./effort";
 
 export type Intensity = "easy" | "moderate" | "hard";
 
@@ -16,13 +15,15 @@ export interface WeekLoad {
   // Overdue work is PART of the week's load (#62 regression: a week with 16 overdue
   // assignments rated "Easy" because only `windowDates` work reached the rating).
   overdueCount: number;
-  overdueHours: number; // effective effort of the overdue items (unknown ⇒ 0)
+  overdueHours: number; // effort of the overdue items — the same number their tags show
 }
 
-/** Rows the overdue slice can be read off — `CalendarData.items` shape, narrowed. */
+/** Rows the overdue slice can be read off — `CalendarData.items` shape, narrowed.
+ *  `estimatedEffortHours` there is ALREADY resolved by lib/effort.effortOrDefault
+ *  (padded AI estimate, the student's number as typed, or the default) — the same
+ *  unit as the planned hours in `workHours`. It is never padded again here. */
 export interface OverdueSource {
   status?: string;
-  effortOverrideHours?: number | null;
   estimatedEffortHours?: number | null;
 }
 
@@ -32,13 +33,17 @@ export function maxIntensity(a: Intensity, b: Intensity): Intensity {
   return RANK[a] >= RANK[b] ? a : b;
 }
 
-/** The overdue half of `WeekLoad`, from the same items the dashboard lists.
- *  Effort goes through the canonical `effectiveEffort` (never `estimatedEffortHours`
- *  raw); an item with no estimate contributes 0 hours but still counts. */
-export function overdueLoad(items: readonly OverdueSource[]): { overdueCount: number; overdueHours: number } {
+/** The overdue half of `WeekLoad`, from the same items the dashboard lists. Each
+ *  item counts the hours its tag shows (effortOrDefault, resolved in calendarData) —
+ *  "no estimate yet" is the default hours, as in the scheduler and the ranking,
+ *  never 0. */
+export function overdueLoad(
+  items: readonly OverdueSource[],
+  defaultHours: number, // the user's defaultEffortHours — the same default effortOrDefault used upstream
+): { overdueCount: number; overdueHours: number } {
   const overdue = items.filter((it) => it.status === "overdue");
-  const hours = overdue.reduce((s, it) => s + (effectiveEffort(it) ?? 0), 0);
-  return { overdueCount: overdue.length, overdueHours: round1(hours) };
+  const hours = overdue.reduce((s, it) => s + (it.estimatedEffortHours ?? defaultHours), 0);
+  return { overdueCount: overdue.length, overdueHours: roundHours(hours) };
 }
 
 /** The floor a pile of overdue work puts under the week, whatever else is true:

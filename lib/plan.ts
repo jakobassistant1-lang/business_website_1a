@@ -1,13 +1,17 @@
 import { prisma } from "./prisma";
-import { isAssignmentDone } from "./assignmentStatus";
+import { assignmentDoneReason, type DoneReason } from "./assignmentStatus";
+import { itemType } from "./itemType";
 import { generatePlan, Plan, SchedulerAssignment } from "./scheduler";
 import { rankRecommendations, priorityInputsFromPlan, type ScoredAssignment } from "./priority";
+import { effortOrDefault } from "./effort";
+import { studentZone } from "./studentZone";
 
 export interface SubmittedItem {
   canvasId: number;
   name: string;
   courseName: string;
-  submittedAt: string; // ISO — present because submittedAt is non-null
+  submittedAt: string | null; // ISO; null for a done item with no submission time (graded in class, test date passed, checked off)
+  doneReason: DoneReason;
   submissionScore: number | null;
   pointsPossible: number | null;
   htmlUrl: string | null;
@@ -27,6 +31,9 @@ export interface PlanPayload {
 }
 
 /**
+ * LEGACY (retired PlanView): still reachable via /api/plan and /api/briefing, so it
+ * follows the same effort + day rules as lib/calendarData.
+ *
  * Loads the cached assignments and runs the rule-based planner. `hoursOverride`
  * lets the Plan view regenerate with a different daily budget (FR-8) without
  * persisting it.
@@ -47,17 +54,21 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
       ? hoursOverride
       : user.defaultHoursPerDay;
 
-  // Split submitted vs. active assignments (canvas-mcp integration) using the
-  // shared done rule (lib/assignmentStatus — see its comment for the reopen case).
-  const isDone = (a: (typeof rows)[number]) => isAssignmentDone(a);
-  const submittedRows = rows.filter(isDone);
-  const activeRows = rows.filter((a) => !isDone(a));
+  // Split done vs. active with THE done rule (lib/assignmentStatus), given its ctx so
+  // a past exam/quiz date counts too — days read in the student's zone.
+  const zone = studentZone(user);
+  const now = new Date();
+  const doneReason = (a: (typeof rows)[number]) =>
+    assignmentDoneReason(a, { type: itemType(a.submissionType, a.name), dueAt: a.dueAt, zone, now });
+  const submittedRows = rows.filter((a) => doneReason(a) !== null);
+  const activeRows = rows.filter((a) => doneReason(a) === null);
 
   const submitted: SubmittedItem[] = submittedRows.map((a) => ({
     canvasId: a.canvasId,
     name: a.name,
     courseName: a.course.name,
-    submittedAt: a.submittedAt!.toISOString(),
+    submittedAt: a.submittedAt ? a.submittedAt.toISOString() : null, // may be null for a done item
+    doneReason: doneReason(a)!,
     submissionScore: a.submissionScore,
     pointsPossible: a.pointsPossible,
     htmlUrl: a.htmlUrl,
@@ -70,11 +81,13 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
     dueAt: a.dueAt,
     pointsPossible: a.pointsPossible,
     htmlUrl: a.htmlUrl,
-    estimatedEffortHours: a.estimatedEffortHours ?? null,
+    // THE effort rule (lib/effort): override as typed, else the padded AI estimate,
+    // else the user's default — the same number the live plan and tags use (#136).
+    estimatedEffortHours: effortOrDefault(a, user.defaultEffortHours),
     summary: a.aiSummary ?? null,
   }));
 
-  const plan = generatePlan(assignments, hours, user.planningWindowDays, user.defaultEffortHours, new Date());
+  const plan = generatePlan(assignments, hours, user.planningWindowDays, user.defaultEffortHours, now, zone);
 
   // Deterministic prioritization (pure logic). pointsById is threaded in because
   // the scheduler drops pointsPossible from its output.
@@ -83,6 +96,8 @@ export async function loadPlan(userId: number, hoursOverride?: number): Promise<
   const recommendations = rankRecommendations(priorityInputsFromPlan(plan, submittedIds, pointsById), {
     windowDays: user.planningWindowDays,
     effortHours: user.defaultEffortHours,
+    now,
+    zone, // days + date words in the student's zone (lib/studentZone), like the live ranking
   }).top;
 
   const status = cred?.lastValidationStatus ?? null;

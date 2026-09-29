@@ -7,15 +7,21 @@ interface Initial {
   defaultHoursPerDay: number;
   studyDaysTest: number;
   studyDaysQuiz: number;
+  /** Midterms, finals and cumulative exams (lib/studyPlan.assessmentTier "final",
+   *  User.studyDaysFinal). The field shows only when the page passes the student's
+   *  real value — never a made-up default that saving wouldn't change. */
+  studyDaysFinal?: number;
 }
 
-type Key = "defaultHoursPerDay" | "studyDaysTest" | "studyDaysQuiz";
+type Key = "defaultHoursPerDay" | "studyDaysTest" | "studyDaysQuiz" | "studyDaysFinal";
 
 export function SettingsForm({ initial }: { initial: Initial }) {
+  const hasFinal = initial.studyDaysFinal != null;
   const [form, setForm] = useState<Record<Key, string>>({
     defaultHoursPerDay: String(initial.defaultHoursPerDay),
     studyDaysTest: String(initial.studyDaysTest),
     studyDaysQuiz: String(initial.studyDaysQuiz),
+    studyDaysFinal: hasFinal ? String(initial.studyDaysFinal) : "",
   });
   const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -41,6 +47,7 @@ export function SettingsForm({ initial }: { initial: Initial }) {
           defaultHoursPerDay: Number(form.defaultHoursPerDay),
           studyDaysTest: Number(form.studyDaysTest),
           studyDaysQuiz: Number(form.studyDaysQuiz),
+          ...(hasFinal ? { studyDaysFinal: Number(form.studyDaysFinal) } : {}),
         }),
       });
       if (res.ok) {
@@ -66,7 +73,16 @@ export function SettingsForm({ initial }: { initial: Initial }) {
         <Field label="Hours you can study per day" hint="Your daily study budget — the planner schedules work and study within it."
           value={form.defaultHoursPerDay} onChange={(v) => set("defaultHoursPerDay", v)}
           type="number" inputMode="decimal" min="0.5" max="24" step="0.5" error={errors.defaultHoursPerDay} />
-        <Field label="Start studying for exams/tests (days ahead)" hint="How many days before an exam the planner begins scheduling study sessions."
+        {/* Three lead times, one per assessment tier (lib/studyPlan.assessmentTier):
+            midterms/finals, other exams and tests, quizzes. The exams label used
+            to claim midterms and finals too, which have their own setting. */}
+        {hasFinal && (
+          <Field label="Start studying for midterms and finals (days ahead)" hint="Midterms, finals and cumulative exams: how many days before one the planner begins scheduling study sessions."
+            value={form.studyDaysFinal} onChange={(v) => set("studyDaysFinal", v)}
+            type="number" inputMode="numeric" min="1" max="28" step="1" error={errors.studyDaysFinal} />
+        )}
+        <Field label={hasFinal ? "Start studying for other exams and tests (days ahead)" : "Start studying for exams and tests (days ahead)"}
+          hint={hasFinal ? "Unit exams and tests: how many days before one the planner begins scheduling study sessions." : "Unit exams and tests: how many days before one the planner begins scheduling study sessions. Midterms and finals use their own, longer lead."}
           value={form.studyDaysTest} onChange={(v) => set("studyDaysTest", v)}
           type="number" inputMode="numeric" min="1" max="14" step="1" error={errors.studyDaysTest} />
         <Field label="Start studying for quizzes (days ahead)" hint="How many days before a quiz the planner begins scheduling study sessions."

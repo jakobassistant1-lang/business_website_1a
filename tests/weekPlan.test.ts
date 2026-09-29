@@ -3,6 +3,8 @@ import { generateWeekPlan } from "@/lib/weekPlan";
 import type { SchedulerAssignment } from "@/lib/scheduler";
 
 const NOW = new Date(2026, 5, 1, 9, 0, 0); // Mon Jun 1 2026
+// These fixtures are local-time dates, so the plan reads days in the machine's zone.
+const LOCAL = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const due = (offset: number, hour = 17) => new Date(2026, 5, 1 + offset, hour, 0, 0);
 
 function mk(id: number, dueAt: Date | null, over: Partial<SchedulerAssignment> = {}): SchedulerAssignment {
@@ -16,16 +18,16 @@ const totalFor = (p: ReturnType<typeof generateWeekPlan>, id: number) =>
   blocks(p).filter((b) => b.canvasId === id).reduce((s, b) => s + b.hours, 0);
 
 describe("generateWeekPlan — shared guarantees (parity with the old engine)", () => {
-  it("schedules a deliverable's inflated effort as ≤1h chunks before its due date", () => {
-    const p = generateWeekPlan([mk(1, due(3), { estimatedEffortHours: 2 })], 3, 7, 2, NOW);
-    expect(totalFor(p, 1)).toBeCloseTo(2.4, 1); // 2h × 1.2 inflation
+  it("schedules a deliverable's (already padded) effort exactly, as ≤1h chunks before its due date", () => {
+    const p = generateWeekPlan([mk(1, due(3), { estimatedEffortHours: 2.2 })], 3, 7, 2, NOW, LOCAL);
+    expect(totalFor(p, 1)).toBeCloseTo(2.2, 6); // a 2h AI estimate padded once upstream — no second padding
     blocks(p).forEach((b) => expect(b.hours).toBeLessThanOrEqual(1 + 1e-9));
     expect(blocks(p).length).toBeGreaterThan(1); // split, not one lump
     expect(p.overloadHours).toBe(0);
   });
 
   it("G1: every in-window-due item is represented, even at tight capacity", () => {
-    const p = generateWeekPlan([mk(1, due(0)), mk(2, due(1)), mk(3, due(3)), mk(4, due(6))], 1, 7, 2, NOW);
+    const p = generateWeekPlan([mk(1, due(0)), mk(2, due(1)), mk(3, due(3)), mk(4, due(6))], 1, 7, 2, NOW, LOCAL);
     expect(p.inWindowDueCount).toBe(4);
     expect(p.representedCount).toBe(4);
     const ids = new Set(blocks(p).map((b) => b.canvasId));
@@ -35,12 +37,12 @@ describe("generateWeekPlan — shared guarantees (parity with the old engine)", 
   it("never allocates more than 90% of the daily budget", () => {
     const items = Array.from({ length: 12 }, (_, i) => mk(i + 1, due(2), { estimatedEffortHours: 1 }));
     const H = 4;
-    const p = generateWeekPlan(items, H, 7, 2, NOW);
+    const p = generateWeekPlan(items, H, 7, 2, NOW, LOCAL);
     for (const d of p.days) expect(d.allocated).toBeLessThanOrEqual(H * 0.9 + 1e-6);
   });
 
   it("never places a block after its due date", () => {
-    const p = generateWeekPlan([mk(1, due(1), { estimatedEffortHours: 1 }), study(2, due(3), { estimatedEffortHours: 3 })], 3, 7, 2, NOW);
+    const p = generateWeekPlan([mk(1, due(1), { estimatedEffortHours: 1 }), study(2, due(3), { estimatedEffortHours: 3 })], 3, 7, 2, NOW, LOCAL);
     for (const b of blocks(p)) {
       const dueIdx = Math.round((new Date(b.dueAt).setHours(0, 0, 0, 0) - new Date(NOW).setHours(0, 0, 0, 0)) / 86_400_000);
       expect(b.day).toBeLessThanOrEqual(dueIdx);
@@ -48,29 +50,29 @@ describe("generateWeekPlan — shared guarantees (parity with the old engine)", 
   });
 
   it("puts undated items in the bucket, not the schedule", () => {
-    const p = generateWeekPlan([mk(1, null)], 3, 7, 2, NOW);
+    const p = generateWeekPlan([mk(1, null)], 3, 7, 2, NOW, LOCAL);
     expect(p.undated.map((u) => u.canvasId)).toContain(1);
     expect(blocks(p)).toHaveLength(0);
   });
 
   it("flags overdue items as at-risk", () => {
-    const p = generateWeekPlan([mk(1, due(-2))], 3, 7, 2, NOW);
+    const p = generateWeekPlan([mk(1, due(-2))], 3, 7, 2, NOW, LOCAL);
     expect(p.atRisk.some((r) => r.canvasId === 1 && r.kind === "overdue")).toBe(true);
   });
 
   it("is deterministic", () => {
     const a = [mk(1, due(1), { estimatedEffortHours: 1 }), study(2, due(4), { estimatedEffortHours: 3, pointsPossible: 50 })];
-    expect(generateWeekPlan(a, 3, 7, 2, NOW)).toEqual(generateWeekPlan(a, 3, 7, 2, NOW));
+    expect(generateWeekPlan(a, 3, 7, 2, NOW, LOCAL)).toEqual(generateWeekPlan(a, 3, 7, 2, NOW, LOCAL));
   });
 
   it("reports overload when the week can't fit everything", () => {
     const heavy = [1, 2, 3].map((i) => mk(i, due(1), { estimatedEffortHours: 10 }));
-    expect(generateWeekPlan(heavy, 3, 7, 2, NOW).overloadHours).toBeGreaterThan(0);
+    expect(generateWeekPlan(heavy, 3, 7, 2, NOW, LOCAL).overloadHours).toBeGreaterThan(0);
   });
 });
 
 describe("generateWeekPlan — spaced study sessions (the new behavior)", () => {
-  const p = generateWeekPlan([study(1, due(5), { estimatedEffortHours: 3 })], 4, 7, 2, NOW);
+  const p = generateWeekPlan([study(1, due(5), { estimatedEffortHours: 3 })], 4, 7, 2, NOW, LOCAL);
   const studyBlocks = blocks(p).filter((b) => b.canvasId === 1);
 
   it("produces multiple ≤1h study sessions, all flagged study + before the exam", () => {
@@ -98,7 +100,7 @@ describe("generateWeekPlan — contention (value wins scarce slots)", () => {
   it("a higher-value exam keeps more of its sessions when two collide on a tight budget", () => {
     const high = study(1, due(3), { estimatedEffortHours: 4, value: 100 });
     const low = study(2, due(3), { estimatedEffortHours: 4, value: 1 });
-    const p = generateWeekPlan([high, low], 2, 7, 2, NOW); // 2h/day → 1.8h usable, tight
+    const p = generateWeekPlan([high, low], 2, 7, 2, NOW, LOCAL); // 2h/day → 1.8h usable, tight
     expect(totalFor(p, 1)).toBeGreaterThanOrEqual(totalFor(p, 2));
     expect(p.overloadHours).toBeGreaterThan(0); // genuinely over capacity
   });
@@ -108,7 +110,7 @@ describe("generateWeekPlan — contention (value wins scarce slots)", () => {
     // budget. Maximizing points means the chore overflows so the exam keeps its prep.
     const chore = mk(1, due(5), { estimatedEffortHours: 6, value: 1 });
     const exam = study(2, due(5), { estimatedEffortHours: 6, value: 100 });
-    const p = generateWeekPlan([chore, exam], 2, 7, 2, NOW); // ~1.8h/day usable → can't fit both
+    const p = generateWeekPlan([chore, exam], 2, 7, 2, NOW, LOCAL); // ~1.8h/day usable → can't fit both
     expect(totalFor(p, 2)).toBeGreaterThan(totalFor(p, 1)); // high-value exam prep wins the scarce time
     expect(p.overloadHours).toBeGreaterThan(0);
   });
@@ -116,20 +118,21 @@ describe("generateWeekPlan — contention (value wins scarce slots)", () => {
 
 describe("generateWeekPlan — review-fix behaviors", () => {
   it("a near-zero-effort exam still appears (0h marker) and is honestly counted, never silently vanishes", () => {
-    const p = generateWeekPlan([study(1, due(3), { estimatedEffortHours: 0 })], 4, 7, 2, NOW);
+    const p = generateWeekPlan([study(1, due(3), { estimatedEffortHours: 0 })], 4, 7, 2, NOW, LOCAL);
     expect(new Set(blocks(p).map((b) => b.canvasId)).has(1)).toBe(true); // present, not dropped
+    expect(blocks(p).filter((b) => b.canvasId === 1).every((b) => b.marker === true && b.study === false)).toBe(true); // #143
     expect(p.representedCount).toBe(p.inWindowDueCount); // G1 count is honest
   });
 
   it("study that can't fit into ≤1h sessions is surfaced as overload, not silently dropped", () => {
     // A huge exam load: more than MAX_SESSIONS×1h can hold → overflow must surface.
-    const p = generateWeekPlan([study(1, due(13), { estimatedEffortHours: 30 })], 8, 14, 2, NOW);
+    const p = generateWeekPlan([study(1, due(13), { estimatedEffortHours: 30 })], 8, 14, 2, NOW, LOCAL);
     expect(p.overloadHours).toBeGreaterThan(0);
   });
 
   it("honors a custom studyLeadDays — a wider lead spreads sessions across more days", () => {
     const distinctStudyDays = (lead: number) => {
-      const p = generateWeekPlan([study(1, due(6), { estimatedEffortHours: 5, studyLeadDays: lead })], 4, 7, 2, NOW);
+      const p = generateWeekPlan([study(1, due(6), { estimatedEffortHours: 5, studyLeadDays: lead })], 4, 7, 2, NOW, LOCAL);
       return new Set(blocks(p).filter((b) => b.canvasId === 1).map((b) => b.day)).size;
     };
     expect(distinctStudyDays(6)).toBeGreaterThan(distinctStudyDays(2));
@@ -139,7 +142,7 @@ describe("generateWeekPlan — review-fix behaviors", () => {
     // value=0 (e.g. an item that didn't survive the AI screen) must not outrank real work.
     const real = mk(1, due(2), { estimatedEffortHours: 1, value: 50 });
     const valueless = mk(2, due(2), { estimatedEffortHours: 1, pointsPossible: 1500, value: 0 });
-    const p = generateWeekPlan([valueless, real], 1, 7, 2, NOW); // tight: ~0.9h/day
+    const p = generateWeekPlan([valueless, real], 1, 7, 2, NOW, LOCAL); // tight: ~0.9h/day
     expect(totalFor(p, 1)).toBeGreaterThanOrEqual(totalFor(p, 2)); // real work wins the scarce slot
   });
 });

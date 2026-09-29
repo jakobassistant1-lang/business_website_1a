@@ -13,6 +13,7 @@ export default async function SettingsPage() {
           defaultHoursPerDay: user.defaultHoursPerDay,
           studyDaysTest: user.studyDaysTest,
           studyDaysQuiz: user.studyDaysQuiz,
+          studyDaysFinal: user.studyDaysFinal, // midterms + finals (was settable nowhere)
         }}
       />
     </Container>

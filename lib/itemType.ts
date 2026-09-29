@@ -46,12 +46,25 @@ export function requiresOnlineSubmission(submissionTypes: string | null | undefi
   return ONLINE_SUBMISSION.some((t) => st.includes(t));
 }
 
+/** Words that make a "final"/"cumulative" item a thing you HAND IN, not a test. */
+const DELIVERABLE_WORD = /\b(paper|project|presentation|reflection|draft|essay|report|proposal|portfolio|submission)s?\b/;
+
+/** THE exam-by-name rule (one place): the name says exam/test/midterm, OR it says
+ *  "final"/"cumulative" without a deliverable word — so "Cumulative Final" and
+ *  "Final" are exams while "Final Paper", "Final Project Proposal" and "Final
+ *  Reflection" stay assignments. A name that says "quiz" or "discussion" keeps
+ *  that type ("Final Quiz" is a quiz, not a 14-day final). */
+export function namesAnExam(name: string | null | undefined): boolean {
+  const n = (name ?? "").toLowerCase();
+  if (/\b(exam|midterm|test)\b/.test(n)) return true;
+  return /\b(final|cumulative)\b/.test(n) && !DELIVERABLE_WORD.test(n) && !/\b(quiz|discussion)\b/.test(n);
+}
+
 export function itemType(submissionTypes: string | null | undefined, name: string): ItemType {
   const st = (submissionTypes ?? "").toLowerCase();
   const n = (name ?? "").toLowerCase();
-  // Exams / midterms / tests (long study lead). "final" only counts as an exam
-  // when paired with "exam" so a "final project" stays an assignment.
-  if (/\b(exam|midterm|test)\b/.test(n) || /\bfinal\b[\s\S]*\bexam\b/.test(n)) return "exam";
+  // Exams / midterms / tests / finals (long study lead) — see namesAnExam.
+  if (namesAnExam(n)) return "exam";
   // Quizzes (short study lead).
   if (st.includes("online_quiz") || /\bquiz\b/.test(n)) return "quiz";
   if (st.includes("discussion_topic") || st.includes("external_tool") || /\bdiscussion\b/.test(n)) return "other";

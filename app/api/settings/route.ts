@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireActiveUser } from "@/lib/access";
 
-// Settings: study budget (hours/day) + how far ahead to study for exams/quizzes.
+// Settings: study budget (hours/day) + how far ahead to study for exams/tests,
+// quizzes, and midterms/finals (studyDaysFinal — the tier lib/studyPlan.assessmentTier
+// gives midterm/final/cumulative exams).
 export async function PATCH(req: Request) {
   const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -25,6 +27,13 @@ export async function PATCH(req: Request) {
     const q = Number(body.studyDaysQuiz);
     if (!(Number.isInteger(q) && q >= 1 && q <= 14)) errors.studyDaysQuiz = "Enter a whole number of days (1–14).";
     else data.studyDaysQuiz = q;
+  }
+
+  if (body.studyDaysFinal !== undefined) {
+    const f = Number(body.studyDaysFinal);
+    // Midterms/finals default to 14, so the range runs to 28 (the Settings field's max).
+    if (!(Number.isInteger(f) && f >= 1 && f <= 28)) errors.studyDaysFinal = "Enter a whole number of days (1–28).";
+    else data.studyDaysFinal = f;
   }
 
   if (Object.keys(errors).length) return NextResponse.json({ errors }, { status: 400 });

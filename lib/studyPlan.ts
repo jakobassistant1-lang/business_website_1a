@@ -4,19 +4,26 @@
 // Turns ONE assessment (exam/quiz) into a spaced sequence of ≤1h study sessions
 // (bell-sized, review-then-relearn), and ONE deliverable into ≤1h work blocks.
 // Pure + deterministic; the placement onto actual calendar days (budget, EDF,
-// contention) happens in lib/scheduler.ts. Constants here are the spec's knobs.
+// contention) happens in lib/weekPlan.ts. Constants here are the spec's knobs.
+//
+// Hours arrive ALREADY padded (lib/effort.effectiveEffort pads an AI estimate once;
+// a student's own number is used as typed) — nothing here inflates again (#136).
+// Sizes are whole hundredths of an hour that sum exactly to the input, so an
+// item's blocks add up to the effort its tag shows.
 
-import { round1 } from "./round";
 import type { ItemType } from "./itemType";
+import { MIN_BLOCK } from "./effort";
+
+export { MIN_BLOCK };
 
 export type AssessmentTier = "quiz" | "exam" | "final";
 export type SessionKind = "review" | "relearn";
 
 // --- tunable constants (spec §13) ---
-export const INFLATION = 1.2; // planning-fallacy correction on every estimate (spec §6)
 export const DAILY_HEADROOM = 0.9; // schedule to 90% of the daily budget (spec §6)
 export const MAX_BLOCK = 1.0; // hours — the per-SESSION cap (not per-day) (spec §4)
 export const MAX_SESSIONS = 12; // backstop for very heavy loads
+// MIN_BLOCK (lib/effort): smaller slivers are folded into a sibling, never shown as 0m.
 const TARGET_AVG = 0.85; // aim for ~0.85h average session → sets the session count
 const END_RATIO = 0.55; // bell ends sit at ~55% of the peak (gentle hump, not a sharp normal)
 const DAY_BEFORE_TAPER = 0.85; // the final (day-before) review is a touch lighter still
@@ -24,7 +31,27 @@ const DAY_BEFORE_TAPER = 0.85; // the final (day-before) review is a touch light
 export const LEAD_CAP: Record<AssessmentTier, number> = { quiz: 3, exam: 7, final: 14 };
 export const TYPE_MIN_SESSIONS: Record<AssessmentTier, number> = { quiz: 2, exam: 3, final: 4 };
 
-export const inflate = (hours: number): number => Math.max(0, hours) * INFLATION;
+const toCents = (h: number): number => Math.round(Math.max(0, h) * 100);
+const MIN_CENTS = Math.round(MIN_BLOCK * 100);
+const MAX_CENTS = Math.round(MAX_BLOCK * 100);
+
+/** Whole-cent sizes (largest remainder) that sum exactly to round(Σsizes). */
+function toCentSizes(sizes: number[]): number[] {
+  const total = toCents(sizes.reduce((a, b) => a + b, 0));
+  const floors = sizes.map((x) => Math.min(MAX_CENTS, Math.floor(Math.max(0, x) * 100 + 1e-9)));
+  let rem = total - floors.reduce((a, b) => a + b, 0);
+  const order = sizes
+    .map((x, i) => ({ i, frac: Math.max(0, x) * 100 - floors[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  for (let k = 0; rem > 0 && k < order.length * 2; k++) {
+    const { i } = order[k % order.length];
+    if (floors[i] < MAX_CENTS) {
+      floors[i]++;
+      rem--;
+    }
+  }
+  return floors;
+}
 
 /** Classify an assessment into its study tier. Midterms/finals/cumulative exams
  *  get the long (14-day) lead; other exams 7; quizzes 3. */
@@ -44,9 +71,9 @@ export function effectiveWindow(daysUntil: number, tier: AssessmentTier, leadDay
 
 /** How many ≤1h sessions to cover H hours: ~0.85h each, at least the type
  *  minimum, at most 2/day across the window (and a hard backstop). */
-export function sessionCount(hInflated: number, tier: AssessmentTier, L: number): number {
+export function sessionCount(hours: number, tier: AssessmentTier, L: number): number {
   const hardCap = Math.min(MAX_SESSIONS, Math.max(1, 2 * L)); // ≤2 sessions/day across the window
-  let n = Math.round(hInflated / TARGET_AVG);
+  let n = Math.round(hours / TARGET_AVG);
   n = Math.max(n, TYPE_MIN_SESSIONS[tier]);
   n = Math.min(n, hardCap);
   return Math.max(1, n);
@@ -118,20 +145,32 @@ export function expandAssessment(input: {
 }): AssessmentPlan {
   const { tier } = input;
   const L = effectiveWindow(input.daysUntil, tier, input.leadDays);
-  const H = inflate(input.studyHours);
+  const H = Math.max(0, input.studyHours); // already padded — see the header note
+  if (toCents(H) < MIN_CENTS) return { tier, window: L, sessions: [], overflowHours: 0 }; // ~0 effort → no sessions (the item gets its due-day marker)
   const n = sessionCount(H, tier, L);
   const weights = bellWeights(n);
   const offsets = sessionDayOffsets(n, L);
-  const sizes = distribute(H, weights);
-  // Drop sessions that round to 0h: a 0h session is negligible time, and if it
-  // reached the placer it would be "placed" but emit no block — silently erasing
-  // the item. Re-index the survivors; the earliest survivor is the review.
+  const cents = toCentSizes(distribute(H, weights));
+  // A sliver under MIN_BLOCK would print as "0m": fold it into the lightest other
+  // session with room (total preserved), else it counts as overflow. Zero-size
+  // sessions are dropped — a 0h session would be "placed" yet emit no block.
+  for (let i = 0; i < cents.length; i++) {
+    if (cents[i] === 0 || cents[i] >= MIN_CENTS) continue;
+    let j = -1;
+    for (let k = 0; k < cents.length; k++) {
+      if (k === i || cents[k] === 0 || cents[k] + cents[i] > MAX_CENTS) continue;
+      if (j < 0 || cents[k] < cents[j]) j = k;
+    }
+    if (j >= 0) cents[j] += cents[i];
+    cents[i] = 0;
+  }
+  // Re-index the survivors; the earliest survivor is the review.
   const sessions: StudySession[] = offsets
-    .map((dayOffset, i) => ({ dayOffset, hours: round1(sizes[i]) }))
-    .filter((s) => s.hours > 0)
-    .map((s, i) => ({ index: i + 1, dayOffset: s.dayOffset, hours: s.hours, kind: i === 0 ? "review" : "relearn" }));
-  const placed = sessions.reduce((s, x) => s + x.hours, 0);
-  return { tier, window: L, sessions, overflowHours: round1(Math.max(0, round1(H) - placed)) };
+    .map((dayOffset, i) => ({ dayOffset, c: cents[i] }))
+    .filter((s) => s.c > 0)
+    .map((s, i) => ({ index: i + 1, dayOffset: s.dayOffset, hours: s.c / 100, kind: i === 0 ? "review" : "relearn" }));
+  const placedCents = sessions.reduce((sum, x) => sum + Math.round(x.hours * 100), 0);
+  return { tier, window: L, sessions, overflowHours: Math.max(0, toCents(H) - placedCents) / 100 };
 }
 
 export interface DeliverableBlock {
@@ -144,10 +183,10 @@ export interface DeliverableBlock {
  *  ⇒ even ≤1h chunks. (If placement can't spread them across enough days, it
  *  merges + adds a break reminder — that's a scheduler concern, not here.) */
 export function chunkDeliverable(input: { effortHours: number }): DeliverableBlock[] {
-  const H = inflate(input.effortHours);
-  if (round1(H) <= 0) return []; // ~0 effort → no block (the item still gets its G1 marker)
-  if (H <= MAX_BLOCK) return [{ hours: round1(H), index: 1, count: 1 }];
-  const n = Math.ceil(H / MAX_BLOCK);
-  const each = round1(H / n);
-  return Array.from({ length: n }, (_, i) => ({ hours: each, index: i + 1, count: n }));
+  const total = toCents(input.effortHours); // already padded — see the header note
+  if (total < MIN_CENTS) return []; // ~0 effort → no block (the item still gets its due-day marker)
+  const n = Math.ceil(total / MAX_CENTS);
+  const base = Math.floor(total / n);
+  const extra = total % n; // the first `extra` blocks carry one more hundredth → exact total
+  return Array.from({ length: n }, (_, i) => ({ hours: (base + (i < extra ? 1 : 0)) / 100, index: i + 1, count: n }));
 }

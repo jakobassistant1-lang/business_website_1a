@@ -77,21 +77,28 @@ describe("resolveIntensity — the Gemini overlay is clamped, never trusted down
 });
 
 describe("overdueLoad — built from the same items the dashboard lists", () => {
+  // CalendarData.items carry the RESOLVED effort (lib/effort.effortOrDefault) in
+  // estimatedEffortHours — the number the tag shows, same unit as planned hours.
   const items = [
-    { status: "overdue", estimatedEffortHours: 2, effortOverrideHours: null },
-    { status: "overdue", estimatedEffortHours: 1.5, effortOverrideHours: 3 }, // override wins
-    { status: "overdue", estimatedEffortHours: null, effortOverrideHours: null }, // counts, 0h
-    { status: "normal", estimatedEffortHours: 9, effortOverrideHours: null },
-    { status: "done", estimatedEffortHours: 9, effortOverrideHours: null },
+    { status: "overdue", estimatedEffortHours: 2.2 }, // a 2h AI estimate, padded once upstream
+    { status: "overdue", estimatedEffortHours: 3 }, // the student's own number
+    { status: "overdue", estimatedEffortHours: null }, // no number at all → the default
+    { status: "normal", estimatedEffortHours: 9 },
+    { status: "done", estimatedEffortHours: 9 },
   ];
 
-  it("counts only overdue rows and sums their effective effort", () => {
-    expect(overdueLoad(items)).toEqual({ overdueCount: 3, overdueHours: 5 });
-    expect(overdueLoad([])).toEqual({ overdueCount: 0, overdueHours: 0 });
+  it("counts only overdue rows and sums the hours their tags show — never padded again", () => {
+    expect(overdueLoad(items, 2)).toEqual({ overdueCount: 3, overdueHours: 7.2 }); // 2.2 + 3 + default 2
+    expect(overdueLoad([], 2)).toEqual({ overdueCount: 0, overdueHours: 0 });
+  });
+
+  it("'no estimate yet' is the user's default (the one effortOrDefault uses), never 0h (#136)", () => {
+    expect(overdueLoad([{ status: "overdue", estimatedEffortHours: null }], 1.5).overdueHours).toBe(1.5);
+    expect(overdueLoad([{ status: "overdue" }], 2).overdueHours).toBe(2);
   });
 
   it("feeds the rule directly", () => {
-    expect(intensityFloor(overdueLoad(items))).toBe("moderate");
-    expect(deterministicIntensity({ ...CALM, ...overdueLoad(items) })).toBe("moderate");
+    expect(intensityFloor(overdueLoad(items, 2))).toBe("moderate");
+    expect(deterministicIntensity({ ...CALM, ...overdueLoad(items, 2) })).toBe("moderate");
   });
 });

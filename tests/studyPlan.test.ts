@@ -1,7 +1,6 @@
 // Acceptance suite for the v1 scheduler's pure core (docs/navo-scheduling-v1-spec.md §11).
 import { describe, it, expect } from "vitest";
 import {
-  inflate,
   assessmentTier,
   effectiveWindow,
   sessionCount,
@@ -9,14 +8,19 @@ import {
   expandAssessment,
   chunkDeliverable,
   MAX_BLOCK,
-  INFLATION,
+  MIN_BLOCK,
   LEAD_CAP,
 } from "@/lib/studyPlan";
+import * as studyPlan from "@/lib/studyPlan";
+
+const sum = (xs: { hours: number }[]) => Math.round(xs.reduce((s, x) => s + x.hours * 100, 0)) / 100;
 
 describe("budgeting + tiers", () => {
-  it("inflates estimates ×1.2", () => {
-    expect(inflate(5)).toBeCloseTo(6, 6);
-    expect(INFLATION).toBe(1.2);
+  it("never pads again — hours arrive already padded by lib/effort (#136)", () => {
+    expect("inflate" in studyPlan).toBe(false);
+    expect("INFLATION" in studyPlan).toBe(false);
+    expect(sum(chunkDeliverable({ effortHours: 5 }))).toBe(5);
+    expect(sum(expandAssessment({ daysUntil: 7, studyHours: 4, tier: "final" }).sessions)).toBe(4);
   });
   it("classifies the study tier (final > exam > quiz)", () => {
     expect(assessmentTier("quiz", "Week 3 Quiz")).toBe("quiz");
@@ -41,10 +45,10 @@ describe("sessionCount", () => {
     expect(sessionCount(0.5, "quiz", 3)).toBe(2);
   });
   it("scales up with study hours (~0.85h each)", () => {
-    expect(sessionCount(inflate(4), "final", 14)).toBe(6); // 4.8h → 6 sessions
+    expect(sessionCount(4.8, "final", 14)).toBe(6); // 4.8h → 6 sessions
   });
   it("caps at 2 sessions/day across the window", () => {
-    expect(sessionCount(inflate(20), "exam", 2)).toBe(4); // window of 2 days → ≤4 sessions
+    expect(sessionCount(24, "exam", 2)).toBe(4); // window of 2 days → ≤4 sessions
   });
 });
 
@@ -59,10 +63,10 @@ describe("bellWeights", () => {
   });
 });
 
-describe("expandAssessment — the sample midterm (7 days out, ~4h study)", () => {
-  const plan = expandAssessment({ daysUntil: 7, studyHours: 4, tier: "final" });
-  it("produces 6 spaced sessions across the 7-day window", () => {
-    expect(plan.sessions).toHaveLength(6);
+describe("expandAssessment — the sample midterm (7 days out, 4h AI estimate → 4.4h padded once)", () => {
+  const plan = expandAssessment({ daysUntil: 7, studyHours: 4.4, tier: "final" });
+  it("produces 5 spaced sessions across the 7-day window (4.4h ÷ ~0.85h)", () => {
+    expect(plan.sessions).toHaveLength(5);
     expect(plan.window).toBe(7);
     const offs = plan.sessions.map((s) => s.dayOffset);
     expect(offs[0]).toBe(7); // session 1 is earliest
@@ -81,10 +85,9 @@ describe("expandAssessment — the sample midterm (7 days out, ~4h study)", () =
     const mid = plan.sessions[2].hours;
     expect(last).toBeLessThan(mid);
   });
-  it("the placed hours ≈ the inflated study estimate, with no overflow", () => {
-    const placed = plan.sessions.reduce((s, x) => s + x.hours, 0);
-    expect(Math.abs(placed - inflate(4))).toBeLessThan(0.35); // ~4.8h, allowing per-session rounding drift
-    expect(plan.overflowHours).toBeLessThan(0.2);
+  it("the placed hours equal the study estimate exactly, with no overflow", () => {
+    expect(sum(plan.sessions)).toBe(4.4); // hundredths, no rounding drift
+    expect(plan.overflowHours).toBe(0);
   });
 });
 
@@ -100,29 +103,51 @@ describe("expandAssessment — a quiz (3 days out, 1.5h)", () => {
 
 describe("expandAssessment — heavy & over-capacity loads", () => {
   it("a heavy final spreads into many ≤1h sessions (capped), no overflow when it fits", () => {
-    const plan = expandAssessment({ daysUntil: 14, studyHours: 10, tier: "final" }); // 12h over 14 days
+    const plan = expandAssessment({ daysUntil: 14, studyHours: 10, tier: "final" }); // 10h over 14 days
     expect(plan.sessions.length).toBeLessThanOrEqual(12);
     plan.sessions.forEach((s) => expect(s.hours).toBeLessThanOrEqual(MAX_BLOCK + 1e-9));
     expect(plan.overflowHours).toBeLessThan(0.5);
   });
   it("a huge load in a tiny window surfaces overflow (can't fit), still ≤1h each", () => {
-    const plan = expandAssessment({ daysUntil: 2, studyHours: 10, tier: "exam" }); // 12h, 2-day window
+    const plan = expandAssessment({ daysUntil: 2, studyHours: 10, tier: "exam" }); // 10h, 2-day window
     plan.sessions.forEach((s) => expect(s.hours).toBeLessThanOrEqual(MAX_BLOCK + 1e-9));
     expect(plan.overflowHours).toBeGreaterThan(1); // genuinely over capacity
+    expect(Math.round((sum(plan.sessions) + plan.overflowHours) * 100) / 100).toBe(10); // placed + overflow = the whole load
     expect(plan.sessions.filter((s) => s.dayOffset === 1).length).toBeGreaterThan(1); // doubled up on a day
   });
 });
 
 describe("chunkDeliverable", () => {
-  it("≤1h work (after inflation) stays one block", () => {
-    const blocks = chunkDeliverable({ effortHours: 0.75 }); // ×1.2 = 0.9h
+  it("≤1h work stays one block, at exactly its hours", () => {
+    const blocks = chunkDeliverable({ effortHours: 0.9 });
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].hours).toBeLessThanOrEqual(MAX_BLOCK + 1e-9);
+    expect(blocks[0].hours).toBe(0.9);
   });
-  it("splits >1h work into ≤1h blocks", () => {
-    const blocks = chunkDeliverable({ effortHours: 2 }); // ×1.2 = 2.4h → 3 blocks
+  it("splits >1h work into ≤1h blocks that sum exactly to the effort", () => {
+    const blocks = chunkDeliverable({ effortHours: 2.4 }); // → 3 blocks
     expect(blocks).toHaveLength(3);
     blocks.forEach((b) => expect(b.hours).toBeLessThanOrEqual(MAX_BLOCK + 1e-9));
-    expect(blocks.reduce((s, b) => s + b.hours, 0)).toBeCloseTo(2.4, 1);
+    expect(sum(blocks)).toBe(2.4);
+    expect(sum(chunkDeliverable({ effortHours: 4.95 }))).toBe(4.95); // 5 × 0.99, not 5 × 1.0
+    expect(sum(chunkDeliverable({ effortHours: 2.2 }))).toBe(2.2); // uneven split keeps the total
+  });
+  it("~0 effort (under the 3-minute MIN_BLOCK) is no block, never a 0m one", () => {
+    expect(chunkDeliverable({ effortHours: 0 })).toEqual([]);
+    expect(chunkDeliverable({ effortHours: MIN_BLOCK - 0.01 })).toEqual([]);
+    expect(chunkDeliverable({ effortHours: MIN_BLOCK })).toHaveLength(1);
+  });
+});
+
+describe("expandAssessment — tiny loads never produce a sub-MIN_BLOCK (\"0m\") session", () => {
+  for (const h of [0.05, 0.08, 0.12, 0.3]) {
+    it(`${h}h`, () => {
+      const plan = expandAssessment({ daysUntil: 7, studyHours: h, tier: "final" });
+      plan.sessions.forEach((s) => expect(s.hours).toBeGreaterThanOrEqual(MIN_BLOCK));
+      expect(sum(plan.sessions)).toBe(h); // folded, not dropped
+      expect(plan.sessions[0].kind).toBe("review");
+    });
+  }
+  it("0h → no sessions, no overflow", () => {
+    expect(expandAssessment({ daysUntil: 3, studyHours: 0, tier: "quiz" })).toMatchObject({ sessions: [], overflowHours: 0 });
   });
 });

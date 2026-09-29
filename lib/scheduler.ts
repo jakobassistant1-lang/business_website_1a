@@ -5,8 +5,9 @@
 // both. This is enforced both by construction (every in-window assignment is
 // pushed into `days` and/or `atRisk`) AND by a runtime assertion at the end.
 
-import { round1 } from "./round";
-import { startOfDay, daysBetween } from "./calendarDates";
+import { roundHours, MIN_BLOCK } from "./effort";
+import { addDays, parseYmd, ymd, WEEKDAYS } from "./calendarDates";
+import { DEFAULT_STUDENT_ZONE, dayDiffInZone, todayInZone } from "./studentZone";
 
 const EPS = 1e-9;
 
@@ -17,7 +18,7 @@ export interface SchedulerAssignment {
   dueAt: Date | null;
   pointsPossible: number | null;
   htmlUrl: string | null;
-  estimatedEffortHours?: number | null; // AI per-assignment effort; falls back to the flat default
+  estimatedEffortHours?: number | null; // RESOLVED effort (lib/effort.effortOrDefault: padded AI estimate or the student's number); falls back to the flat default
   summary?: string | null; // AI one-line summary, carried through to the UI
   // When set, this is study-for-an-assessment: sessions may only be placed within
   // this many days before the due date (exams get a longer lead than quizzes).
@@ -37,7 +38,7 @@ export interface DayBlock {
   htmlUrl: string | null;
   dueAt: string; // ISO
   summary?: string | null;
-  study?: boolean; // true = a study session ahead of an exam/quiz (not the work itself)
+  study?: boolean; // true = a placed (> 0h) study session ahead of an exam/quiz — read it ONLY via lib/studyWeek.isStudySessionBlock
   /** A zero-hour "it's due this day" marker (the item got no placed work/study that day).
    *  NEVER a study session: `study` is false on markers, and lib/studyWeek.isStudySessionBlock
    *  (hours > 0) is THE rule for what counts as one. UIs render a marker as the item itself. */
@@ -93,24 +94,15 @@ export interface Plan {
   totalPlannedHours: number;
   // Hours of work that couldn't be allocated within the daily budget before its
   // deadline — i.e. how much the week is over-subscribed (0 = everything fits).
+  // Always Σ shortfalls.
   overloadHours: number;
+  /** Per-item hours that didn't fit before the item's deadline (only items with
+   *  > 0). Data only — deliberately no alert kind (the owner removed "won't fit"
+   *  alerts as noise). For every in-window item: placed + unplaced (+ expired
+   *  study for a test due today) = its effort. */
+  shortfalls: { canvasId: number; hours: number }[];
 }
 
-
-function addDays(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-
-function ymd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // Importance multiplier from the AI's 1-5 difficulty/stakes rating (null → 1).
 function importanceMult(v: number | null | undefined): number {
@@ -133,13 +125,16 @@ export function generatePlan(
   hoursPerDay: number,
   windowDays: number,
   effortHours: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  zone: string = DEFAULT_STUDENT_ZONE,
 ): Plan {
   const days = Math.max(1, Math.floor(windowDays));
   const H = Math.max(0, hoursPerDay);
   const E = Math.max(0, effortHours);
 
-  const startDay = startOfDay(now);
+  // Days are the student's (lib/studentZone), same as lib/weekPlan: day 0 = today in
+  // `zone`; `startDay` is that calendar day as a local midnight, for labels only.
+  const startDay = parseYmd(todayInZone(zone, now));
   const windowEndExclusive = addDays(startDay, days); // first day NOT in window
 
   const undated: UndatedItem[] = [];
@@ -152,7 +147,7 @@ export function generatePlan(
       undated.push({ canvasId: a.canvasId, name: a.name, courseName: a.courseName, pointsPossible: a.pointsPossible, htmlUrl: a.htmlUrl });
       continue;
     }
-    const idx = daysBetween(startDay, a.dueAt);
+    const idx = dayDiffInZone(a.dueAt, zone, now);
     if (idx < 0) {
       overdue.push(a);
     } else if (idx >= days) {
@@ -273,7 +268,7 @@ export function generatePlan(
   const byId = new Map(inWindow.map((it) => [it.a.canvasId, it]));
   const representedInWindow = new Set<number>();
   for (const [k, hours] of hoursByItemDay) {
-    if (round1(hours) <= 0) continue; // drop sub-0.05h fragments so they never render as "0m"
+    if (roundHours(hours) < MIN_BLOCK) continue; // drop sub-3-minute fragments so they never render as "0m"
     const sep = k.indexOf(":");
     const it = byId.get(Number(k.slice(0, sep)))!;
     planDays[Number(k.slice(sep + 1))].blocks.push({
@@ -283,19 +278,22 @@ export function generatePlan(
     representedInWindow.add(it.a.canvasId);
   }
   // 0h marker so a zero-effort / unallocated item still appears on its due day (G1).
+  // A marker is never a study session (#143) — `study: false`, `marker: true`.
   for (const it of inWindow) {
     if (representedInWindow.has(it.a.canvasId)) continue;
     planDays[it.dueDayIndex].blocks.push({
       canvasId: it.a.canvasId, name: it.a.name, courseName: it.a.courseName, hours: 0,
-      htmlUrl: it.a.htmlUrl, dueAt: it.a.dueAt!.toISOString(), summary: it.a.summary ?? null, study: it.isStudy,
+      htmlUrl: it.a.htmlUrl, dueAt: it.a.dueAt!.toISOString(), summary: it.a.summary ?? null, study: false, marker: true,
     });
     representedInWindow.add(it.a.canvasId);
   }
 
   // Overload = total effort that couldn't be placed before its deadline.
-  let overloadHours = 0;
-  for (const it of inWindow) overloadHours += Math.max(0, it.remaining);
-  overloadHours = round1(overloadHours);
+  const shortfalls = inWindow
+    .map((it) => ({ canvasId: it.a.canvasId, hours: roundHours(Math.max(0, it.remaining)) }))
+    .filter((x) => x.hours > 0)
+    .sort((x, y) => x.canvasId - y.canvasId);
+  const overloadHours = roundHours(shortfalls.reduce((sum, x) => sum + x.hours, 0));
 
   const atRisk: AtRiskItem[] = [];
 
@@ -307,7 +305,7 @@ export function generatePlan(
       courseName: a.courseName,
       dueAt: a.dueAt!.toISOString(),
       kind: "overdue",
-      shortfallHours: round1(a.estimatedEffortHours ?? E),
+      shortfallHours: roundHours(a.estimatedEffortHours ?? E),
       htmlUrl: a.htmlUrl,
       summary: a.summary ?? null,
     });
@@ -316,12 +314,12 @@ export function generatePlan(
   // Round displayed hours; show the biggest block first within each day.
   let totalPlannedHours = 0;
   for (const day of planDays) {
-    for (const b of day.blocks) b.hours = round1(b.hours);
+    for (const b of day.blocks) b.hours = roundHours(b.hours);
     day.blocks.sort((x, y) => y.hours - x.hours || x.name.localeCompare(y.name));
-    day.allocated = round1(day.allocated);
+    day.allocated = roundHours(day.allocated);
     totalPlannedHours += day.allocated;
   }
-  totalPlannedHours = round1(totalPlannedHours);
+  totalPlannedHours = roundHours(totalPlannedHours);
 
   const inWindowDueCount = inWindow.length;
   const representedCount = representedInWindow.size;
@@ -347,5 +345,6 @@ export function generatePlan(
     beyondWindowCount,
     totalPlannedHours,
     overloadHours,
+    shortfalls,
   };
 }

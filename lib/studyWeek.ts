@@ -3,12 +3,15 @@
 // straight off the week plan (`data.plan.days[].blocks`). Pure and node-free so
 // it's unit-tested without a DOM.
 //
-// A block counts when it's a real study session (study + hours > 0) for an
-// assessment that isn't already past. `isStudySessionBlock` is the ONE home of
-// that rule: components/calendar/parts.tsx's `isUpcomingStudy` (the dashboard's
-// "Today's study") calls it rather than keeping its own copy.
+// A block counts when it's a real study session (study, not a due-day marker,
+// hours > 0) for an assessment that isn't already past. `isStudySessionBlock` is
+// the ONE home of that rule (#143): every screen that says "Study …" — the Plan
+// strip, components/calendar/parts.tsx's `isUpcomingStudy`, the dashboard's
+// "Today's study" — must ask it, never read `b.study`. The zone is REQUIRED: the
+// assessment's due day is always read in the student's zone (CalendarData.timeZone),
+// so there is exactly one version of the rule (no runtime-zone fallback).
 
-import { WEEKDAYS, parseYmd, ymd } from "./calendarDates";
+import { WEEKDAYS, parseYmd, ymd, ymdInZone } from "./calendarDates";
 import type { DayBlock, PlanDay } from "./scheduler";
 
 export interface StudyChip {
@@ -28,15 +31,22 @@ export interface StudyChip {
 export const STUDY_WEEK_DAYS = 7;
 
 /** A real, still-relevant study session (see the header note). The single
- *  source for "is this a study block" — keep it node-free. */
-export function isStudySessionBlock(b: Pick<DayBlock, "study" | "hours" | "dueAt">, todayYmd: string): boolean {
-  return !!b.study && b.hours > 0 && ymd(new Date(b.dueAt)) >= todayYmd;
+ *  source for "is this a study block" — keep it node-free. `todayYmd` = today in
+ *  the student's zone; `zone` = that zone (CalendarData.timeZone), in which the
+ *  assessment's due day is read. */
+export function isStudySessionBlock(
+  b: Pick<DayBlock, "study" | "hours" | "dueAt" | "marker">,
+  todayYmd: string,
+  zone: string,
+): boolean {
+  if (!b.study || b.marker || !(b.hours > 0)) return false;
+  return ymdInZone(b.dueAt, zone) >= todayYmd;
 }
 
 /** The chips, sorted by date (plan order within a day). `now` is only read for
- *  its local calendar day — callers holding a server `todayYmd` pass
- *  `parseYmd(todayYmd)` so server and client agree. */
-export function studyChipsFromPlan(days: ReadonlyArray<Pick<PlanDay, "date" | "blocks">>, now: Date): StudyChip[] {
+ *  its calendar day — callers pass `parseYmd(data.todayYmd)` (today in the
+ *  student's zone) — and `zone` (data.timeZone) is the zone due days are read in. */
+export function studyChipsFromPlan(days: ReadonlyArray<Pick<PlanDay, "date" | "blocks">>, now: Date, zone: string): StudyChip[] {
   const todayYmd = ymd(now);
   const end = parseYmd(todayYmd);
   end.setDate(end.getDate() + STUDY_WEEK_DAYS);
@@ -47,7 +57,7 @@ export function studyChipsFromPlan(days: ReadonlyArray<Pick<PlanDay, "date" | "b
     if (day.date < todayYmd || day.date >= endYmd) continue;
     const dayLabel = day.date === todayYmd ? "Today" : WEEKDAYS[parseYmd(day.date).getDay()];
     for (const b of day.blocks) {
-      if (!isStudySessionBlock(b, todayYmd)) continue;
+      if (!isStudySessionBlock(b, todayYmd, zone)) continue;
       chips.push({ dayLabel, title: b.name.trim() || "Study session", hours: b.hours, canvasId: b.canvasId, date: day.date });
     }
   }
