@@ -10,7 +10,9 @@ import {
 import type { Plan } from "@/lib/scheduler";
 
 const NOW = new Date(2026, 5, 1, 9, 0, 0); // Mon Jun 1 2026
-const CTX: ScoreContext = { windowDays: 7, effortHours: 2, now: NOW };
+// Days + date words are read in the student's zone; the fixtures are built in the
+// machine's local zone, so use it as the student's zone here.
+const CTX: ScoreContext = { windowDays: 7, effortHours: 2, now: NOW, zone: Intl.DateTimeFormat().resolvedOptions().timeZone };
 
 function iso(offsetDays: number, hour = 17): string {
   return new Date(2026, 5, 1 + offsetDays, hour, 0, 0).toISOString();
@@ -50,7 +52,7 @@ describe("scoreAssignments", () => {
     );
     expect(overdue.factors!.urgency).toBe(1);
     expect(overdue.score).toBeGreaterThan(soon.score);
-    expect(overdue.reason).toContain("Overdue");
+    expect(overdue.reason).toContain("Past due"); // owner 2026-09-28: never "Overdue"
   });
 
   it("weights higher points more; null points contributes no impact", () => {
@@ -108,8 +110,9 @@ describe("scoreAssignments", () => {
       CTX,
     );
     expect(today.reason).toBe("Due today · 30 pts");
-    expect(soon.reason).toBe("Due in 1 day · 50 pts · 1.5h won't fit");
-    expect(overdue.reason).toBe("Overdue · 20 pts");
+    // Same words as the date labels (lib/dueLabel countdown), never "Overdue".
+    expect(soon.reason).toBe("Due tomorrow · 50 pts · 1.5h won't fit");
+    expect(overdue.reason).toBe("Past due · 20 pts");
   });
 
   it("is deterministic for identical inputs", () => {

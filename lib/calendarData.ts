@@ -7,20 +7,21 @@
 // calendar problem can never break the page.
 
 import { prisma } from "./prisma";
-import { isAssignmentDone } from "./assignmentStatus";
+import { assignmentDoneReason } from "./assignmentStatus";
 import { type Plan, type SchedulerAssignment, type AtRiskItem } from "./scheduler";
 import { generateWeekPlan } from "./weekPlan";
-import { TOP_N, type ScoredAssignment } from "./priority";
-import { rankActiveRows, courseTotalPoints } from "./rankActive";
+import { type ScoredAssignment } from "./priority";
+import { rankActiveRows, courseTotalPoints, fallbackGradeShares, focusSlice, isLockedRow } from "./rankActive";
+import { parseGradingScheme } from "./gradingScheme";
 import { coerceLatePolicy } from "./latePolicy";
 import { loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
 import { itemType, isStudyType, isPassiveItem, type ItemType } from "./itemType";
 import { studentZone, todayInZone } from "./studentZone";
-import { parseSyncReport } from "./syncReport";
+import { lastCheckedAtOf } from "./lastChecked";
 import { assessmentTier } from "./studyPlan";
 import { deriveCourseGrade, type CourseGrade } from "./courseGrade";
-import { effectiveEffort } from "./effort";
+import { effectiveEffort, effortOrDefault } from "./effort";
 
 // The planning window is fixed at 7 days (a week), not user-configurable.
 export const PLAN_WINDOW_DAYS = 7;
@@ -37,6 +38,10 @@ export interface CalendarItem {
   status: ItemStatus;
   studyLeadDays: number | null; // effective days-ahead-to-study (null = not a study type)
   pointsPossible: number | null;
+  /** THE effort number for this item (lib/effort): for work the plan budgets,
+   *  effortOrDefault — exactly the hours the scheduler places, so the tag and the
+   *  blocks agree (lib/effort.effortOrDefault: the AI estimate padded once, the student's own number as typed, else their default). Already resolved:
+   *  never pass a CalendarItem through effectiveEffort again (it would pad twice). */
   estimatedEffortHours: number | null;
   effortBucket: string | null; // "quick" | "medium" | "long"
   summary: string | null;
@@ -81,6 +86,8 @@ export interface CalendarData {
   todayYmd?: string;
   /** When Navo last checked Canvas (any run, full or quick) — THE freshness line ("Last checked Canvas"). */
   lastCheckedAt?: string | null;
+  /** The student's fallback effort for an item with no estimate yet (lib/effort.effortOrDefault). */
+  defaultEffortHours?: number;
   connected: boolean;
   syncedAt: string | null;
   validationStatus: string | null;
@@ -94,7 +101,7 @@ export interface CalendarData {
   events: CalendarEvent[]; // calendar "busy" blocks
   plan: Plan; // scheduler output (powers the Timeline)
   atRisk: AtRiskItem[];
-  recommendations: ScoredAssignment[]; // forward-looking "do next" slice (overdue excluded)
+  recommendations: ScoredAssignment[]; // Focus: the top of `ranked` with importance > 0, not locked/passive — past due INCLUDED (lib/rankActive.focusSlice)
   ranked: ScoredAssignment[]; // full importance ranking (drives the Dashboard's Today sort)
 }
 
@@ -123,8 +130,16 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
   const hours =
     hoursOverride !== undefined && Number.isFinite(hoursOverride) ? hoursOverride : user.defaultHoursPerDay;
 
-  // The shared done rule (lib/assignmentStatus): submitted AND not reopened.
-  const isDone = (a: AssignmentRow) => isAssignmentDone(a);
+  // Days (and past due) are the student's: their Canvas profile zone (lib/studentZone).
+  const zone = studentZone(user);
+  const now = new Date();
+
+  // THE done rule (lib/assignmentStatus): manual check, graded, submitted-and-not-
+  // reopened, or an exam/quiz whose day has passed in the student's zone.
+  const doneReasonOf = new Map(
+    rows.map((a) => [a.canvasId, assignmentDoneReason(a, { type: itemType(a.submissionType, a.name), dueAt: a.dueAt, zone, now })] as const),
+  );
+  const isDone = (a: AssignmentRow) => doneReasonOf.get(a.canvasId) != null;
   const submittedRows = rows.filter(isDone);
   const activeRows = rows.filter((a) => !isDone(a));
 
@@ -139,19 +154,38 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     return tier === "final" ? user.studyDaysFinal : tier === "exam" ? user.studyDaysTest : user.studyDaysQuiz;
   };
 
-  // Feeds the ranker, the scheduler, AND the displayed "~2h" tag from one place
-  // (effectiveEffort) so an override reshapes the plan, not just the label (#14).
+  // ONE effort rule (lib/effort, #136) for the ranker, the scheduler AND the "~2h"
+  // tag, so an override reshapes the plan, not just the label (#14). The ranker gets
+  // effectiveEffort and applies the same default itself (rankActive: `?? defaultEffort`
+  // = effortOrDefault); the scheduler and the tag get effortOrDefault directly.
   const effortOf = effectiveEffort;
 
   // v1 prioritizer (docs/navo-priority-v1-spec.md): rank active work by the
-  // MARGINAL expected grade-% at stake. Each item's raw points are converted to
-  // its share of ITS course grade first (course totals differ, so raw points
-  // aren't comparable across classes); current-grade (leverage) + late-policy fail
-  // open to neutral/no-credit until synced. `recommendations` is the forward "do
-  // next" slice — overdue lives in atRisk (the catch-up rail) — so Dashboard,
-  // Calendar, and Timeline agree on #1; the full `ranked` list powers Today's sort.
-  const now = new Date();
+  // MARGINAL expected grade-% at stake. Each item's weight is its share of ITS
+  // course grade (stored Assignment.gradeWeight; else THE share rule over the whole
+  // course — lib/gradeWeight), days are read in the student's zone, and a course
+  // with no stored late policy is UNKNOWN (null), not "late work not accepted".
+  // Unopened and passive items stay in `ranked` at importance 0 (bottom).
+  // `recommendations` = Focus = the top of `ranked` (past due included; owner
+  // 2026-09-28) so Dashboard, Calendar and Timeline agree on #1; the past-due rail
+  // (atRisk) is unchanged; the full `ranked` list powers Today's sort.
   const totals = courseTotalPoints(rows.map((a) => ({ courseCanvasId: a.courseCanvasId, pointsPossible: a.pointsPossible })));
+  const needsFallbackShare = activeRows.some((a) => a.gradeWeight == null);
+  const fallbackShare = needsFallbackShare
+    ? fallbackGradeShares(
+        rows.map((a) => ({
+          canvasId: a.canvasId,
+          courseCanvasId: a.courseCanvasId,
+          name: a.name,
+          pointsPossible: a.pointsPossible,
+          groupId: a.groupId ?? null,
+          groupName: a.groupName ?? null,
+          groupWeight: a.groupWeight ?? null,
+          type: itemType(a.submissionType, a.name),
+        })),
+        new Map(courseRows.map((c) => [c.canvasId, parseGradingScheme(c.gradingScheme)] as const)),
+      )
+    : new Map<number, number>();
   const ranked = rankActiveRows(
     activeRows.map((a) => ({
       canvasId: a.canvasId,
@@ -159,29 +193,30 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
       courseName: a.course.name,
       courseCanvasId: a.courseCanvasId,
       dueAt: a.dueAt,
+      unlockAt: a.unlockAt ?? null,
       pointsPossible: a.pointsPossible,
       htmlUrl: a.htmlUrl,
       submissionType: a.submissionType,
       estimatedEffortHours: effortOf(a),
       // v1 signals (null/absent ⇒ fail open): current grade (0–100 → fraction),
-      // weighted-group share, parsed late policy, and the AI actionable screen.
+      // share of grade, the stored late policy (none stored = unknown = null), and
+      // the AI actionable screen.
       courseGrade: a.course.currentScore != null ? a.course.currentScore / 100 : null,
-      gradeWeight: a.gradeWeight,
+      gradeWeight: a.gradeWeight ?? fallbackShare.get(a.canvasId) ?? null,
       latePolicy: a.course.latePolicyKind
         ? coerceLatePolicy({ kind: a.course.latePolicyKind, value: a.course.latePolicyValue })
-        : undefined,
+        : null,
       requiresAction: a.aiRequiresAction,
     })),
     totals,
     user.defaultEffortHours,
     now,
+    zone,
   );
   // Marginal value per item → the scheduler's contention currency (spec §8). Use the
-  // RAW value (not the rounded 0–100 display `score`), and only items that survived
-  // the AI actionable-screen (`ranked` excludes passive placeholders) so a screened
-  // item can't be scheduled — nor reach the scheduler with a null value that would
-  // otherwise fall back to raw points and dominate.
-  const valueOf = new Map(ranked.map((r) => [r.canvasId, r.value ?? 0]));
+  // RAW value (not the rounded 0–100 display `score`). Unopened and passive items
+  // are in `ranked` (importance 0) but are NEVER scheduled.
+  const valueOf = new Map(ranked.filter((r) => !r.locked && !r.passive).map((r) => [r.canvasId, r.value ?? 0]));
 
   // v1 week scheduler (docs/navo-scheduling-v1-spec.md): assessments expand into
   // spaced ≤1h study sessions, deliverables into ≤1h chunks, placed under 90% of
@@ -197,7 +232,8 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
         dueAt: a.dueAt,
         pointsPossible: a.pointsPossible,
         htmlUrl: a.htmlUrl,
-        estimatedEffortHours: effortOf(a),
+        // What the plan budgets = what the tag shows (#136): the SAME effortOrDefault.
+        estimatedEffortHours: effortOrDefault(a, user.defaultEffortHours),
         summary: a.aiSummary ?? null,
         studyLeadDays: leadDaysFor(a),
         aiImportance: a.aiImportance ?? null,
@@ -206,10 +242,11 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
       };
     });
 
-  const plan = generateWeekPlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, now);
+  const plan = generateWeekPlan(assignments, hours, PLAN_WINDOW_DAYS, user.defaultEffortHours, now, zone);
 
   const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
-  const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
+  const recommendations = focusSlice(ranked);
+  const rankedFlags = new Map(ranked.map((r) => [r.canvasId, r] as const));
 
   const reasonOf = new Map(ranked.map((r) => [r.canvasId, r.reason ?? null]));
   const toItem = (a: AssignmentRow, done: boolean): CalendarItem => ({
@@ -222,7 +259,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     status: done ? "done" : overdue.has(a.canvasId) ? "overdue" : "normal",
     studyLeadDays: leadDaysFor(a),
     pointsPossible: a.pointsPossible,
-    estimatedEffortHours: effortOf(a),
+    estimatedEffortHours: effortOrDefault(a, user.defaultEffortHours),
     effortBucket: a.effortBucket ?? null,
     summary: a.aiSummary ?? null,
     htmlUrl: a.htmlUrl,
@@ -231,11 +268,11 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     groupName: a.groupName ?? null,
     groupWeight: a.groupWeight ?? null,
     manuallyDone: a.manualDoneAt != null,
-    locked: a.unlockAt != null && a.unlockAt.getTime() > now.getTime(),
+    locked: isLockedRow(a, now),
     unlockAt: a.unlockAt ? a.unlockAt.toISOString() : null,
-    passive: isPassiveItem({ requiresAction: a.aiRequiresAction, submissionType: a.submissionType, type: itemType(a.submissionType, a.name) }),
+    passive: rankedFlags.get(a.canvasId)?.passive ?? isPassiveItem({ requiresAction: a.aiRequiresAction, submissionType: a.submissionType, type: itemType(a.submissionType, a.name) }),
     reason: reasonOf.get(a.canvasId) ?? null,
-    doneReason: !done ? undefined : a.manualDoneAt != null ? "manual" : a.submissionState === "graded" ? "graded" : "submitted",
+    doneReason: done ? (doneReasonOf.get(a.canvasId) ?? undefined) : undefined,
   });
 
   // Honest per-course grade. "Graded work" = any assignment Canvas has scored,
@@ -264,17 +301,16 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const status = cred?.lastValidationStatus ?? null;
-  const zone = studentZone(user);
-  const lastReport = parseSyncReport(cred?.lastSyncReport);
   return {
     timeZone: zone,
     todayYmd: todayInZone(zone, now),
-    lastCheckedAt: lastReport?.at ?? (cred?.syncedAt ? cred.syncedAt.toISOString() : null),
+    lastCheckedAt: lastCheckedAtOf(cred),
     connected: !!cred,
     syncedAt: cred?.syncedAt ? cred.syncedAt.toISOString() : null,
     validationStatus: status,
     stale: !!cred && status !== null && status !== "valid",
     hoursPerDay: hours,
+    defaultEffortHours: user.defaultEffortHours,
     windowDays: PLAN_WINDOW_DAYS,
     overloadHours: plan.overloadHours,
     // Only overdue surfaces as an alert now — "won't fit" was removed as noise.

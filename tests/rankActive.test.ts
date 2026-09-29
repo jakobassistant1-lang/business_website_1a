@@ -9,14 +9,22 @@ function row(o: Partial<RankableRow> & { canvasId: number }): RankableRow {
     pointsPossible: 10, htmlUrl: null, submissionType: "none", estimatedEffortHours: null, ...o,
   };
 }
-const survivors = (rows: RankableRow[]) => {
+const rank = (rows: RankableRow[]) => {
   const totals = courseTotalPoints(rows.map((r) => ({ courseCanvasId: r.courseCanvasId, pointsPossible: r.pointsPossible })));
-  return new Set(rankActiveRows(rows, totals, 2, NOW).map((r) => r.canvasId));
+  return rankActiveRows(rows, totals, 2, NOW);
 };
+/** Items ranked with importance > 0 (passive items are listed, but at 0). */
+const survivors = (rows: RankableRow[]) => new Set(rank(rows).filter((r) => (r.value ?? 0) > 0).map((r) => r.canvasId));
 
 describe("rankActiveRows — AI actionable screen + guardrails", () => {
-  it("drops a passive non-assessment the AI flagged false (no online submission)", () => {
-    expect(survivors([row({ canvasId: 1, name: "Class Participation", type: "other", requiresAction: false })]).has(1)).toBe(false);
+  it("a passive non-assessment the AI flagged false (no online submission) stays LISTED at importance 0 (owner 2026-09-28)", () => {
+    const rows = [row({ canvasId: 1, name: "Class Participation", type: "other", requiresAction: false })];
+    expect(survivors(rows).has(1)).toBe(false);
+    const [r] = rank(rows);
+    expect(r.canvasId).toBe(1);
+    expect(r.passive).toBe(true);
+    expect(r.value).toBe(0);
+    expect(r.reason).toBe("Graded by your teacher");
   });
   it("NEVER drops an assessment, even if the AI flags it false (a no-submission exam looks like a placeholder)", () => {
     expect(survivors([row({ canvasId: 1, name: "Exam 1", type: "exam", requiresAction: false })]).has(1)).toBe(true);

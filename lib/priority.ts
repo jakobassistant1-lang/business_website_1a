@@ -6,9 +6,19 @@
 // transparent, testable score on top. Additive: it never touches generatePlan
 // or its G1 guarantee.
 
+// LEGACY scorer: only lib/plan.ts's loadPlan (the retired Plan view → /api/plan,
+// /api/briefing) still calls scoreAssignments / rankRecommendations /
+// priorityInputsFromPlan. The live ranking is lib/rankActive (v1 marginal model).
+// Its wording and tiebreakers follow the same owner rules (2026-09-28) so the two
+// never contradict: "Past due" (never "Overdue"), date words from lib/dueLabel,
+// days in the student's zone, ties at 5 significant digits → the shared
+// compareTiebreak chain (earlier due, dated first → points → name → canvasId).
+
 import type { Plan, AtRiskKind } from "./scheduler";
 import { round1 } from "./round";
-import { daysBetween } from "./calendarDates";
+import { DEFAULT_STUDENT_ZONE, dayDiffInZone, todayInZone } from "./studentZone";
+import { formatDue } from "./dueLabel";
+import { compareTiebreak, importanceBucket, sameImportance, type TieKey } from "./marginalPriority";
 
 // Weights sum to 100 so `score` reads like a 0–100 percentage. Tune here.
 export const W_URGENCY = 40;
@@ -42,7 +52,11 @@ export interface ScoredAssignment {
   htmlUrl: string | null;
   score: number; // 0..100, 1dp — the DISPLAY value (rounded, monotonically capped)
   value?: number; // raw marginal grade-% at stake (uncapped) — the scheduler's contention currency (set by lib/rankActive)
-  reason: string; // e.g. "Due in 1 day · 100 pts · 1.5h won't fit"
+  reason: string; // e.g. "Due tomorrow · 100 pts · 1.5h won't fit"
+  /** Unopened by the teacher (importance 0, never scheduled, never in Focus). Set by lib/rankActive. */
+  locked?: boolean;
+  /** Passive grade (participation): importance 0, never scheduled, never in Focus. Set by lib/rankActive. */
+  passive?: boolean;
   // Legacy 4-factor breakdown (old scorer). Optional: the v1 marginal ranker
   // (lib/rankActive) doesn't emit it, and no UI reads it.
   factors?: { urgency: number; impact: number; risk: number; effort: number; submittedPenalty: number };
@@ -52,6 +66,7 @@ export interface ScoreContext {
   windowDays: number;
   effortHours: number; // the scheduler's per-assignment effort budget (E)
   now?: Date; // injectable for deterministic tests
+  zone?: string; // the student's zone (lib/studentZone); days + date words are read in it
 }
 
 export interface Recommendations {
@@ -59,16 +74,17 @@ export interface Recommendations {
   top: ScoredAssignment[];
 }
 
-function daysUntil(dueAtIso: string, now: Date): number {
-  return daysBetween(now, new Date(dueAtIso));
+function daysUntil(dueAtIso: string, now: Date, zone: string): number {
+  return dayDiffInZone(dueAtIso, zone, now);
 }
 
-function reasonFor(item: PriorityInput, d: number | null): string {
+function reasonFor(item: PriorityInput, d: number | null, now: Date, zone: string): string {
   const parts: string[] = [];
-  if (item.atRiskKind === "overdue" || (d !== null && d < 0)) parts.push("Overdue");
-  else if (d === 0) parts.push("Due today");
-  else if (d === 1) parts.push("Due in 1 day");
-  else if (d !== null) parts.push(`Due in ${d} days`);
+  if (item.atRiskKind === "overdue" || (d !== null && d < 0)) parts.push("Past due");
+  else if (item.dueAt !== null) {
+    const label = formatDue(item.dueAt, "countdown", { todayYmd: todayInZone(zone, now), timeZone: zone });
+    parts.push(`Due ${label === "Today" || label === "Tomorrow" ? label.toLowerCase() : label}`);
+  }
   if (item.pointsPossible !== null) parts.push(`${item.pointsPossible} pts`);
   if (item.atRiskKind === "insufficient_time" && item.shortfallHours > 0) {
     parts.push(`${item.shortfallHours}h won't fit`);
@@ -78,11 +94,12 @@ function reasonFor(item: PriorityInput, d: number | null): string {
 
 export function scoreAssignments(items: PriorityInput[], ctx: ScoreContext): ScoredAssignment[] {
   const now = ctx.now ?? new Date();
+  const zone = ctx.zone ?? DEFAULT_STUDENT_ZONE;
   const windowDays = Math.max(1, ctx.windowDays);
   const effortHours = Math.max(0.0001, ctx.effortHours); // guard /0
 
   return items.map((item) => {
-    const d = item.dueAt ? daysUntil(item.dueAt, now) : null;
+    const d = item.dueAt ? daysUntil(item.dueAt, now, zone) : null;
     const urgency = d === null ? 0 : d < 0 ? 1 : clamp(1 - d / windowDays, 0, 1);
     const impact = clamp((item.pointsPossible ?? 0) / POINTS_REF, 0, 1);
     const risk =
@@ -103,7 +120,7 @@ export function scoreAssignments(items: PriorityInput[], ctx: ScoreContext): Sco
       courseName: item.courseName,
       htmlUrl: item.htmlUrl,
       score,
-      reason: reasonFor(item, d),
+      reason: reasonFor(item, d, now, zone),
       factors: {
         urgency: round1(urgency),
         impact: round1(impact),
@@ -118,15 +135,24 @@ export function scoreAssignments(items: PriorityInput[], ctx: ScoreContext): Sco
 export function rankRecommendations(items: PriorityInput[], ctx: ScoreContext): Recommendations {
   const byId = new Map(items.map((i) => [i.canvasId, i]));
   const ranked = scoreAssignments(items, ctx).sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    // Tie-break mirrors the scheduler: earlier due, then higher points, then name.
-    const da = byId.get(a.canvasId)?.dueAt ?? null;
-    const db = byId.get(b.canvasId)?.dueAt ?? null;
-    if (da && db && da !== db) return da < db ? -1 : 1;
-    const pa = byId.get(a.canvasId)?.pointsPossible ?? -1;
-    const pb = byId.get(b.canvasId)?.pointsPossible ?? -1;
-    if (pa !== pb) return pb - pa;
-    return a.name.localeCompare(b.name);
+    // The owner's tiebreak chain — THE comparator (lib/marginalPriority.compareTiebreak),
+    // a strict total order — fed what this legacy input has: due instant (dated
+    // before undated), raw points, course, name, canvasId. No grade share / course
+    // grade here, so those steps are equal and fall through.
+    if (!sameImportance(a.score, b.score)) return importanceBucket(b.score) > importanceBucket(a.score) ? 1 : -1;
+    const key = (s: ScoredAssignment): TieKey => {
+      const i = byId.get(s.canvasId);
+      return {
+        canvasId: s.canvasId,
+        name: s.name,
+        dueAtMs: i?.dueAt ? new Date(i.dueAt).getTime() : null,
+        share: null,
+        courseGrade: null,
+        courseName: s.courseName,
+        points: i?.pointsPossible ?? null,
+      };
+    };
+    return compareTiebreak(key(a), key(b));
   });
   return { ranked, top: ranked.slice(0, TOP_N) };
 }
