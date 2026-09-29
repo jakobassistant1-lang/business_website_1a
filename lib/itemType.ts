@@ -78,3 +78,12 @@ export const TYPE_LABEL: Record<ItemType, string> = {
   exam: "Exam",
   other: "Task",
 };
+
+/** A PASSIVE grade — participation, attendance, a placeholder column: the AI screen
+ *  said nothing needs doing (`requiresAction === false`), it has no online
+ *  submission, and it isn't an exam/quiz. THE one predicate (ranking, scheduler,
+ *  counts and lists all use it). Passive items are shown with importance 0 and are
+ *  never scheduled (Calvin, 2026-09-28). */
+export function isPassiveItem(a: { requiresAction?: boolean | null; submissionType: string | null; type: ItemType }): boolean {
+  return a.requiresAction === false && !requiresOnlineSubmission(a.submissionType) && !isStudyType(a.type);
+}

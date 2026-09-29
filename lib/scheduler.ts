@@ -38,6 +38,10 @@ export interface DayBlock {
   dueAt: string; // ISO
   summary?: string | null;
   study?: boolean; // true = a study session ahead of an exam/quiz (not the work itself)
+  /** A zero-hour "it's due this day" marker (the item got no placed work/study that day).
+   *  NEVER a study session: `study` is false on markers, and lib/studyWeek.isStudySessionBlock
+   *  (hours > 0) is THE rule for what counts as one. UIs render a marker as the item itself. */
+  marker?: boolean;
   sessionKind?: "review" | "relearn"; // v1 week scheduler: review/re-read vs successive relearning
   estimatedEffortHours?: number | null; // the assignment's TOTAL estimated effort (not this block's `hours`) — for display when work is split across blocks
 }

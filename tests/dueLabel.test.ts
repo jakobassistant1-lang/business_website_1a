@@ -69,5 +69,6 @@ describe("DueLabel component contract", () => {
     expect(src).toContain("useLocalToday(todayYmd)");
     expect(src).toContain('timeZone: "UTC"');
     expect(src).not.toContain("suppressHydrationWarning");
+    expect(src).toContain("formatDue(iso, format, { todayYmd, timeZone })"); // student-zone path: no mount swap
   });
 });

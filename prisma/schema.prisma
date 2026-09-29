@@ -28,6 +28,9 @@ model User {
   defaultEffortHours   Float     @default(2) // internal fallback when Gemini hasn't estimated effort
   studyDaysTest        Int       @default(7) // days ahead to start studying for exams/tests
   studyDaysQuiz        Int       @default(3) // days ahead to start studying for quizzes
+  // IANA zone from the student's Canvas profile — THE zone for every day/date rule
+  // (ranking, scheduling, past-due status, labels, AI inputs). See lib/studentZone.
+  timeZone             String?
   studyDaysFinal       Int       @default(14) // days ahead to start studying for midterms/finals (cumulative)
   createdAt            DateTime  @default(now())
   // When the student finished (or skipped) the first-run demo. Defaults to now()
@@ -244,6 +247,10 @@ model Course {
   // #126: sha256 of the syllabus text the late policy was parsed from. A sync whose
   // syllabus hashes the same makes ZERO Gemini calls for it (lib/latePolicy).
   latePolicyHash  String?
+  // Grading scheme read from Canvas + the syllabus in the same AI call as the late
+  // policy: { totalPoints?, categories?: [{ name, weight, count? }] } — step 1 of the
+  // grade-share order (scheme → points posted so far → type defaults). lib/gradingScheme.
+  gradingScheme   Json?
   // Student excluded this course from planning (#60). Null = included. Filters the
   // assignment load at the ONE chokepoint (lib/calendarData / lib/plan) so ranking,
   // scheduler, calendar, and briefing all drop it together. Never written by sync.
@@ -275,6 +282,11 @@ model Assignment {
   // rule (lib/assignmentStatus): manual check OR Canvas submission counts as done.
   // Never written by Canvas sync, so a sync can't un-check it.
   manualDoneAt        DateTime?
+  // Canvas availability window (2026-09-28): an item the teacher hasn't opened yet
+  // (lockedForUser with unlockAt in the future) scores 0 and sits in "Not open yet".
+  unlockAt            DateTime?
+  lockAt              DateTime?
+  lockedForUser       Boolean?
   updatedAt           DateTime  @updatedAt
   // Submission data from Canvas include[]=submission (canvas-mcp integration)
   submittedAt         DateTime?

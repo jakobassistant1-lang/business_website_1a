@@ -15,7 +15,9 @@ import { rankActiveRows, courseTotalPoints } from "./rankActive";
 import { coerceLatePolicy } from "./latePolicy";
 import { loadCalendarEvents } from "./calendar";
 import type { CalendarEvent } from "./calendar/types";
-import { itemType, isStudyType, type ItemType } from "./itemType";
+import { itemType, isStudyType, isPassiveItem, type ItemType } from "./itemType";
+import { studentZone, todayInZone } from "./studentZone";
+import { parseSyncReport } from "./syncReport";
 import { assessmentTier } from "./studyPlan";
 import { deriveCourseGrade, type CourseGrade } from "./courseGrade";
 import { effectiveEffort } from "./effort";
@@ -47,6 +49,17 @@ export interface CalendarItem {
   // True when the student checked this off themselves (manualDoneAt) rather than
   // Canvas reporting a submission — drives the un-checkable filled circle.
   manuallyDone: boolean;
+  // ── 2026-09-28 frozen additions (optional so fixtures/demo keep compiling) ──
+  /** The teacher hasn't opened it yet (Canvas unlock date in the future): scores 0, "Not open yet". */
+  locked?: boolean;
+  /** When it opens (ISO), if Canvas says. */
+  unlockAt?: string | null;
+  /** A passive grade (participation/attendance): importance 0, never scheduled, "Graded by your teacher". */
+  passive?: boolean;
+  /** The ranking's one-phrase reason for this item's position ("Due in 2 days · 70 pts"). */
+  reason?: string | null;
+  /** Why a completed item counts as done. "date_passed" = an exam/quiz whose date has passed. */
+  doneReason?: "submitted" | "graded" | "manual" | "date_passed";
 }
 
 /** One enrolled course plus its honest grade state (graded / hidden / none) and
@@ -62,6 +75,12 @@ export interface CourseMeta {
 }
 
 export interface CalendarData {
+  /** The student's Canvas time zone (lib/studentZone) — every date on screen uses it. */
+  timeZone?: string;
+  /** Today's calendar day in that zone. */
+  todayYmd?: string;
+  /** When Navo last checked Canvas (any run, full or quick) — THE freshness line ("Last checked Canvas"). */
+  lastCheckedAt?: string | null;
   connected: boolean;
   syncedAt: string | null;
   validationStatus: string | null;
@@ -192,6 +211,7 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
   const overdue = new Set(plan.atRisk.filter((r) => r.kind === "overdue").map((r) => r.canvasId));
   const recommendations = ranked.filter((r) => !overdue.has(r.canvasId)).slice(0, TOP_N);
 
+  const reasonOf = new Map(ranked.map((r) => [r.canvasId, r.reason ?? null]));
   const toItem = (a: AssignmentRow, done: boolean): CalendarItem => ({
     canvasId: a.canvasId,
     name: a.name,
@@ -211,6 +231,11 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     groupName: a.groupName ?? null,
     groupWeight: a.groupWeight ?? null,
     manuallyDone: a.manualDoneAt != null,
+    locked: a.unlockAt != null && a.unlockAt.getTime() > now.getTime(),
+    unlockAt: a.unlockAt ? a.unlockAt.toISOString() : null,
+    passive: isPassiveItem({ requiresAction: a.aiRequiresAction, submissionType: a.submissionType, type: itemType(a.submissionType, a.name) }),
+    reason: reasonOf.get(a.canvasId) ?? null,
+    doneReason: !done ? undefined : a.manualDoneAt != null ? "manual" : a.submissionState === "graded" ? "graded" : "submitted",
   });
 
   // Honest per-course grade. "Graded work" = any assignment Canvas has scored,
@@ -239,7 +264,12 @@ export async function loadCalendarData(userId: number, hoursOverride?: number): 
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const status = cred?.lastValidationStatus ?? null;
+  const zone = studentZone(user);
+  const lastReport = parseSyncReport(cred?.lastSyncReport);
   return {
+    timeZone: zone,
+    todayYmd: todayInZone(zone, now),
+    lastCheckedAt: lastReport?.at ?? (cred?.syncedAt ? cred.syncedAt.toISOString() : null),
     connected: !!cred,
     syncedAt: cred?.syncedAt ? cred.syncedAt.toISOString() : null,
     validationStatus: status,

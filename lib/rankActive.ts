@@ -11,7 +11,7 @@
 import { rankItems, type MarginalInput } from "./marginalPriority";
 import { DEFAULT_LATE_POLICY, type LatePolicy } from "./latePolicy";
 import { resolveWeight } from "./gradeWeight";
-import { itemType, isStudyType, requiresOnlineSubmission, type ItemType } from "./itemType";
+import { itemType, isStudyType, isPassiveItem, type ItemType } from "./itemType";
 import { daysBetween } from "./calendarDates";
 import { round1 } from "./round";
 import type { ScoredAssignment } from "./priority";
@@ -77,7 +77,7 @@ export function rankActiveRows(
   //     like a teacher-entered placeholder to the model, but you always study for it.
   // Readings (no submission, non-study) stay in via the AI's own requiresAction=true.
   const actionable = active.filter(
-    (a) => !(a.requiresAction === false && !requiresOnlineSubmission(a.submissionType) && !isStudyType(typeOf(a))),
+    (a) => !isPassiveItem({ requiresAction: a.requiresAction, submissionType: a.submissionType, type: typeOf(a) }),
   );
   const inputs: MarginalInput[] = actionable.map((a) => {
     const type = typeOf(a);
