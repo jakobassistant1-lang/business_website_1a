@@ -3,7 +3,7 @@
 // Tuesday 11:59 PM Eastern deadline rendered as "Wednesday".
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
-import { formatDue, dueParts, isPastDue } from "@/lib/dueLabel";
+import { formatDue, formatDay, dueParts, isPastDue } from "@/lib/dueLabel";
 import { countdownLabel, ymdInZone } from "@/lib/calendarDates";
 
 // Tue Sep 29 2026, 11:59 PM America/New_York == Wed Sep 30 03:59 UTC.
@@ -31,6 +31,18 @@ describe("formatDue", () => {
     expect(formatDue(ISO, "countdown", { todayYmd: "2026-09-29", timeZone: NY })).toBe("Today");
     expect(formatDue(ISO, "countdown", { todayYmd: "2026-09-28", timeZone: NY })).toBe("Tomorrow");
     expect(formatDue(ISO, "countdown", { todayYmd: "2026-09-01", timeZone: NY })).toBe("Sep 29");
+  });
+  it("countdown: a PAST day prints its short date — 'Today' only for today", () => {
+    expect(formatDue(ISO, "countdown", { todayYmd: "2026-09-30", timeZone: NY })).toBe("Sep 29"); // yesterday
+    expect(formatDue(ISO, "countdown", { todayYmd: "2026-10-24", timeZone: NY })).toBe("Sep 29");
+    expect(countdownLabel(ISO, "2026-09-30", NY)).toBe("Sep 29");
+    expect(countdownLabel(ISO, "2026-09-30", "UTC")).toBe("Today"); // same instant, its UTC day is today
+  });
+  it("day: 'Wednesday, Sep 30' — for an instant in a zone, and for a calendar day", () => {
+    expect(formatDue(ISO, "day", { todayYmd: today, timeZone: NY })).toBe("Tuesday, Sep 29");
+    expect(formatDue(ISO, "day", { todayYmd: "2026-09-29", timeZone: NY })).toBe("Tuesday, Sep 29"); // no Today prefix
+    expect(formatDay("2026-09-30")).toBe("Wednesday, Sep 30");
+    expect(formatDay("2026-01-04")).toBe("Sunday, Jan 4");
   });
   it("chip: clock time on the due day, weekday otherwise", () => {
     expect(formatDue(ISO, "chip", { todayYmd: "2026-09-29", timeZone: NY })).toBe("Due 11:59 PM");

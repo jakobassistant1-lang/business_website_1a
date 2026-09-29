@@ -10,8 +10,11 @@ import { fmtHours } from "@/lib/effortFormat";
 import { studyChipsFromPlan } from "@/lib/studyWeek";
 import type { PlanDay } from "@/lib/scheduler";
 
-export function StudyWeekStrip({ days, todayYmd }: { days: PlanDay[]; todayYmd: string }) {
-  const chips = studyChipsFromPlan(days, parseYmd(todayYmd));
+/** `todayYmd` + `zone` = the student's day and Canvas zone (lib/studentZone), so
+ *  the strip, the Dashboard's Today's study and the Calendar agree on what a study
+ *  session is and which day it's on. */
+export function StudyWeekStrip({ days, todayYmd, zone }: { days: PlanDay[]; todayYmd: string; zone: string }) {
+  const chips = studyChipsFromPlan(days, parseYmd(todayYmd), zone);
   if (chips.length === 0) return null;
   return (
     <section aria-labelledby="study-week-heading" className="mb-5">

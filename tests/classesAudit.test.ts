@@ -2,7 +2,8 @@
 // test) per finding so the fixes can't quietly regress:
 //   1 dates in the viewer's zone (DueLabel)   5 CalendarView a11y + URL place
 //   2 truncation that destroyed identity      6 rolling 7-day Week view
-//   3 "Classes" everywhere                    7 dark-mode contrast on the violet row
+//   3 "Courses" on the course surfaces        7 dark-mode contrast on the violet row
+//     (owner 2026-09-28 reversed #141's "Classes" — "Course"/"Courses" again)
 //   4 wayfinding (back link, card, tabs)      8 copy
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "fs";
@@ -120,12 +121,30 @@ describe("3 · 'Classes' everywhere a student reads it", () => {
     expect(item.tabLabel).toBe("Classes");
     expect(pageTitle("/courses")).toBe("Classes");
   });
-  it("the Classes page heading — real app and demo", () => {
-    expect(read(COURSES)).toMatch(/<h1[^>]*>Classes<\/h1>/);
-    expect(read(DEMO)).toMatch(/<h1[^>]*>Classes<\/h1>/);
+  it("the Courses page heading — real app and demo (owner canon 2026-09-28)", () => {
+    expect(read(COURSES)).toMatch(/<h1[^>]*>Courses<\/h1>/);
+    expect(read(DEMO)).toMatch(/<h1[^>]*>Courses<\/h1>/);
+    expect(read(DEMO)).toMatch(/section: "courses", label: "Courses"/);
+  });
+  it("the demo tour's page label (lib/tour/demoTour, owned elsewhere)", () => {
     expect(DEMO_VIEW_LABEL.courses).toBe("Classes");
   });
-  for (const file of [GRID, PAGE, EXCL, CAL, PLAN, COURSES, DEMO, TOUR, "components/CourseCarousel.tsx", "components/navItems.ts"]) {
+  // The course surfaces say "course"/"courses" — never "class"/"classes" (owner
+  // canon 2026-09-28). Calendar and Plan flipped with #135/#136; the nav and tour
+  // files keep their own guard below until their owners flip them.
+  for (const file of [GRID, PAGE, EXCL, COURSES, DEMO, "components/CourseCarousel.tsx", CAL, PLAN]) {
+    it(`${file}: no "class"/"classes" in user-facing strings`, () => {
+      const src = code(file).replace(/^import .*$/gm, "");
+      const strings = [...src.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2]);
+      const jsxText = [...src.matchAll(/>([^<>{}]+)</g)].map((m) => m[1]);
+      const userFacing = [...strings, ...jsxText]
+        .map((t) => t.replace(/\$\{[^}]*\}/g, "")) // template holes are code
+        .filter((t) => !/^[/@]/.test(t.trim())) // paths, hrefs
+        .filter((t) => !/^[a-z0-9-]+$/.test(t.trim())); // kebab ids (data-tour, keys)
+      for (const t of userFacing) expect(t, t).not.toMatch(/\bclass(es)?\b/i);
+    });
+  }
+  for (const file of [TOUR, "components/navItems.ts"]) {
     it(`${file}: no "course" in user-facing strings`, () => {
       const src = code(file).replace(/^import .*$/gm, "");
       const strings = [...src.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2]);
@@ -315,9 +334,9 @@ describe("7 · the violet surfaces use the accent's foreground token at full str
 });
 
 describe("8 · copy", () => {
-  it("sentence case, and the tablist is named for a class", () => {
+  it("sentence case, and the tablist is named for a course", () => {
     expect(code(CAL)).not.toContain(">TODAY<");
-    expect(code(PAGE)).toContain('aria-label="Class view"');
+    expect(code(PAGE)).toContain('aria-label="Course view"');
     expect(code(PAGE)).not.toContain("capitalize");
   });
 });

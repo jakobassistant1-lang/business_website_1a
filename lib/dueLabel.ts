@@ -15,7 +15,8 @@ export type DueFormat =
   | "short" //     "Today" · "Tomorrow" · "Wed 9/30"                               — tight rows where the full day truncates
   | "long" //      "Due today · Wednesday, Sep 30" · "Past due · …" · "Due …"     — assignment page header
   | "long-plain" //"Today · Wednesday, Sep 30" · "Tomorrow · …" · "Wednesday, Sep 30" — class page rows
-  | "long-time"; //"Mon, Oct 12 · 11:59 PM"                                       — study hub / test pages
+  | "long-time" //"Mon, Oct 12 · 11:59 PM"                                       — study hub / test pages
+  | "day"; //      "Wednesday, Sep 30"                                            — a day heading / a day control's name
 
 export interface DueOpts {
   /** The viewer's (or, pre-mount, the server's) calendar day, "YYYY-MM-DD". */
@@ -35,6 +36,19 @@ export function dueParts(iso: string, timeZone?: string): Parts {
   return { ymd: dayYmd, weekday: d.getDay(), month: d.getMonth(), day: d.getDate(), time: t.replace(/ /g, " ") };
 }
 
+/** "Wednesday, Sep 30" — the ONE long day phrase (the long formats and "day"
+ *  build on it). */
+function longDay(weekday: number, month: number, day: number): string {
+  return `${WEEKDAYS_FULL[weekday]}, ${MONTHS_SHORT[month]} ${day}`;
+}
+
+/** A CALENDAR day ("YYYY-MM-DD", no instant, so no zone) in the "day" format's
+ *  words: "Wednesday, Sep 30". For day headings and day controls. */
+export function formatDay(dayYmd: string): string {
+  const d = parseYmd(dayYmd);
+  return longDay(d.getDay(), d.getMonth(), d.getDate());
+}
+
 function daysUntil(dueYmd: string, todayYmd: string): number {
   return Math.round((parseYmd(dueYmd).getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
 }
@@ -46,7 +60,7 @@ export function formatDue(iso: string | null | undefined, format: DueFormat, opt
   const { todayYmd, timeZone } = opts;
   const p = dueParts(iso, timeZone);
   const days = daysUntil(p.ymd, todayYmd);
-  const long = `${WEEKDAYS_FULL[p.weekday]}, ${MONTHS_SHORT[p.month]} ${p.day}`;
+  const long = longDay(p.weekday, p.month, p.day);
   switch (format) {
     case "countdown":
       return countdownLabel(iso, todayYmd, timeZone);
@@ -67,6 +81,8 @@ export function formatDue(iso: string | null | undefined, format: DueFormat, opt
       return long;
     case "long-time":
       return `${WEEKDAYS[p.weekday]}, ${MONTHS_SHORT[p.month]} ${p.day} · ${p.time}`;
+    case "day":
+      return long;
   }
 }
 

@@ -22,17 +22,23 @@
 // bar is tagged with its `side`; only the copy on the visible side runs the undo
 // clock (UndoToast `clock`), and settling is idempotent anyway (lib/pendingDone).
 //
-// Dates: every due date is a <DueLabel> (lib/dueLabel formats), and every "which
-// day is this due" test in this file — due today, due this week, the Focus list's
-// due-today rule, Today's study — goes through `dashboardDay` (below): UTC before
-// mount (so it matches the server's `todayYmd` and the SSR HTML), the viewer's
-// zone after. (lib/studyWeek.isStudySessionBlock reads the day in the RUNTIME's
-// zone, so the dashboard applies the same rule through `isTodayStudy` instead.)
+// Dates: the student's Canvas zone is THE zone (lib/studentZone). Every due date
+// is a <DueLabel> rendered in it, and every "which day is this due" test in this
+// file — due today, due this week, the Focus list's due-today rule, Today's study —
+// reads the day in it (`isDueOn`, lib/studyWeek.isStudySessionBlock with the
+// zone). The server render and every browser agree, so nothing swaps after mount.
+//
+// Focus (#135, the owner): the top priority no matter what it is — past due
+// included. `pickFocus` reads lib/planFocus.focusItems over THE Focus order (the
+// ranking module's focusSlice, run by the page), the SAME list as the Plan's
+// violet row and `data.recommendations`. OWNER DECISION (literal reading of "do
+// not remove the past due section, just don't exclude them from the focus
+// section"): a past-due Focus item ALSO appears in Catch up. Keep both.
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useLocalToday } from "@/components/useLocalToday";
-import { useMounted } from "@/components/useMounted";
+import { DEFAULT_EFFORT_HOURS } from "@/lib/effort";
 import { DueLabel } from "@/components/DueLabel";
+import { SyncStatus } from "@/components/SyncStatus";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAutoSync } from "@/components/useAutoSync";
@@ -40,18 +46,20 @@ import { UndoToast } from "@/components/UndoToast";
 import { Sheet, useIsPhone } from "@/components/Sheet";
 import { applyToggle, allSettled, clearPending, isSettled, mergePending, prunePending, settle, toastMessage, visibleSlice, UNDO_FAILED_MESSAGE, type PendingMap } from "@/lib/pendingDone";
 import { ymdInZone } from "@/lib/calendarDates";
+import { dataZone } from "@/lib/studentZone";
+import { isStudySessionBlock } from "@/lib/studyWeek";
+import { focusItems, focusOrderOf } from "@/lib/planFocus";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
 import { deterministicIntensity, overdueLoad, type Intensity } from "@/lib/intensity";
-import { Glyph, ICON, fmtHours, EffortTag, DoneCheck, TAP_PHONE } from "@/components/calendar/parts";
+import { Glyph, ICON, fmtHours, EffortTag, DoneCheck, TAP_PHONE, PAST_DUE_CHIP } from "@/components/calendar/parts";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
-import type { DayBlock } from "@/lib/scheduler";
 import { itemHref, TYPE_LABEL } from "@/lib/itemType";
 import { shortCourse } from "@/lib/courseName";
 
 /** "Sunday, September 27" for a calendar day. It formats the YMD itself (pinned to
- *  UTC, fixed locale), so the server and the first client render print the same
- *  words; `useLocalToday` then swaps in the viewer's own day after mount. */
+ *  UTC, fixed locale), so the server and every client print the same words; the
+ *  day is the student's own (the loader's `todayYmd`, in their Canvas zone). */
 const DAY_LINE = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 const fmtDayLine = (dayYmd: string) => DAY_LINE.format(new Date(`${dayYmd}T00:00:00Z`));
 
@@ -66,19 +74,9 @@ const ROW_LINK = "outline-none after:absolute after:inset-0 after:rounded-xl aft
 const ABOVE_LINK = "relative z-10";
 
 // ── The dashboard's day rule (pure, exported for tests) ─────────────────────────
-/** The zone the dashboard reads due days in: UTC until mount (the server's
- *  `todayYmd` is a UTC day on Vercel, and the SSR HTML must match hydration),
- *  the viewer's own zone (undefined) after — the same pairing <DueLabel> uses. */
-export const dashboardZone = (mounted: boolean): string | undefined => (mounted ? undefined : "UTC");
-/** The calendar day ("YYYY-MM-DD") a due instant falls on in `zone`. */
-export const dashboardDay = (iso: string, zone: string | undefined): string => ymdInZone(iso, zone);
-/** Due on `todayYmd`, read in `zone`. */
-export const isDueOn = (it: Pick<CalendarItem, "dueAt">, todayYmd: string, zone: string | undefined): boolean =>
-  it.dueAt != null && dashboardDay(it.dueAt, zone) === todayYmd;
-/** A real study session for an assessment due today or later — the
- *  lib/studyWeek.isStudySessionBlock rule, read in `zone` instead of the runtime's. */
-export const isTodayStudy = (b: Pick<DayBlock, "study" | "hours" | "dueAt">, todayYmd: string, zone: string | undefined): boolean =>
-  !!b.study && b.hours > 0 && dashboardDay(b.dueAt, zone) >= todayYmd;
+/** Due on `todayYmd`, the due instant's day read in the student's `zone`. */
+export const isDueOn = (it: Pick<CalendarItem, "dueAt">, todayYmd: string, zone: string): boolean =>
+  it.dueAt != null && ymdInZone(it.dueAt, zone) === todayYmd;
 
 /** How long a checked-off row stays put with its Undo bar. */
 const UNDO_MS = 6000;
@@ -94,17 +92,27 @@ type UndoHandlers = {
   onExpire: (canvasId: number) => void;
 };
 
-export function DashboardView({ data, todayYmd: serverToday, firstName, demo = false }: { data: CalendarData; todayYmd: string; firstName: string; demo?: boolean }) {
+export function DashboardView({
+  data,
+  todayYmd: pageToday,
+  focusOrder,
+  firstName,
+  demo = false,
+}: {
+  data: CalendarData;
+  todayYmd: string;
+  /** THE Focus list's id order (the page runs lib/rankActive.focusSlice; see lib/planFocus). */
+  focusOrder?: number[];
+  firstName: string;
+  demo?: boolean;
+}) {
   const [greeting, setGreeting] = useState("Hello"); // neutral on first render → no hydration mismatch
-  const todayYmd = useLocalToday(serverToday); // the device's own day (shared with PlanSurface)
-  // Due days read in UTC until mount, the viewer's zone after (see dashboardZone).
-  // Accepted: when the two readings disagree (a late-evening deadline, or the
-  // UTC day already being tomorrow), the ring counts, Today's study and the
-  // Focus list can shift ONCE right after mount. That's the correct local
-  // answer replacing the server's — never a hydration mismatch.
-  const mounted = useMounted();
-  const zone = dashboardZone(mounted);
-  const dueDay = (iso: string) => dashboardDay(iso, zone);
+  // The student's day and zone (lib/studentZone): the loader's `todayYmd` (live and
+  // demo payloads both carry it; the page's dataToday(data) is only a fallback) —
+  // the same pair as PlanSurface, so both agree on "today".
+  const todayYmd = data.todayYmd ?? pageToday;
+  const zone = dataZone(data);
+  const dueDay = (iso: string) => ymdInZone(iso, zone);
   const [aiPoints, setAiPoints] = useState<string[]>([]);
   const [aiIntensity, setAiIntensity] = useState<Intensity | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -117,7 +125,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
 
   // Canvas auto-sync: full on mount when ≥10 min stale, quick submission refresh
   // when the tab comes back (the server decides — components/useAutoSync).
-  const { warning: syncWarning } = useAutoSync({ connected: data.connected, syncedAt: data.syncedAt, demo });
+  const { status: syncInputs, runManual: runSync } = useAutoSync({ connected: data.connected, syncedAt: data.syncedAt, lastCheckedAt: data.lastCheckedAt, stale: data.stale, demo });
 
   // AI summary + Gemini week rating (fail-open: deterministic rating already shows;
   // this upgrades it + fills the summary line when Gemini answers).
@@ -229,7 +237,9 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   const overdueCount = overdueItems.filter((it) => !isSettled(pendingDone, it.canvasId)).length;
 
   // Today's scheduled study sessions (restored to the dashboard).
-  const todayStudy = (data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? []).filter((b) => isTodayStudy(b, todayYmd, zone));
+  // THE study-session rule (lib/studyWeek), read in the student's zone: a zero-hour
+  // "due this day" marker is never a session.
+  const todayStudy = (data.plan.days.find((d) => d.date === todayYmd)?.blocks ?? []).filter((b) => isStudySessionBlock(b, todayYmd, zone));
 
   // Week intensity — deterministic baseline (instant), upgraded by Gemini when it answers.
   const windowDates = new Set(data.plan.days.map((d) => d.date));
@@ -246,7 +256,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
     workHours,
     budgetHours,
     overloadHours: data.overloadHours,
-    ...overdueLoad(data.items),
+    ...overdueLoad(data.items, data.defaultEffortHours ?? DEFAULT_EFFORT_HOURS),
   });
   const intensity = aiIntensity ?? baseIntensity;
 
@@ -257,7 +267,10 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
   // pull it up into the Focus card and restart its Undo clock there.
   const focusShown = useRef<Set<number>>(new Set());
   const heldInFocus = (canvasId: number) => undoHandlers.held(canvasId) && focusShown.current.has(canvasId);
-  const { focusItem, rest: focusRest } = pickFocus(data, liveItems, isDueToday, heldInFocus);
+  const { focusItem, rest: focusRest } = pickFocus(focusOrderOf(data, focusOrder), liveItems, isDueToday, heldInFocus);
+  // "All caught up" ONLY when nothing is past due, upcoming or undated (teacher-
+  // graded items aren't work). Otherwise an empty Focus says so plainly.
+  const openWork = liveItems.filter((it) => it.status !== "done" && !it.passive).length;
   const inFocusCard = new Set([focusItem?.canvasId, ...focusRest.map((it) => it.canvasId)]);
   useEffect(() => {
     focusShown.current = new Set([...inFocusCard].filter((id): id is number => id != null));
@@ -289,12 +302,8 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
             {firstName ? `, ${firstName}` : ""}
           </h1>
           <p className="mt-0.5 text-[15px] text-muted">{fmtDayLine(todayYmd)}</p>
-          {syncWarning && (
-            <p className="mt-1.5 flex items-center gap-2 text-[13px] text-muted">
-              <span aria-hidden className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-muted/60" />
-              {syncWarning}
-            </p>
-          )}
+          {/* THE sync indicator (one state at a time) + "Last checked Canvas …". */}
+          {data.connected && <SyncStatus className="mt-1.5" inputs={syncInputs} onRetry={runSync} />}
         </div>
         {/* Phones: the week's difficulty and today's progress in one quiet row
             (md+ shows them in the KPI row and the rail's big ring). */}
@@ -320,10 +329,10 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
               exactly the old two-column layout. */}
           <div className="flex flex-col gap-6 lg:flex-row">
             <div className="min-w-0 flex-1 space-y-6">
-              <div data-tour="dash-focus"><FocusTodayCard data={data} focusItem={focusItem} rest={focusRest} todayYmd={todayYmd} demo={demo} undo={undoHandlers} /></div>
+              <div data-tour="dash-focus"><FocusTodayCard focusItem={focusItem} rest={focusRest} caughtUp={openWork === 0} pastDueCount={overdueCount} todayYmd={todayYmd} zone={zone} demo={demo} undo={undoHandlers} /></div>
               {todayStudy.length > 0 && <TodayStudyCard className="md:hidden" blocks={todayStudy} />}
               {overdueCount > 0 && <CatchUpEntry className="md:hidden" items={overdueItems} count={overdueCount} demo={demo} undo={undoHandlers} />}
-              <ThisWeekCard className="md:hidden" items={weekNext} todayYmd={todayYmd} demo={demo} undo={undoHandlers} />
+              <ThisWeekCard className="md:hidden" items={weekNext} todayYmd={todayYmd} zone={zone} demo={demo} undo={undoHandlers} />
               {overdueItems.length > 0 && (
                 <div className="hidden md:block">
                   <CatchUpCard items={overdueItems} onOpenAll={() => setShowCatchUp(true)} demo={demo} undo={undoHandlers} />
@@ -336,7 +345,7 @@ export function DashboardView({ data, todayYmd: serverToday, firstName, demo = f
                 <div data-tour="dash-progress" className="hidden md:block"><ProgressDial done={dueTodayDone} total={dialTotal} /></div>
               )}
               {todayStudy.length > 0 && <TodayStudyCard className="hidden md:block" blocks={todayStudy} />}
-              <div data-tour="dash-tests"><UpcomingTestsCard data={data} todayYmd={todayYmd} /></div>
+              <div data-tour="dash-tests"><UpcomingTestsCard data={data} todayYmd={todayYmd} zone={zone} /></div>
             </aside>
           </div>
         </>
@@ -500,12 +509,15 @@ function UndoSlot({ undo, canvasId, side }: { undo: UndoHandlers; canvasId: numb
   );
 }
 
-function ItemRow({ item, todayYmd, demo = false, undo, side }: { item: CalendarItem; todayYmd: string; demo?: boolean; undo: UndoHandlers; side: Side }) {
+function ItemRow({ item, todayYmd, zone, demo = false, undo, side }: { item: CalendarItem; todayYmd: string; zone: string; demo?: boolean; undo: UndoHandlers; side: Side }) {
   const held = undo.held(item.canvasId);
+  // Past-due work can rank into the Focus card (#135); it reads as past due there too.
+  const pastDue = item.status === "overdue";
   return (
     <div>
-      <div className={`tap relative flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60 ${held ? "opacity-70" : ""}`}>
-        <DoneCheck className="relative z-10" canvasId={item.canvasId} checked={held} disabled={demo} deferRefresh onToggled={undo.onToggled(item)} />
+      <div className={`tap relative isolate flex items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-surface-soft/60 ${held ? "opacity-70" : ""}`}>
+        {held && <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 rounded-[inherit] animate-done-glow" />}
+        <DoneCheck className="relative z-10" canvasId={item.canvasId} itemName={item.name} tone={pastDue ? "warning" : "default"} checked={held} disabled={demo} deferRefresh onToggled={undo.onToggled(item)} />
         <Link href={itemHref(item.canvasId, item.type, item.status)} className={`flex min-w-0 flex-1 items-center gap-3.5 ${ROW_LINK}`}>
           <span className="min-w-0 flex-1">
             <span className={`block truncate text-[16px] font-medium ${held ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
@@ -516,7 +528,11 @@ function ItemRow({ item, todayYmd, demo = false, undo, side }: { item: CalendarI
               <EffortTag hours={item.estimatedEffortHours} className={`shrink-0 ${ABOVE_LINK}`} />
             </span>
           </span>
-          <DueLabel iso={item.dueAt} format="countdown" todayYmd={todayYmd} className={`shrink-0 text-[14px] font-medium ${held ? "text-muted" : "text-ink"}`} />
+          {pastDue ? (
+            <span className={`shrink-0 ${PAST_DUE_CHIP}`}>Past due</span>
+          ) : (
+            <DueLabel iso={item.dueAt} format="countdown" todayYmd={todayYmd} timeZone={zone} className={`shrink-0 text-[14px] font-medium ${held ? "text-muted" : "text-ink"}`} />
+          )}
         </Link>
       </div>
       <UndoSlot undo={undo} canvasId={item.canvasId} side={side} />
@@ -526,20 +542,21 @@ function ItemRow({ item, todayYmd, demo = false, undo, side }: { item: CalendarI
 
 // ── Focus + what's next: a flush, rounded-bottom violet Focus block (the #1 task)
 // sits edge-to-edge atop a 7-day due list, all in one card. ─────────────────────
-/** The Focus item (the #1 forward recommendation) + the rows listed beneath it in
- *  the same card. The ONE rule — the Focus card renders it and the phone "This
- *  week" list skips everything in it. */
-export function pickFocus(data: CalendarData, items: CalendarItem[], isDueToday: (it: CalendarItem) => boolean, held: (canvasId: number) => boolean): { focusItem: CalendarItem | undefined; rest: CalendarItem[] } {
-  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
-  const normal = items
-    .filter((it) => it.status === "normal")
-    .sort((a, b) => (rank.get(a.canvasId) ?? 1e9) - (rank.get(b.canvasId) ?? 1e9));
-  const topRec = data.recommendations[0];
-  const fromRec = topRec ? data.items.find((it) => it.canvasId === topRec.canvasId) : undefined;
-  // Fall back to the #1 ranked item when there's no forward recommendation, so we
-  // never show "all caught up" above a list that still has items.
-  const focusItem = fromRec ?? normal[0];
-  const others = normal.filter((it) => it.canvasId !== focusItem?.canvasId);
+/** The Focus item + the rows listed beneath it in the same card. The ONE rule —
+ *  lib/planFocus.focusItems over THE Focus order, shared with the Plan's violet
+ *  row and `data.recommendations`: the top of the
+ *  ranking, past due INCLUDED (the owner: "focus should be the top priority no
+ *  matter what that is"), skipping only Not-open-yet, teacher-graded and
+ *  zero-importance items. The Focus card renders it and the phone "This week" list
+ *  skips everything in it. */
+export function pickFocus(focusOrder: readonly number[], items: CalendarItem[], isDueToday: (it: CalendarItem) => boolean, held: (canvasId: number) => boolean): { focusItem: CalendarItem | undefined; rest: CalendarItem[] } {
+  // A row checked off in this card stays in it for its Undo window, even after a
+  // refresh drops it from the ranking (visibleSlice below keeps it on the cut).
+  const listed = focusItems(items, focusOrder, Infinity);
+  const inList = new Set(listed.map((it) => it.canvasId));
+  const eligible = [...listed, ...items.filter((it) => held(it.canvasId) && !inList.has(it.canvasId))];
+  const focusItem = eligible[0];
+  const others = eligible.slice(1);
   // Beneath the Focus item: the next 3 by importance — OR everything still due
   // TODAY when that's a longer list, so a heavy today never hides behind the cut.
   const dueToday = others.filter(isDueToday);
@@ -549,8 +566,25 @@ export function pickFocus(data: CalendarData, items: CalendarItem[], isDueToday:
   return { focusItem, rest: visibleSlice(heavyToday ? dueToday : others, heavyToday ? dueToday.length : 3, held) };
 }
 
-function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }: { data: CalendarData; focusItem: CalendarItem | undefined; rest: CalendarItem[]; todayYmd: string; demo?: boolean; undo: UndoHandlers }) {
-  const caughtUp = data.atRisk.length === 0;
+function FocusTodayCard({
+  focusItem,
+  rest,
+  caughtUp,
+  pastDueCount,
+  todayYmd,
+  zone,
+  demo = false,
+  undo,
+}: {
+  focusItem: CalendarItem | undefined;
+  rest: CalendarItem[];
+  caughtUp: boolean;
+  pastDueCount: number;
+  todayYmd: string;
+  zone: string;
+  demo?: boolean;
+  undo: UndoHandlers;
+}) {
   const href = focusItem ? itemHref(focusItem.canvasId, focusItem.type, focusItem.status) : null;
 
   return (
@@ -565,10 +599,14 @@ function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }:
           </Link>
           <div className="mt-3 flex items-center justify-between gap-3 md:block">
             <div className="flex min-w-0 flex-wrap gap-2">
-              {focusItem.dueAt && (
-                <Chip>
-                  <DueLabel iso={focusItem.dueAt} format="chip" todayYmd={todayYmd} />
-                </Chip>
+              {focusItem.status === "overdue" ? (
+                <Chip>Past due</Chip>
+              ) : (
+                focusItem.dueAt && (
+                  <Chip>
+                    <DueLabel iso={focusItem.dueAt} format="chip" todayYmd={todayYmd} timeZone={zone} />
+                  </Chip>
+                )
               )}
               {focusItem.pointsPossible != null && focusItem.pointsPossible > 0 && <Chip>{focusItem.pointsPossible} pts</Chip>}
             </div>
@@ -581,12 +619,14 @@ function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }:
         </div>
       ) : (
         <div className="rounded-b-2xl bg-surface-soft/70 px-6 py-8 text-center">
-          <div className="flex justify-center text-success">
-            <Glyph d={ICON.check} size={30} />
-          </div>
-          <p className="mt-2 text-xl font-semibold text-ink">{caughtUp ? "You’re all caught up." : "Nothing new queued up."}</p>
+          {caughtUp && (
+            <div className="flex justify-center text-success">
+              <Glyph d={ICON.check} size={30} />
+            </div>
+          )}
+          <p className="mt-2 text-xl font-semibold text-ink">{caughtUp ? "You’re all caught up." : "Nothing to focus on right now."}</p>
           <p className="mx-auto mt-1 max-w-md text-[15px] text-muted">
-            {caughtUp ? "Nothing’s due and nothing’s overdue — enjoy the breathing room." : "Your upcoming work is clear; chip away at the overdue items when you’re ready."}
+            {caughtUp ? "Nothing’s due and nothing’s past due — enjoy the breathing room." : pastDueCount > 0 ? `${pastDueCount} past due below.` : "Nothing you can work on yet."}
           </p>
         </div>
       )}
@@ -600,7 +640,7 @@ function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }:
         ) : (
           <div className="space-y-0.5">
             {rest.map((it) => (
-              <ItemRow key={it.canvasId} item={it} todayYmd={todayYmd} demo={demo} undo={undo} side="any" />
+              <ItemRow key={it.canvasId} item={it} todayYmd={todayYmd} zone={zone} demo={demo} undo={undo} side="any" />
             ))}
           </div>
         )}
@@ -617,8 +657,10 @@ function FocusTodayCard({ data, focusItem, rest, todayYmd, demo = false, undo }:
 }
 
 // ── Upcoming assessments → a glance at tests/quizzes + a door to /study. ─────────
-function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: string }) {
-  const studyBooked = new Set(data.plan.days.flatMap((d) => d.blocks.filter((b) => b.study).map((b) => b.canvasId)));
+function UpcomingTestsCard({ data, todayYmd, zone }: { data: CalendarData; todayYmd: string; zone: string }) {
+  // "Study booked" only when a REAL study session exists (lib/studyWeek — THE
+  // rule); a zero-hour "due this day" marker never counts.
+  const studyBooked = new Set(data.plan.days.flatMap((d) => d.blocks.filter((b) => isStudySessionBlock(b, todayYmd, zone)).map((b) => b.canvasId)));
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
   const tests = data.items
     .filter((it) => (it.type === "exam" || it.type === "quiz") && it.status === "normal")
@@ -643,7 +685,7 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
               {TYPE_LABEL[next.type]} · {shortCourse(next.courseName)}
               {next.pointsPossible != null && next.pointsPossible > 0 ? ` · ${next.pointsPossible} pts` : ""}
             </span>
-            <DueLabel iso={next.dueAt} format="countdown" todayYmd={todayYmd} empty="No date" className="mt-1 block text-[14px] font-semibold text-accent max-md:font-medium max-md:text-muted" />
+            <DueLabel iso={next.dueAt} format="countdown" todayYmd={todayYmd} timeZone={zone} empty="No date" className="mt-1 block text-[14px] font-semibold text-accent max-md:font-medium max-md:text-muted" />
             {studyBooked.has(next.canvasId) && <span className="mt-0.5 block text-[12px] font-medium text-success">Study booked</span>}
           </Link>
           {tests.length > 1 && (
@@ -657,7 +699,7 @@ function UpcomingTestsCard({ data, todayYmd }: { data: CalendarData; todayYmd: s
   );
 }
 
-// ── Catch up (md+): overdue work, most-important-first, as an action — the ONE
+// ── Catch up (md+): past-due work, most-important-first, as an action — the ONE
 // place desktop counts it. "See all" opens the catch-up Sheet.
 function CatchUpCard({ items, onOpenAll, demo = false, undo }: { items: CalendarItem[]; onOpenAll: () => void; demo?: boolean; undo: UndoHandlers }) {
   const shown = visibleSlice(items, 3, undo.held); // held rows can't fall off the cut
@@ -678,13 +720,13 @@ function CatchUpCard({ items, onOpenAll, demo = false, undo }: { items: Calendar
   );
 }
 
-/** THE overdue list — one subtitle + the rows — rendered by all three catch-up
+/** THE past-due list — one subtitle + the rows — rendered by all three catch-up
  *  surfaces (the desktop card, its Sheet, the phone line's fold-out). The rows
  *  hang 12px into the gutter so their text lines up with the subtitle. */
 function CatchUpList({ items, side, undo, demo = false, className = "" }: { items: CalendarItem[]; side: Side; undo: UndoHandlers; demo?: boolean; className?: string }) {
   return (
     <div className={className}>
-      <p className="text-[14px] text-muted">Overdue, most important first — start at the top.</p>
+      <p className="text-[14px] text-muted">Past due, most important first — start at the top.</p>
       {items.length === 0 ? (
         <p className="py-6 text-center text-[15px] text-muted">All caught up.</p>
       ) : (
@@ -698,13 +740,14 @@ function CatchUpList({ items, side, undo, demo = false, className = "" }: { item
   );
 }
 
-/** One overdue row inside CatchUpList. Same check-beside-link row as ItemRow. */
+/** One past-due row inside CatchUpList. Same check-beside-link row as ItemRow. */
 function CatchUpRow({ item: it, demo = false, undo, side }: { item: CalendarItem; demo?: boolean; undo: UndoHandlers; side: Side }) {
   const held = undo.held(it.canvasId);
   return (
     <div>
-      <div className={`tap relative flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60 ${held ? "opacity-70" : ""}`}>
-        <DoneCheck className="relative z-10" canvasId={it.canvasId} tone="warning" checked={held} disabled={demo} deferRefresh onToggled={undo.onToggled(it)} />
+      <div className={`tap relative isolate flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left transition hover:bg-surface-soft/60 ${held ? "opacity-70" : ""}`}>
+        {held && <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 rounded-[inherit] animate-done-glow" />}
+        <DoneCheck className="relative z-10" canvasId={it.canvasId} itemName={it.name} tone="warning" checked={held} disabled={demo} deferRefresh onToggled={undo.onToggled(it)} />
         <Link href={itemHref(it.canvasId, it.type, it.status)} className={`flex min-w-0 flex-1 items-center gap-3.5 ${ROW_LINK}`}>
           <span className="min-w-0 flex-1">
             <span className={`block truncate text-[16px] font-medium ${held ? "text-muted line-through" : "text-ink"}`}>{it.name}</span>
@@ -715,7 +758,7 @@ function CatchUpRow({ item: it, demo = false, undo, side }: { item: CalendarItem
               <EffortTag hours={it.estimatedEffortHours} className={`shrink-0 ${ABOVE_LINK}`} />
             </span>
           </span>
-          <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[12px] font-medium ${toneSoft.warning}`}>Past due</span>
+          <span className={`shrink-0 ${PAST_DUE_CHIP}`}>Past due</span>
         </Link>
       </div>
       <UndoSlot undo={undo} canvasId={it.canvasId} side={side} />
@@ -723,8 +766,8 @@ function CatchUpRow({ item: it, demo = false, undo, side }: { item: CalendarItem
   );
 }
 
-// ── Phone only: overdue as ONE thin line just above "This week" — a warning-tone
-// mark, "N overdue · Catch up", a down chevron. Tapping it expands the overdue
+// ── Phone only: past due as ONE thin line just above "This week" — a warning-tone
+// mark, "N past due · Catch up", a down chevron. Tapping it expands the past-due
 // rows in place (an accordion, not a sheet); tapping again folds them away. The
 // parent renders nothing at zero. The rows stay mounted while folded (inert, so
 // they're out of the tab order and the accessibility tree). Accepted: folding
@@ -749,7 +792,7 @@ function CatchUpEntry({ items, count, demo = false, undo, className = "" }: { it
       >
         <Glyph d={ICON.alert} size={16} />
         <span className="min-w-0 flex-1 truncate">
-          <span className="font-semibold">{count} overdue</span> · Catch up
+          <span className="font-semibold">{count} past due</span> · Catch up
         </span>
         <span className={`shrink-0 motion-safe:transition-transform motion-safe:duration-200 ${open ? "rotate-180" : ""}`}>
           <Glyph d={CHEV_DOWN} size={18} />
@@ -770,7 +813,7 @@ function CatchUpEntry({ items, count, demo = false, undo, className = "" }: { it
 
 // ── Phone only: "This week" collapsed to the next three rows (skipping what the
 // Focus card already lists) + a door to /plan.
-function ThisWeekCard({ items, todayYmd, demo = false, undo, className = "" }: { items: CalendarItem[]; todayYmd: string; demo?: boolean; undo: UndoHandlers; className?: string }) {
+function ThisWeekCard({ items, todayYmd, zone, demo = false, undo, className = "" }: { items: CalendarItem[]; todayYmd: string; zone: string; demo?: boolean; undo: UndoHandlers; className?: string }) {
   return (
     <section className={`card p-3 ${className}`}>
       <h2 className={`px-3 pt-1 ${KPI_LABEL}`}>This week</h2>
@@ -779,7 +822,7 @@ function ThisWeekCard({ items, todayYmd, demo = false, undo, className = "" }: {
       ) : (
         <div className="mt-1 space-y-0.5">
           {items.map((it) => (
-            <ItemRow key={it.canvasId} item={it} todayYmd={todayYmd} demo={demo} undo={undo} side="phone" />
+            <ItemRow key={it.canvasId} item={it} todayYmd={todayYmd} zone={zone} demo={demo} undo={undo} side="phone" />
           ))}
         </div>
       )}
@@ -801,7 +844,7 @@ function TodayStudyCard({ blocks, className = "" }: { blocks: { canvasId: number
             <Link href={`/study/${b.canvasId}`} className="tap flex items-center justify-between gap-3 rounded-lg py-3 transition hover:bg-surface-soft/60">
               <span className="min-w-0">
                 <span className="block truncate text-[16px] font-medium text-ink">{b.name}</span>
-                <span className="block text-[14px] text-muted">Scheduled study</span>
+                <span className="block text-[14px] text-muted">Study session</span>
               </span>
               <span className="shrink-0 text-[14px] font-semibold text-success max-md:font-medium max-md:text-muted">{fmtHours(b.hours)}</span>
             </Link>

@@ -1,6 +1,7 @@
 "use client";
 
-// The ONE client-side Canvas auto-sync (Dashboard + Calendar). The browser only
+// The ONE client-side Canvas auto-sync (Dashboard + Calendar). Its state feeds
+// components/SyncStatus — THE one sync indicator (#136) — on both surfaces. The browser only
 // says WHY it's asking (mount / focus / manual); /api/sync decides whether that
 // means nothing, a quick submission refresh, or a full sync (lib/syncPolicy —
 // the same pure rule is consulted here first so a fresh page costs no request).
@@ -13,6 +14,7 @@ import { syncDecision, type SyncTrigger } from "@/lib/syncPolicy";
 // The cap + the drain rule only — @/lib/analysisLoop has NO imports of its own,
 // so nothing server-side (node crypto, prisma, the Gemini fetch) reaches the bundle.
 import { MAX_ANALYZE_ROUNDS, shouldContinue, type AnalyzeRoundResponse } from "@/lib/analysisLoop";
+import type { SyncInputs } from "@/components/SyncStatus";
 
 /** A tab hidden/unfocused for at least this long asks for a quick refresh when
  *  it comes back (long enough to have submitted something in Canvas). */
@@ -52,15 +54,28 @@ interface SyncResponse {
   skipped?: unknown;
 }
 
-export function useAutoSync(opts: { connected: boolean; syncedAt: string | null; demo?: boolean }): {
+export function useAutoSync(opts: {
+  connected: boolean;
+  syncedAt: string | null;
+  demo?: boolean;
+  /** For the SyncStatus inputs: when Navo last checked Canvas (CalendarData.lastCheckedAt). */
+  lastCheckedAt?: string | null;
+  stale?: boolean;
+}): {
   syncing: boolean;
   warning: string | null;
   runManual: () => Promise<void>;
+  /** Everything components/SyncStatus needs, in one object. */
+  status: SyncInputs;
 } {
   const { connected, syncedAt, demo = false } = opts;
   const enabled = connected && !demo; // demo runs on mock data — never touch the network
   const router = useRouter();
-  const [syncing, setSyncing] = useState(false);
+  // Will this mount run a sync? Decided ONCE, on first render, by the same pure
+  // rule the server applies — so the first paint already reads "Checking Canvas…"
+  // (SyncStatus) instead of claiming "Up to date" over data about to be refreshed.
+  const [syncOnMount] = useState(() => enabled && syncDecision("mount", syncedAt, new Date()) !== "skip");
+  const [syncing, setSyncing] = useState(syncOnMount);
   const [warning, setWarning] = useState<string | null>(null);
   const inFlight = useRef(false); // never overlap two runs from this tab
   const didMount = useRef(false);
@@ -110,7 +125,7 @@ export function useAutoSync(opts: { connected: boolean; syncedAt: string | null;
         if (body.ok === false) {
           setWarning(typeof body.message === "string" ? body.message : UNREACHABLE);
         } else if (failed > 0) {
-          setWarning(`Couldn't refresh ${failed} ${failed === 1 ? "class" : "classes"} from Canvas — showing the last good data.`);
+          setWarning(`Couldn't refresh ${failed} ${failed === 1 ? "course" : "courses"} from Canvas — showing the last good data.`);
         } else {
           setWarning(null);
         }
@@ -142,9 +157,11 @@ export function useAutoSync(opts: { connected: boolean; syncedAt: string | null;
   useEffect(() => {
     if (!enabled || didMount.current) return;
     didMount.current = true;
-    if (syncDecision("mount", syncedAt, new Date()) === "skip") return;
+    // `syncOnMount` true ⇒ always run (the spinner is already showing, so it must
+    // resolve); otherwise re-check, e.g. the connection just became enabled.
+    if (!syncOnMount && syncDecision("mount", syncedAt, new Date()) === "skip") return;
     void run("mount", true);
-  }, [enabled, syncedAt, run]);
+  }, [enabled, syncedAt, run, syncOnMount]);
 
   // Coming back to the tab after ≥ 60s away → quick submission refresh.
   // visibilitychange is the primary signal; window blur/focus is the fallback
@@ -178,5 +195,14 @@ export function useAutoSync(opts: { connected: boolean; syncedAt: string | null;
     await run("manual", true);
   }, [enabled, run]);
 
-  return { syncing, warning, runManual };
+  const status: SyncInputs = {
+    syncing,
+    warning,
+    connected,
+    // lastCheckedAt is the loader's "any run" time; syncedAt (full runs) is the same
+    // rule's fallback, so a payload without the new field still reads right.
+    lastCheckedAt: opts.lastCheckedAt ?? syncedAt,
+    stale: opts.stale ?? false,
+  };
+  return { syncing, warning, runManual, status };
 }

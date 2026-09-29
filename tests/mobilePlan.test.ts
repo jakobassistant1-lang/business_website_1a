@@ -10,6 +10,7 @@ const read = (p: string) => readFileSync(p, "utf8");
 
 // Local-time fixtures: "now" is Wed 2026-09-23, 10:00 local.
 const NOW = new Date(2026, 8, 23, 10, 0, 0);
+const LOCAL = Intl.DateTimeFormat().resolvedOptions().timeZone; // the fixtures are local-time dates
 const iso = (y: number, m: number, d: number, h = 23) => new Date(y, m - 1, d, h, 59).toISOString();
 
 function block(p: Partial<DayBlock> & Pick<DayBlock, "canvasId" | "name">): DayBlock {
@@ -19,9 +20,9 @@ const day = (date: string, blocks: DayBlock[]): Pick<PlanDay, "date" | "blocks">
 
 describe("studyChipsFromPlan", () => {
   it("empty plan / no study blocks → no chips", () => {
-    expect(studyChipsFromPlan([], NOW)).toEqual([]);
-    expect(studyChipsFromPlan([day("2026-09-23", [])], NOW)).toEqual([]);
-    expect(studyChipsFromPlan([day("2026-09-23", [block({ canvasId: 1, name: "Lab report", study: false })])], NOW)).toEqual([]);
+    expect(studyChipsFromPlan([], NOW, LOCAL)).toEqual([]);
+    expect(studyChipsFromPlan([day("2026-09-23", [])], NOW, LOCAL)).toEqual([]);
+    expect(studyChipsFromPlan([day("2026-09-23", [block({ canvasId: 1, name: "Lab report", study: false })])], NOW, LOCAL)).toEqual([]);
   });
 
   it("two sessions across two days", () => {
@@ -31,6 +32,7 @@ describe("studyChipsFromPlan", () => {
         day("2026-09-28", [block({ canvasId: 12, name: "Midterm", hours: 1 })]),
       ],
       NOW,
+      LOCAL,
     );
     expect(chips).toEqual([
       { dayLabel: "Thu", title: "Quiz 3", hours: 0.75, canvasId: 11, date: "2026-09-24" },
@@ -46,6 +48,7 @@ describe("studyChipsFromPlan", () => {
         day("2026-09-25", [block({ canvasId: 4, name: "D" })]),
       ],
       NOW,
+      LOCAL,
     );
     expect(chips.map((c) => c.canvasId)).toEqual([1, 2, 4, 3]);
     expect(chips.map((c) => c.dayLabel)).toEqual(["Today", "Today", "Fri", "Sun"]); // today reads "Today", not its weekday
@@ -64,6 +67,7 @@ describe("studyChipsFromPlan", () => {
         ]),
       ],
       NOW,
+      LOCAL,
     );
     expect(STUDY_WEEK_DAYS).toBe(7);
     expect(chips.map((c) => c.title)).toEqual(["today", "day 7"]);
@@ -74,13 +78,19 @@ describe("studyChipsFromPlan", () => {
     expect(read("lib/studyWeek.ts")).not.toMatch(/minutesLabel|blockMinutes/);
   });
 
-  it("Plan and Dashboard share ONE local-day correction (useLocalToday), so their study lists agree on today", () => {
-    expect(read("components/PlanSurface.tsx")).toContain("useLocalToday(serverToday)");
-    expect(read("components/DashboardView.tsx")).toContain("useLocalToday(serverToday)");
+  it("Plan and Dashboard read today and the zone the same way (the student's Canvas zone), so their study lists agree", () => {
+    for (const f of ["components/PlanSurface.tsx", "components/DashboardView.tsx"]) {
+      const src = read(f);
+      expect(src, f).toContain("const todayYmd = data.todayYmd ?? pageToday;");
+      expect(src, f).toContain("const zone = dataZone(data);");
+      expect(src, f).not.toContain("useLocalToday(");
+    }
+    expect(read("components/PlanSurface.tsx")).toContain("<StudyWeekStrip days={data.plan.days} todayYmd={todayYmd} zone={zone} />");
+    expect(read("components/StudyWeekStrip.tsx")).toContain("studyChipsFromPlan(days, parseYmd(todayYmd), zone)");
   });
 });
 
-describe("PlanSurface — separated rows, violet #1 on phones, study strip on top", () => {
+describe("PlanSurface — separated rows, violet Focus row, study strip on top", () => {
   const src = read("components/PlanSurface.tsx");
 
   it("renders the StudyWeekStrip above the views (under the header)", () => {
@@ -95,12 +105,17 @@ describe("PlanSurface — separated rows, violet #1 on phones, study strip on to
     const container = list.slice(0, list.indexOf("<PlanRow")).match(/className="([^"]*)"[^<]*$/)?.[1] ?? "";
     expect(container.split(/\s+/).some((t) => t === "space-y-2" || t === "gap-2")).toBe(true);
     expect(container).not.toContain("divide-y");
+    // The card is the row wrapper; its Link is stretched over it (no button in a link).
     const row = src.slice(src.indexOf("function PlanRow("));
-    expect(row.match(/<Link[\s\S]*?className=\{`([^`]*)`\}/)?.[1].split(/\s+/)).toEqual(expect.arrayContaining(["card", "tap", "flex"]));
+    expect(row.match(/<div\s+className=\{`([^`]*)`\}/)?.[1].split(/\s+/)).toEqual(expect.arrayContaining(["card", "tap", "flex", "relative"]));
+    expect(row).toContain("${ROW_LINK}");
+    expect(row.indexOf("<DoneCheck")).toBeLessThan(row.indexOf("<Link"));
   });
 
-  it("the phone's first row carries the Focus card's violet, with the accent's own foreground token (#141 dark-mode contrast)", () => {
-    expect(src).toContain("focus={isPhone && i === 0}");
+  it("the Focus row (lib/planFocus, every width) carries the Focus card's violet, with the accent's own foreground token (#141 dark-mode contrast)", () => {
+    expect(src).toMatch(/\bfocusId\b[^;]*=\s*planListView\(/); // THE Focus item, from the pure list view
+    expect(src).toContain("focus={r.item.canvasId === focusId}");
+    expect(src).not.toContain("isPhone");
     const row = src.slice(src.indexOf("function PlanRow("));
     expect(row).toContain('focus ? "border-accent bg-accent text-accent-on"');
     expect(src).toContain('const FOCUS_CHIP = "bg-accent-hover text-accent-on ring-1 ring-inset ring-accent-on/25"');
@@ -112,7 +127,7 @@ describe("the study-block rule has one home (lib/studyWeek)", () => {
   it("parts.tsx imports isStudySessionBlock from @/lib/studyWeek and delegates to it", () => {
     expect(parts).toMatch(/import \{[^}]*\bisStudySessionBlock\b[^}]*\} from "@\/lib\/studyWeek";/);
     const fn = parts.slice(parts.indexOf("export function isUpcomingStudy("));
-    expect(fn.slice(0, fn.indexOf("\n}\n"))).toContain("isStudySessionBlock(b, todayYmd)");
+    expect(fn.slice(0, fn.indexOf("\n}\n"))).toContain("isStudySessionBlock(b, todayYmd, zone)");
   });
   it("parts.tsx keeps no second inline copy of the rule", () => {
     expect(parts).not.toMatch(/b\.hours > 0/);

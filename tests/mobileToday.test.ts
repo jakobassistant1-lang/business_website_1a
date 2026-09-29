@@ -150,7 +150,7 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
     expect(focus).toContain('side="any"');
     expect(focus).not.toMatch(/Phone variant|Desktop variant/);
     // the Focus pick + its list are ONE rule the phone "This week" card also reads
-    expect(dash).toContain("pickFocus(data, liveItems, isDueToday, heldInFocus)"); // held only promotes rows the card already showed
+    expect(dash).toMatch(/pickFocus\(focusOrderOf\(data, focusOrder\), liveItems, isDueToday, heldInFocus\)/); // held only promotes rows the card already showed
     expect(dash).toContain("!inFocusCard.has(it.canvasId)");
   });
 
@@ -163,7 +163,7 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
     expect(week).not.toContain("intensity");
   });
 
-  // #137 owner's decision: a THIN single line (44px, warning tone, "N overdue ·
+  // #137 owner's decision: a THIN single line (44px, warning tone, "N past due ·
   // Catch up", chevron) that expands the overdue rows in place — not a big card row.
   it("catch-up on phones is one thin warning-tone line that expands in place", () => {
     const entry = between(dash, "function CatchUpEntry(", "// ── Phone only: \"This week\"");
@@ -171,7 +171,7 @@ describe("Dashboard — both variants in the DOM, CSS picks; DOM order = phone o
     expectTokens(btn, ["tap", "flex", "w-full"]);
     expect(entry).toContain("${toneSoft.warning}");
     expect(entry).toContain("aria-expanded={open}");
-    expect(entry).toContain("overdue</span> · Catch up");
+    expect(entry).toContain("past due</span> · Catch up"); // the owner's wording: "Past due", never "overdue"
     expect(entry).toContain("CHEV_DOWN"); // a disclosure chevron, not "navigate away"
     expect(entry).not.toContain("text-[28px]");
     expect(entry).not.toContain("<Sheet");

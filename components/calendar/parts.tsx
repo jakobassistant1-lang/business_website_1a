@@ -11,9 +11,11 @@ import { Sheet, isSheetOpen, useIsPhone } from "@/components/Sheet";
 import { nextIndex } from "@/lib/keyboardNav";
 import { DueLabel } from "@/components/DueLabel";
 import { ymd } from "@/lib/calendarDates";
+import { dueParts, formatDay } from "@/lib/dueLabel";
 import { courseColor } from "@/lib/courseColor";
+import { shortCourse } from "@/lib/courseName";
 import { toneSoft } from "@/lib/tone";
-import { isStudyType, type ItemType } from "@/lib/itemType";
+import { isStudyType, TYPE_LABEL, type ItemType } from "@/lib/itemType";
 import type { CalendarItem } from "@/lib/calendarData";
 import type { CalendarEvent } from "@/lib/calendar/types";
 import type { AtRiskItem, DayBlock } from "@/lib/scheduler";
@@ -45,9 +47,9 @@ export const TAP_PHONE = "max-md:tap";
 /** A plan block worth showing as "study" to the student on `todayYmd`. The
  *  block-type rule (real session, assessment not past) lives in ONE place —
  *  lib/studyWeek.isStudySessionBlock, shared with the Plan's "Study this week"
- *  strip; this wrapper is what the dashboard's "Today's study" calls. */
-export function isUpcomingStudy(b: Pick<DayBlock, "study" | "hours" | "dueAt">, todayYmd: string): boolean {
-  return isStudySessionBlock(b, todayYmd);
+ *  strip. `zone` = the student's Canvas zone (lib/studentZone). */
+export function isUpcomingStudy(b: Pick<DayBlock, "study" | "hours" | "dueAt" | "marker">, todayYmd: string, zone: string): boolean {
+  return isStudySessionBlock(b, todayYmd, zone);
 }
 
 export function Glyph({ d, size = 16 }: { d: string; size?: number }) {
@@ -66,9 +68,11 @@ function typeGlyph(type: ItemType): string {
   return type === "quiz" ? ICON.quiz : type === "other" ? ICON.chat : ICON.doc;
 }
 
-export function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { hour: "numeric", minute: "2-digit" });
+/** "11:59 PM" in the student's zone (lib/dueLabel's clock — the one formatter). */
+export function fmtTime(iso: string, timeZone: string): string {
+  return dueParts(iso, timeZone).time;
 }
+
 // Canonical formatting lives in lib/effortFormat (server-safe, shared with API
 // routes); imported for use below and re-exported so component imports keep working.
 import { fmtHours, effortHoursText } from "@/lib/effortFormat";
@@ -92,37 +96,43 @@ export function EffortTag({ hours, className = "" }: { hours: number | null | un
   );
 }
 
-type StatusMeta = { pill: { text: string; cls: string } | null; border: string; muted: boolean; danger: boolean };
+/** THE "Past due" chip — the calm warning tone the Dashboard uses (never red:
+ *  past-due work is a workload nudge, not a failure). One tone for one state. */
+export const PAST_DUE_CHIP = `rounded-full px-2.5 py-0.5 text-[12px] font-medium ${toneSoft.warning}`;
+
+type StatusMeta = { pill: { text: string; cls: string } | null; border: string; muted: boolean; pastDue: boolean };
 function statusMeta(item: CalendarItem): StatusMeta {
-  if (item.status === "done") return { pill: { text: "Done", cls: toneSoft.success }, border: "border-line-subtle", muted: true, danger: false };
-  if (item.status === "overdue") return { pill: { text: "Past due", cls: "border border-danger text-danger" }, border: "border-danger", muted: false, danger: true };
-  return { pill: null, border: "border-line-subtle", muted: false, danger: false };
+  if (item.status === "done") return { pill: { text: "Done", cls: toneSoft.success }, border: "border-line-subtle", muted: true, pastDue: false };
+  if (item.status === "overdue") return { pill: { text: "Past due", cls: toneSoft.warning }, border: "border-warning/50", muted: false, pastDue: true };
+  return { pill: null, border: "border-line-subtle", muted: false, pastDue: false };
 }
 
-/** The coursework atom rendered in every view. A button → opens ItemDetail. */
-export function ItemPill({ item, onSelect, showTime = true, compact = false, tap = false }: { item: CalendarItem; onSelect: (it: CalendarItem) => void; showTime?: boolean; compact?: boolean; tap?: boolean }) {
+/** The coursework atom rendered in every view. A button → opens ItemDetail.
+ *  `timeZone` = the student's Canvas zone (lib/studentZone) for the due time. */
+export function ItemPill({ item, onSelect, timeZone, showTime = true, compact = false, tap = false }: { item: CalendarItem; onSelect: (it: CalendarItem) => void; timeZone: string; showTime?: boolean; compact?: boolean; tap?: boolean }) {
   const s = statusMeta(item);
-  const glyph = s.danger ? ICON.alert : typeGlyph(item.type);
+  const glyph = s.pastDue ? ICON.alert : typeGlyph(item.type);
+  const course = shortCourse(item.courseName);
   return (
     <button
       type="button"
       onClick={() => onSelect(item)}
-      title={`${item.courseName} · ${item.name}`}
-      aria-label={`${item.name}, ${item.courseName}${s.pill ? `, ${s.pill.text}` : ""}`}
+      title={`${course} · ${item.name}`}
+      aria-label={`${item.name}, ${course}${s.pill ? `, ${s.pill.text}` : ""}`}
       className={`flex w-full items-center gap-2 overflow-hidden rounded-lg border bg-surface px-2.5 py-2 text-left transition hover:shadow-sm ${s.border} ${s.muted ? "opacity-60" : ""} ${tap ? "tap" : ""}`}
     >
       <span className="w-1.5 shrink-0 self-stretch rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
-      <span className={`shrink-0 ${s.danger ? "text-danger" : "text-muted"}`}>
+      <span className={`shrink-0 ${s.pastDue ? "text-warning" : "text-muted"}`}>
         <Glyph d={glyph} size={15} />
       </span>
       <span className={`min-w-0 flex-1 truncate text-sm ${s.muted ? "text-muted line-through" : "text-ink"}`}>{item.name}</span>
       {/* compact (narrow week cells): drop the trailing effort tag + pill/time so
-          they can't overflow — overdue still reads via the red border + alert icon. */}
+          they can't overflow — past due still reads via the border + alert icon. */}
       {compact ? null : <EffortTag hours={item.estimatedEffortHours} className="shrink-0 self-center text-xs" />}
       {compact ? null : s.pill ? (
         <span className={`shrink-0 self-center rounded-full px-2 py-0.5 text-xs font-medium ${s.pill.cls}`}>{s.pill.text}</span>
       ) : item.dueAt && showTime ? (
-        <span className="shrink-0 self-center text-xs text-muted">{fmtTime(item.dueAt)}</span>
+        <span className="shrink-0 self-center text-xs text-muted">{fmtTime(item.dueAt, timeZone)}</span>
       ) : null}
     </button>
   );
@@ -130,30 +140,25 @@ export function ItemPill({ item, onSelect, showTime = true, compact = false, tap
 
 /** A calendar "busy" block — visually a different species from coursework
  *  (dashed border, no course rail, muted/italic) so it never reads as homework. */
-export function BusyRow({ ev }: { ev: CalendarEvent }) {
+export function BusyRow({ ev, timeZone }: { ev: CalendarEvent; timeZone: string }) {
   return (
     <div className="flex items-center gap-1.5 rounded-md border border-dashed border-line bg-surface-soft px-1.5 py-1 text-xs text-muted">
       <Glyph d={ICON.calendar} size={12} />
       <span className="min-w-0 flex-1 truncate italic">{ev.title || "Busy"}</span>
-      {!ev.allDay && <span className="shrink-0">{fmtTime(ev.startTime)}</span>}
+      {!ev.allDay && <span className="shrink-0">{fmtTime(ev.startTime, timeZone)}</span>}
     </div>
   );
 }
 
 /** Click-to-open detail for a coursework item. Esc / backdrop closes. Shows a
  *  brief Gemini description (the stored AI summary, or one fetched on open). */
-export function ItemDetail({ item, onClose, todayYmd }: { item: CalendarItem; onClose: () => void; todayYmd?: string }) {
+export function ItemDetail({ item, onClose, todayYmd, timeZone }: { item: CalendarItem; onClose: () => void; /** The student's today and Canvas zone (lib/studentZone). */ todayYmd: string; timeZone: string }) {
   const [desc, setDesc] = useState<string | null>(item.summary ?? null);
   const [descLoading, setDescLoading] = useState(false);
   // Both widths render through the shared Sheet (#39 phones, #138 desktop): it
   // owns Escape, focus move/trap/return, scroll lock and aria-labelledby. The
   // phone branch only sizes things for a thumb.
   const phone = useIsPhone();
-  // `todayYmd` is optional for now: CalendarView/TimelineView don't pass it yet
-  // (their owners will). Fallback = the browser's own day, safe because this
-  // only ever renders on the client (it opens on a click). Once every caller
-  // passes the server day, make the prop required and drop the fallback.
-  const today = todayYmd ?? ymd(new Date());
   useEffect(() => {
     if (item.summary) {
       setDesc(item.summary);
@@ -196,14 +201,14 @@ export function ItemDetail({ item, onClose, todayYmd }: { item: CalendarItem; on
       <Sheet open onClose={onClose} title={item.name} footer={actions}>
         <p className="flex items-center gap-2 text-[14px] text-muted">
           <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
-          <span className="min-w-0 truncate">{item.courseName}</span>
+          <span className="min-w-0 truncate">{shortCourse(item.courseName)}</span>
         </p>
-        {item.status === "overdue" && <p className="mt-2 text-[14px] font-medium text-danger">Past due</p>}
+        {item.status === "overdue" && <p className="mt-2"><span className={PAST_DUE_CHIP}>Past due</span></p>}
         <dl className="mt-3 space-y-2 text-[14px]">
-          {item.dueAt && <DetailRow k="Due" v={<DueLabel iso={item.dueAt} format="long-time" todayYmd={today} />} />}
+          {item.dueAt && <DetailRow k="Due" v={<DueLabel iso={item.dueAt} format="long-time" todayYmd={todayYmd} timeZone={timeZone} />} />}
           {eff && <DetailRow k="Effort" v={eff} />}
           {item.pointsPossible != null && <DetailRow k="Points" v={`${item.pointsPossible}`} />}
-          <DetailRow k="Type" v={item.type} />
+          <DetailRow k="Type" v={TYPE_LABEL[item.type]} />
         </dl>
         {desc ? (
           <p className="mt-3 rounded-md bg-surface-soft px-3 py-2 text-[14px] text-muted">
@@ -242,14 +247,14 @@ export function ItemDetail({ item, onClose, todayYmd }: { item: CalendarItem; on
     >
       <p className="flex items-center gap-2 text-xs text-muted">
         <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(item.courseName) }} aria-hidden />
-        <span className="min-w-0 truncate">{item.courseName}</span>
+        <span className="min-w-0 truncate">{shortCourse(item.courseName)}</span>
       </p>
-      {item.status === "overdue" && <p className="mt-2 text-xs font-medium text-danger">Past due</p>}
+      {item.status === "overdue" && <p className="mt-2"><span className={PAST_DUE_CHIP}>Past due</span></p>}
       <dl className="mt-3 space-y-1.5 text-xs">
-        {item.dueAt && <DetailRow k="Due" v={<DueLabel iso={item.dueAt} format="long-time" todayYmd={today} />} />}
+        {item.dueAt && <DetailRow k="Due" v={<DueLabel iso={item.dueAt} format="long-time" todayYmd={todayYmd} timeZone={timeZone} />} />}
         {eff && <DetailRow k="Effort" v={eff} />}
         {item.pointsPossible != null && <DetailRow k="Points" v={`${item.pointsPossible}`} />}
-        <DetailRow k="Type" v={item.type} />
+        <DetailRow k="Type" v={TYPE_LABEL[item.type]} />
       </dl>
       {desc ? (
         <p className="mt-3 rounded-md bg-surface-soft px-3 py-2 text-xs text-muted">
@@ -340,7 +345,7 @@ export function StudyLeadEditor({ item }: { item: CalendarItem }) {
       </div>
       <div role="alert">{err && <p className="mt-1 text-xs text-danger">{err}</p>}</div>
       <p className="mt-1 text-[11px] text-muted">
-        Study spreads across those days (with ~20 min kept the day before). Leave blank to use your Settings default.
+        Study sessions are spread across those days. Leave blank to use your Settings default.
       </p>
     </div>
   );
@@ -498,6 +503,7 @@ export function DayPeek({
   onClose,
   onOpenDay,
   todayYmd,
+  timeZone,
 }: {
   date: Date;
   items: CalendarItem[];
@@ -506,13 +512,13 @@ export function DayPeek({
   onSelect: (it: CalendarItem) => void;
   onClose: () => void;
   onOpenDay?: () => void;
-  todayYmd?: string;
+  /** The student's today and Canvas zone (lib/studentZone). */
+  todayYmd: string;
+  timeZone: string;
 }) {
   const phone = useIsPhone(); // phones: thumb-sized rows; the Sheet owns Escape/focus at both widths
-  // Optional for now, same fallback and reason as ItemDetail's `today` above.
-  const today = todayYmd ?? ymd(new Date());
   const empty = items.length === 0 && events.length === 0 && study.length === 0;
-  const dayTitle = date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const dayTitle = formatDay(ymd(date)); // `date` is a calendar day (local midnight), not an instant
   if (phone) {
     return (
       <Sheet
@@ -539,7 +545,7 @@ export function DayPeek({
             <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Due ({items.length})</h3>
             <div className="space-y-2">
               {items.map((it) => (
-                <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} tap />
+                <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} timeZone={timeZone} tap />
               ))}
             </div>
           </section>
@@ -547,7 +553,7 @@ export function DayPeek({
         {study.length > 0 && (
           <section className="mt-4">
             <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
-              <Glyph d={ICON.clock} size={13} /> Study plan
+              <Glyph d={ICON.clock} size={13} /> Study sessions
             </h3>
             <ul className="mt-1.5 space-y-1">
               {study.map((s, i) => (
@@ -556,7 +562,7 @@ export function DayPeek({
                     <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
                     <span className="shrink-0 text-[13px] text-muted">
-                      {fmtHours(s.hours)} · due <DueLabel iso={s.dueAt} format="short" todayYmd={today} />
+                      {fmtHours(s.hours)} · due <DueLabel iso={s.dueAt} format="short" todayYmd={todayYmd} timeZone={timeZone} />
                     </span>
                   </Link>
                 </li>
@@ -569,7 +575,7 @@ export function DayPeek({
             <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Busy</h3>
             <div className="space-y-1.5">
               {events.map((e, i) => (
-                <BusyRow key={`peekev-${i}`} ev={e} />
+                <BusyRow key={`peekev-${i}`} ev={e} timeZone={timeZone} />
               ))}
             </div>
           </section>
@@ -603,7 +609,7 @@ export function DayPeek({
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Due ({items.length})</h3>
           <div className="space-y-1.5">
             {items.map((it) => (
-              <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} />
+              <ItemPill key={`peek-${it.canvasId}`} item={it} onSelect={onSelect} timeZone={timeZone} />
             ))}
           </div>
         </section>
@@ -612,7 +618,7 @@ export function DayPeek({
       {study.length > 0 && (
         <section className="mt-3">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
-            <Glyph d={ICON.clock} size={13} /> Study plan
+            <Glyph d={ICON.clock} size={13} /> Study sessions
           </h3>
           <ul className="mt-1.5 space-y-1">
             {study.map((s, i) => (
@@ -620,7 +626,7 @@ export function DayPeek({
                 <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: courseColor(s.courseName) }} aria-hidden />
                 <span className="min-w-0 flex-1 truncate text-ink">Study: {s.name}</span>
                 <span className="shrink-0 text-xs text-muted">
-                  {fmtHours(s.hours)} · due <DueLabel iso={s.dueAt} format="short" todayYmd={today} />
+                  {fmtHours(s.hours)} · due <DueLabel iso={s.dueAt} format="short" todayYmd={todayYmd} timeZone={timeZone} />
                 </span>
               </li>
             ))}
@@ -633,7 +639,7 @@ export function DayPeek({
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Busy</h3>
           <div className="space-y-1.5">
             {events.map((e, i) => (
-              <BusyRow key={`peekev-${i}`} ev={e} />
+              <BusyRow key={`peekev-${i}`} ev={e} timeZone={timeZone} />
             ))}
           </div>
         </section>
@@ -642,24 +648,25 @@ export function DayPeek({
   );
 }
 
-/** Slim red strip listing overdue work. Hidden when nothing is overdue. The
- *  deadline safety net — collapsible body, but the count is always visible. */
+/** Slim strip listing past-due work, in the calm warning tone the Dashboard's
+ *  Catch up uses (never red — one tone for one state). Hidden when nothing is past
+ *  due. The deadline safety net — collapsible body, the count always visible. */
 export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
   const [open, setOpen] = useState(false);
   const listId = useId();
-  const overdue = atRisk.filter((a) => a.kind === "overdue");
-  if (overdue.length === 0) return null;
+  const pastDue = atRisk.filter((a) => a.kind === "overdue");
+  if (pastDue.length === 0) return null;
   return (
-    <div className="mb-3 rounded-lg border border-danger bg-surface px-3 py-2">
+    <div className="mb-3 rounded-lg border border-warning/40 bg-warning-soft/60 px-3 py-2">
       <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={listId} className={`flex w-full items-center justify-between gap-3 ${TAP_PHONE}`}>
-        <span className="flex items-center gap-2 text-sm font-semibold text-danger">
-          <Glyph d={ICON.alert} size={16} /> {overdue.length} overdue
+        <span className="flex items-center gap-2 text-sm font-semibold text-warning">
+          <Glyph d={ICON.alert} size={16} /> {pastDue.length} past due
         </span>
-        <span className="text-xs font-medium text-danger/80">{open ? "Hide" : "Show"}</span>
+        <span className="text-xs font-medium text-warning">{open ? "Hide" : "Show"}</span>
       </button>
       {open && (
         <ul id={listId} className="mt-2 space-y-1">
-          {overdue.map((a) => (
+          {pastDue.map((a) => (
             <li key={`att-${a.canvasId}`} className="flex items-center justify-between gap-2 text-xs">
               <span className="flex min-w-0 items-center gap-1.5 text-ink">
                 <CourseDot name={a.courseName} />
@@ -671,7 +678,7 @@ export function AttentionBanner({ atRisk }: { atRisk: AtRiskItem[] }) {
                   <span className="truncate">{a.name}</span>
                 )}
               </span>
-              <span className="shrink-0 rounded-full border border-danger px-2 py-0.5 font-medium text-danger">Past due</span>
+              <span className={`shrink-0 ${PAST_DUE_CHIP}`}>Past due</span>
             </li>
           ))}
         </ul>
@@ -950,6 +957,7 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
  *  Undo window. With neither prop this behaves exactly as it always has. */
 export function DoneCheck({
   canvasId,
+  itemName,
   checked = false,
   disabled = false,
   tone = "default",
@@ -958,9 +966,13 @@ export function DoneCheck({
   deferRefresh = false,
 }: {
   canvasId: number;
+  /** Names the item in the control's accessible name ("Mark Homework 7 as done"). */
+  itemName?: string;
   checked?: boolean;
   disabled?: boolean;
-  tone?: "default" | "danger" | "warning";
+  /** `onAccent`: on the violet Focus row — the ring and tick use the accent's own
+   *  foreground token so they keep contrast on the fill. */
+  tone?: "default" | "danger" | "warning" | "onAccent";
   className?: string;
   onToggled?: (canvasId: number, done: boolean) => void;
   deferRefresh?: boolean;
@@ -970,7 +982,7 @@ export function DoneCheck({
   const [local, setLocal] = useState(checked);
   useEffect(() => setLocal(checked), [checked]);
   if (disabled) {
-    return <span className={`h-[22px] w-[22px] shrink-0 rounded-full border-2 ${tone === "danger" ? "border-danger/50" : tone === "warning" ? "border-warning/50" : "border-line"} ${className}`} aria-hidden />;
+    return <span className={`h-[22px] w-[22px] shrink-0 rounded-full border-2 ${tone === "danger" ? "border-danger/50" : tone === "warning" ? "border-warning/50" : tone === "onAccent" ? "border-accent-on/70" : "border-line"} ${className}`} aria-hidden />;
   }
   const toggle = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -994,7 +1006,16 @@ export function DoneCheck({
       setBusy(false);
     }
   };
-  const idle = tone === "danger" ? "border-danger/50 group-hover/done:border-success" : tone === "warning" ? "border-warning/50 group-hover/done:border-success" : "border-line group-hover/done:border-success";
+  const idle =
+    tone === "danger"
+      ? "border-danger/50 group-hover/done:border-success"
+      : tone === "warning"
+        ? "border-warning/50 group-hover/done:border-success"
+        : tone === "onAccent"
+          ? "border-accent-on/70 group-hover/done:border-accent-on"
+          : "border-line group-hover/done:border-success";
+  const action = local ? "Mark as not done" : "Mark as done";
+  const name = itemName ? (local ? `Mark ${itemName} as not done` : `Mark ${itemName} as done`) : action;
   // The button is the hit area, the inner span the 22px circle. On phones the
   // button is a 44×44 target whose padding (and matching negative margin) is
   // lopsided — 16px to the left, 6px to the right, 11px above/below — so the
@@ -1016,8 +1037,8 @@ export function DoneCheck({
       type="button"
       onClick={toggle}
       disabled={busy}
-      aria-label={local ? "Mark as not done" : "Mark as done"}
-      title={local ? "Mark as not done" : "Mark as done"}
+      aria-label={name}
+      title={action}
       className={`group/done ${TAP_PHONE} relative z-10 -my-[11px] -ml-4 -mr-1.5 grid shrink-0 cursor-pointer place-items-center rounded-full py-[11px] pl-4 pr-1.5 md:m-0 md:p-0 ${className}`}
     >
       <span className={`grid h-[22px] w-[22px] place-items-center rounded-full border-2 text-success transition ${local ? "border-success bg-success" : idle}`}>

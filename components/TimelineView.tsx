@@ -4,9 +4,11 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { pickTextOn } from "@/lib/courseColor";
 import { cleanCourse } from "@/lib/courseName";
-import { WEEKDAYS, parseYmd } from "@/lib/calendarDates";
-import { round1 } from "@/lib/round";
-import { AttentionBanner, PeriodSummary, ItemDetail, Glyph, ICON, fmtHours, EffortTag } from "@/components/calendar/parts";
+import { WEEKDAYS, parseYmd, ymdInZone } from "@/lib/calendarDates";
+import { dataToday, dataZone } from "@/lib/studentZone";
+import { isStudySessionBlock } from "@/lib/studyWeek";
+import { planRanks } from "@/lib/planFocus";
+import { AttentionBanner, PeriodSummary, ItemDetail, Glyph, ICON, fmtHours, effortHoursText, EffortTag } from "@/components/calendar/parts";
 import { TYPE_COLOR, TYPE_LABEL, type ItemType } from "@/lib/itemType";
 import type { CalendarData, CalendarItem } from "@/lib/calendarData";
 import type { PlanDay } from "@/lib/scheduler";
@@ -14,8 +16,6 @@ import type { PlanDay } from "@/lib/scheduler";
 interface Span {
   canvasId: number;
   name: string;
-  hours: number;
-  estimatedEffortHours: number | null; // assignment TOTAL estimate (#14) — same on every block of this assignment
   startIdx: number;
   endIdx: number;
   dueIdx: number | null;
@@ -23,34 +23,34 @@ interface Span {
   lane: number;
 }
 
-function localYmd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 /** Build one continuous bar per assignment for a course: span = first→last day it
- *  has scheduled work, stacked into non-overlapping lanes. */
-function buildSpans(days: PlanDay[], course: string): { spans: Span[]; laneCount: number } {
-  const acc = new Map<number, { name: string; hours: number; effort: number | null; min: number; max: number; study: boolean; dueIso: string }>();
+ *  has scheduled work (or its zero-hour "due this day" marker — the item itself),
+ *  stacked into non-overlapping lanes. A bar is "study" only when it holds a real
+ *  study session (lib/studyWeek.isStudySessionBlock — THE rule). Days are read in
+ *  the student's zone. The bar's label shows the item's effort ONCE (effortHoursText),
+ *  never a second, per-block hours figure. */
+function buildSpans(days: PlanDay[], course: string, zone: string, todayYmd: string): { spans: Span[]; laneCount: number } {
+  const acc = new Map<number, { name: string; min: number; max: number; study: boolean; dueIso: string }>();
   days.forEach((d, i) => {
     for (const b of d.blocks) {
       if (b.courseName !== course) continue;
+      const study = isStudySessionBlock(b, todayYmd, zone);
       const cur = acc.get(b.canvasId);
       if (cur) {
-        cur.hours += b.hours;
         cur.min = Math.min(cur.min, i);
         cur.max = Math.max(cur.max, i);
-        if (b.study) cur.study = true;
+        if (study) cur.study = true;
       } else {
-        acc.set(b.canvasId, { name: b.name, hours: b.hours, effort: b.estimatedEffortHours ?? null, min: i, max: i, study: !!b.study, dueIso: b.dueAt });
+        acc.set(b.canvasId, { name: b.name, min: i, max: i, study, dueIso: b.dueAt });
       }
     }
   });
 
   const spans: Span[] = [...acc.entries()]
     .map(([canvasId, a]) => {
-      const dueKey = localYmd(new Date(a.dueIso));
+      const dueKey = ymdInZone(a.dueIso, zone);
       const dueIdx = days.findIndex((d) => d.date === dueKey);
-      return { canvasId, name: a.name, hours: round1(a.hours), estimatedEffortHours: a.effort, startIdx: a.min, endIdx: a.max, dueIdx: dueIdx >= 0 ? dueIdx : null, study: a.study, lane: 0 };
+      return { canvasId, name: a.name, startIdx: a.min, endIdx: a.max, dueIdx: dueIdx >= 0 ? dueIdx : null, study: a.study, lane: 0 };
     })
     .sort((x, y) => x.startIdx - y.startIdx || x.endIdx - y.endIdx);
 
@@ -76,13 +76,17 @@ function buildSpans(days: PlanDay[], course: string): { spans: Span[]; laneCount
 
 export function TimelineView({ data }: { data: CalendarData }) {
   const [selected, setSelected] = useState<CalendarItem | null>(null);
+  const zone = dataZone(data);
+  const todayYmd = dataToday(data);
 
   const itemByCanvas = useMemo(() => {
     const m = new Map<number, CalendarItem>();
     for (const it of data.items) m.set(it.canvasId, it);
     return m;
   }, [data.items]);
-  const rank = useMemo(() => new Map(data.recommendations.map((r, i) => [r.canvasId, i + 1])), [data.recommendations]);
+  // The SAME global numbers the Plan list prints (lib/planFocus), so "3." means
+  // the same item on every Plan view.
+  const rank = useMemo(() => planRanks(data.items, data.ranked), [data.items, data.ranked]);
 
   // Rows = EVERY enrolled (non-excluded) class, not just the ones with work this
   // week: classes that have plan blocks first (earliest due first), then the rest
@@ -113,6 +117,29 @@ export function TimelineView({ data }: { data: CalendarData }) {
     if (it) setSelected(it);
   };
   const typeOf = (canvasId: number): ItemType => itemByCanvas.get(canvasId)?.type ?? "assignment";
+  // THE item effort (override-aware, the one canonical number) — shown once per bar.
+  const effortOf = (canvasId: number): number | null => itemByCanvas.get(canvasId)?.estimatedEffortHours ?? null;
+  // Hours of an item the week couldn't fit (the scheduler's `plan.shortfalls`) —
+  // a quiet note on its row/tooltip, never a new alert. Read defensively: older
+  // payloads (and the demo) carry none.
+  const shortfall = useMemo(() => {
+    const list = (data.plan as { shortfalls?: { canvasId: number; hours: number }[] }).shortfalls ?? [];
+    return new Map(list.filter((x) => x.hours > 0).map((x) => [x.canvasId, x.hours] as const));
+  }, [data.plan]);
+  const shortNote = (canvasId: number): string | null => {
+    const h = shortfall.get(canvasId);
+    return h ? `${fmtHours(h)} didn’t fit this week` : null;
+  };
+  // Demo-tour anchor: the best-ranked item that has work on the Timeline this week.
+  const topId = useMemo(() => {
+    let best: { id: number; n: number } | null = null;
+    for (const d of data.plan.days.slice(0, 7))
+      for (const b of d.blocks) {
+        const n = rank.get(b.canvasId);
+        if (n != null && (!best || n < best.n)) best = { id: b.canvasId, n };
+      }
+    return best?.id ?? null;
+  }, [data.plan.days, rank]);
   // Still keyed off scheduled work (not `courses`), so an empty week keeps showing
   // the "you're clear" card instead of a grid of empty rows.
   const hasWork = data.plan.days.some((d) => d.blocks.length > 0);
@@ -143,7 +170,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
               {/* Phones (#39): no Gantt — the same week's blocks as a day-grouped
                   agenda. md+ keeps the Gantt exactly as before. */}
               <div className="md:hidden">
-                <TimelineAgenda courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
+                <TimelineAgenda courses={courses} days={weekDays} rank={rank} typeOf={typeOf} effortOf={effortOf} onPick={pick} todayYmd={todayYmd} zone={zone} topId={topId} shortNote={shortNote} />
               </div>
               <div className="hidden md:block">
                 <p className="mb-2 mt-4 text-[13px] text-muted">
@@ -151,7 +178,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
                   <span className="font-semibold text-ink">◆</span> marks when it&rsquo;s due, and the number is the order to tackle them.
                 </p>
                 <div data-tour="tl-gantt">
-                  <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} onPick={pick} />
+                  <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} effortOf={effortOf} onPick={pick} zone={zone} todayYmd={todayYmd} topId={topId} shortNote={shortNote} />
                 </div>
                 <div data-tour="tl-legend">
                   <TimelineLegend />
@@ -162,38 +189,52 @@ export function TimelineView({ data }: { data: CalendarData }) {
         </div>
       )}
 
-      {selected && <ItemDetail item={selected} onClose={() => setSelected(null)} />}
+      {selected && <ItemDetail item={selected} onClose={() => setSelected(null)} todayYmd={todayYmd} timeZone={zone} />}
     </div>
   );
 }
 
 /** The phone fallback for the Gantt: the same plan blocks (same week, same
- *  classes, same recommended-order numbers), grouped by day as a plain list.
- *  Each row opens the same ItemDetail the bars do. */
+ *  courses, same order numbers), grouped by day as a plain list. Each row opens
+ *  the same ItemDetail the bars do. The right edge is THAT DAY's time, labelled
+ *  as such ("45m today" / "45m on Wed") so it can't be read as the item's effort;
+ *  the item's effort shows once via EffortTag, as everywhere else. A real study
+ *  session reads "Study: …"; a zero-hour marker is the item itself, due that day. */
 function TimelineAgenda({
   courses,
   days,
   rank,
   typeOf,
   onPick,
+  todayYmd,
+  zone,
+  topId,
+  shortNote,
+  effortOf,
 }: {
   courses: string[];
   days: PlanDay[];
   rank: Map<number, number>;
   typeOf: (id: number) => ItemType;
+  effortOf: (id: number) => number | null;
   onPick: (id: number) => void;
+  todayYmd: string;
+  zone: string;
+  topId: number | null;
+  shortNote: (id: number) => string | null;
 }) {
-  const shown = new Set(courses); // the Gantt's rows — excluded classes never appear there either
+  const shown = new Set(courses); // the Gantt's rows — excluded courses never appear there either
   const groups = days
     .map((d, i) => ({ d, i, blocks: d.blocks.filter((b) => shown.has(b.courseName)) }))
     .filter((g) => g.blocks.length > 0);
-  // Demo-tour anchor (#39): the FIRST row of the #1-ranked item only (its work can
-  // span several days, and the tour needs one target).
-  const firstRow = groups.flatMap((g) => g.blocks.map((b, j) => ({ key: `${g.d.date}-${b.canvasId}-${j}`, id: b.canvasId }))).find((r) => rank.get(r.id) === 1)?.key;
+  // Demo-tour anchor (#39): the FIRST row of the best-ranked item only (its work
+  // can span several days, and the tour needs one target).
+  const firstRow = groups.flatMap((g) => g.blocks.map((b, j) => ({ key: `${g.d.date}-${b.canvasId}-${j}`, id: b.canvasId }))).find((r) => r.id === topId)?.key;
   return (
     <div className="mt-4 space-y-4">
       {groups.map(({ d, i, blocks }) => {
         const date = parseYmd(d.date);
+        const dayWord = i === 0 ? "today" : `on ${WEEKDAYS[date.getDay()]}`;
         return (
           <section key={d.date}>
             <h2 className={`mb-1.5 text-xs font-semibold uppercase tracking-wide ${i === 0 ? "text-accent" : "text-muted"}`}>
@@ -203,6 +244,8 @@ function TimelineAgenda({
             <ul className="card divide-y divide-line-subtle p-1">
               {blocks.map((b, j) => {
                 const n = rank.get(b.canvasId);
+                const study = isStudySessionBlock(b, todayYmd, zone);
+                const marker = !study && (b.marker || b.hours <= 0);
                 return (
                   <li key={`${b.canvasId}-${j}`}>
                     <button
@@ -215,14 +258,16 @@ function TimelineAgenda({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[16px] font-medium text-ink">
                           {n ? <span className="font-bold">{n}. </span> : null}
-                          {b.study ? "Study: " : ""}
+                          {study ? "Study: " : ""}
                           {b.name}
                         </span>
                         <span className="block truncate text-[13px] text-muted">
                           {TYPE_LABEL[typeOf(b.canvasId)]} · {cleanCourse(b.courseName)}
+                          {shortNote(b.canvasId) ? ` · ${shortNote(b.canvasId)}` : ""}
                         </span>
+                        <EffortTag hours={effortOf(b.canvasId)} />
                       </span>
-                      <span className="shrink-0 text-[14px] font-medium text-ink">{fmtHours(b.hours)}</span>
+                      <span className="shrink-0 text-[14px] font-medium text-ink">{marker ? "Due" : `${fmtHours(b.hours)} ${dayWord}`}</span>
                     </button>
                   </li>
                 );
@@ -242,13 +287,23 @@ function WeekGantt({
   days,
   rank,
   typeOf,
+  effortOf,
   onPick,
+  zone,
+  todayYmd,
+  topId,
+  shortNote,
 }: {
   courses: string[];
   days: PlanDay[];
   rank: Map<number, number>;
   typeOf: (id: number) => ItemType;
+  effortOf: (id: number) => number | null;
   onPick: (id: number) => void;
+  zone: string;
+  todayYmd: string;
+  topId: number | null;
+  shortNote: (id: number) => string | null;
 }) {
   const N = days.length;
   const dueDow = (idx: number | null) => (idx != null ? WEEKDAYS[parseYmd(days[idx].date).getDay()] : null);
@@ -257,7 +312,7 @@ function WeekGantt({
       <div className="min-w-[760px]">
         {/* Header */}
         <div className="flex bg-surface-soft">
-          <div className="w-[180px] shrink-0 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">Class</div>
+          <div className="w-[180px] shrink-0 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">Course</div>
           <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${N}, 1fr)` }}>
             {days.map((d, i) => {
               const date = parseYmd(d.date);
@@ -272,7 +327,7 @@ function WeekGantt({
         </div>
         {/* Rows */}
         {courses.map((course) => {
-          const { spans, laneCount } = buildSpans(days, course);
+          const { spans, laneCount } = buildSpans(days, course, zone, todayYmd);
           return (
             <div key={course} className="flex border-t border-line-subtle">
               <div className="sticky left-0 z-10 flex w-[180px] shrink-0 items-center bg-surface px-3 py-2">
@@ -286,8 +341,8 @@ function WeekGantt({
                 {days.map((_, i) => (
                   <div key={i} className="absolute bottom-0 top-0 border-l border-line-subtle/60" style={{ left: `${(i / N) * 100}%` }} />
                 ))}
-                {/* A class with nothing scheduled still gets its row — one quiet line
-                    instead of an empty lane, so the row count matches the class count. */}
+                {/* A course with nothing scheduled still gets its row — one quiet line
+                    instead of an empty lane, so the row count matches the course count. */}
                 {spans.length === 0 && (
                   <div className="absolute inset-0 flex items-center px-3 text-[13px] text-muted">Nothing scheduled this week</div>
                 )}
@@ -307,16 +362,18 @@ function WeekGantt({
                       </div>
                     );
                   })}
-                {/* bars — colored by assignment TYPE (not class); the class is the row */}
+                {/* bars — colored by assignment TYPE (not course); the course is the row */}
                 {spans.map((s) => {
                   const c = TYPE_COLOR[typeOf(s.canvasId)];
                   const fg = pickTextOn(c);
+                  const effort = effortHoursText(effortOf(s.canvasId));
+                  const note = shortNote(s.canvasId);
                   return (
                     <button
                       key={s.canvasId}
-                      data-tour={rank.get(s.canvasId) === 1 ? "tl-priority" : undefined}
+                      data-tour={s.canvasId === topId ? "tl-priority" : undefined}
                       onClick={() => onPick(s.canvasId)}
-                      title={`${s.study ? "Study: " : ""}${s.name} · ${fmtHours(s.hours)}${s.dueIdx != null ? ` · due ${dueDow(s.dueIdx)}` : ""}`}
+                      title={`${s.study ? "Study: " : ""}${s.name}${effort ? ` · ${effort}` : ""}${s.dueIdx != null ? ` · due ${dueDow(s.dueIdx)}` : ""}${note ? ` · ${note}` : ""}`}
                       className="absolute truncate rounded px-2.5 text-left text-sm font-medium leading-[32px] shadow-sm transition hover:brightness-105 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30"
                       style={{
                         left: `${(s.startIdx / N) * 100}%`,
@@ -333,8 +390,10 @@ function WeekGantt({
                     >
                       {rank.get(s.canvasId) ? <span className="font-bold">{rank.get(s.canvasId)}. </span> : null}
                       {s.study ? "Study: " : ""}
-                      {s.name} {fmtHours(s.hours)}
-                      {!s.study && <EffortTag hours={s.estimatedEffortHours} className="ml-1 align-middle" />}
+                      {s.name}
+                      {/* The item's effort, once (lib/effortFormat via effortHoursText), in
+                          the bar's own foreground — EffortTag's muted grey would sink into the fill. */}
+                      {effort && <span className="ml-1.5 font-normal">{effort}</span>}
                     </button>
                   );
                 })}

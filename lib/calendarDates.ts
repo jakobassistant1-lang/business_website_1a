@@ -120,9 +120,11 @@ export function ymdInZone(iso: string | Date, timeZone?: string): string {
 export function countdownLabel(dueAtIso: string, todayYmd: string, timeZone?: string): string {
   const d = parseYmd(ymdInZone(dueAtIso, timeZone));
   const days = Math.round((d.getTime() - parseYmd(todayYmd).getTime()) / 86_400_000);
-  if (days <= 0) return "Today";
+  // "Today" ONLY for today: a day already past prints its short date ("Sep 24"),
+  // never "Today" (an old, never-past-due participation grade read as due today).
+  if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
-  if (days <= 6) return WEEKDAYS_FULL[d.getDay()];
+  if (days > 1 && days <= 6) return WEEKDAYS_FULL[d.getDay()];
   return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
 }
 
