@@ -1,4 +1,5 @@
 import { CanvasStatus } from "./messages";
+import { normalizeZone } from "./studentZone";
 
 const TIMEOUT_MS = 10000; // FR-5 assumption
 
@@ -167,6 +168,24 @@ export async function validateCredentials(host: string, token: string, deadline?
   return { status: "error", httpCode: res.status };
 }
 
+/**
+ * The student's time zone from their Canvas profile (`time_zone`, IANA, e.g.
+ * "America/New_York", or a Rails name like "Eastern Time (US & Canada)", mapped
+ * by normalizeZone) — the zone Canvas itself shows dates in. Returns null on
+ * ANY problem (error status, throttle, bad JSON, missing or unknown zone): the
+ * caller keeps whatever zone it already has. Never throws.
+ */
+export async function fetchProfileTimeZone(host: string, token: string, deadline?: number): Promise<string | null> {
+  try {
+    const res = await canvasFetch(host, token, "/users/self/profile", deadline);
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { time_zone?: unknown } | null;
+    return normalizeZone(body?.time_zone); // IANA or a Rails name ("Eastern Time (US & Canada)")
+  } catch {
+    return null;
+  }
+}
+
 /** Parse the Canvas `Link` header and return the rel="next" URL, if any. */
 function parseNextLink(linkHeader: string | null): string | null {
   if (!linkHeader) return null;
@@ -248,6 +267,11 @@ export interface CanvasAssignment {
   description: string | null; // assignment body (HTML); used as AI context
   submission_types?: string[]; // e.g. ["online_quiz"], ["online_upload"] — used to classify item TYPE
   assignment_group_id?: number; // Canvas grade category — joined to assignment_groups for its weight
+  // Availability window (standard fields, no include needed). An item the teacher
+  // hasn't opened yet comes back locked_for_user: true with unlock_at in the future.
+  unlock_at?: string | null;
+  lock_at?: string | null;
+  locked_for_user?: boolean;
   /** Present when the request includes `include[]=submission` (canvas-mcp integration). */
   submission?: {
     submitted_at: string | null;
@@ -321,12 +345,14 @@ export function currentScoreOf(course: CanvasCourse): number | null {
 }
 
 /** A course's assignment groups (+ their assignments) — carries name + group_weight
- *  for the weighted grade calculator and the prioritizer. Fails OPEN ([] on error). */
-export async function fetchAssignmentGroups(host: string, token: string, courseId: number, deadline?: number): Promise<CanvasAssignmentGroup[]> {
+ *  for the weighted grade calculator and the prioritizer. Fails OPEN with null —
+ *  distinct from [] (a course with no groups) so the sync can leave a weighted
+ *  course's stored grade shares alone when the read failed. */
+export async function fetchAssignmentGroups(host: string, token: string, courseId: number, deadline?: number): Promise<CanvasAssignmentGroup[] | null> {
   try {
     return await fetchAll<CanvasAssignmentGroup>(host, token, `/courses/${courseId}/assignment_groups?include[]=assignments`, deadline);
   } catch {
-    return [];
+    return null;
   }
 }
 

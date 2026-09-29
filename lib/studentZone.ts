@@ -20,6 +20,29 @@ export function isValidZone(tz: unknown): tz is string {
   }
 }
 
+/** Rails zone names Canvas can return in a profile's `time_zone` → IANA. */
+const RAILS_ZONES: Record<string, string> = {
+  "Eastern Time (US & Canada)": "America/New_York",
+  "Central Time (US & Canada)": "America/Chicago",
+  "Mountain Time (US & Canada)": "America/Denver",
+  Arizona: "America/Phoenix",
+  "Pacific Time (US & Canada)": "America/Los_Angeles",
+  Alaska: "America/Anchorage",
+  Hawaii: "Pacific/Honolulu",
+  "Indiana (East)": "America/Indiana/Indianapolis",
+  "Atlantic Time (Canada)": "America/Halifax",
+  "Puerto Rico": "America/Puerto_Rico",
+};
+
+/** A Canvas zone name (IANA, or one of the Rails names above) → a valid IANA
+ *  zone, or null when it isn't one we can use. */
+export function normalizeZone(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  const t = name.trim();
+  const tz = RAILS_ZONES[t] ?? t;
+  return isValidZone(tz) ? tz : null;
+}
+
 /** The zone to use for a student: their Canvas profile zone, else the default. */
 export function studentZone(user: { timeZone?: string | null } | null | undefined): string {
   return isValidZone(user?.timeZone) ? user!.timeZone! : DEFAULT_STUDENT_ZONE;

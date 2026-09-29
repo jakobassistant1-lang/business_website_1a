@@ -43,9 +43,25 @@ describe("coerceLatePolicy — fails open to no-credit", () => {
   it("none ignores any value", () => {
     expect(coerceLatePolicy({ kind: "none", value: 0.9 })).toEqual({ kind: "none", value: 0 });
   });
-  it("clamps the fraction to 0..1 and rejects a zero penalty", () => {
+  it("clamps the fraction to 0..1", () => {
     expect(coerceLatePolicy({ kind: "perday", value: 5 })).toEqual({ kind: "perday", value: 1 });
-    expect(coerceLatePolicy({ kind: "flat", value: 0 })).toEqual(DEFAULT_LATE_POLICY);
+  });
+  it("a zero penalty is a REAL no-penalty policy (late accepted), not 'none' (late NOT accepted)", () => {
+    expect(coerceLatePolicy({ kind: "flat", value: 0 })).toEqual({ kind: "flat", value: 0 });
+    expect(coerceLatePolicy({ kind: "perday", value: 0 })).toEqual({ kind: "flat", value: 0 });
+    expect(coerceLatePolicy({ kind: "flat", value: "0" })).toEqual({ kind: "flat", value: 0 });
+  });
+  it("a missing / non-numeric / negative value is garbage → default", () => {
+    expect(coerceLatePolicy({ kind: "flat" })).toEqual(DEFAULT_LATE_POLICY);
+    expect(coerceLatePolicy({ kind: "perday", value: "lots" })).toEqual(DEFAULT_LATE_POLICY);
+    expect(coerceLatePolicy({ kind: "flat", value: -0.2 })).toEqual(DEFAULT_LATE_POLICY);
+    expect(coerceLatePolicy({ kind: "flat", value: null })).toEqual(DEFAULT_LATE_POLICY);
+  });
+  it("no-penalty policy: full salvage however late, zero slip loss", () => {
+    const free = coerceLatePolicy({ kind: "flat", value: 0 });
+    expect(salvageFraction(free, 0)).toBe(1);
+    expect(salvageFraction(free, 30)).toBe(1);
+    expect(slipLoss(free)).toBe(0);
   });
 });
 
@@ -88,5 +104,82 @@ describe("buildLatePolicyPrompt — easy for Gemini", () => {
     expect(p).not.toContain("<p>"); // HTML stripped
     expect(p).toContain('"id"');
     expect(p).toContain("none|flat|perday");
+  });
+});
+
+describe("#144: the same read extracts the grading scheme", () => {
+  const inputs: LatePolicyInput[] = [
+    { courseId: 1, courseName: "Micro", syllabus: "Homework 20% (10 sets). Exams 80%." },
+    { courseId: 2, courseName: "Finance", syllabus: "Late work accepted without penalty." },
+  ];
+  const wrap = (arr: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(arr) }] } }] });
+
+  it("parses grading next to the policy (percents normalized); omits it when absent", () => {
+    const out = parseLatePolicies(
+      wrap([
+        { id: 1, kind: "perday", value: 0.1, grading: { categories: [{ name: "Homework", weight: 20, count: 10 }, { name: "Exams", weight: 80 }] } },
+        { id: 2, kind: "flat", value: 0 },
+      ]),
+      inputs,
+    );
+    expect(out[0]).toEqual({
+      courseId: 1,
+      policy: { kind: "perday", value: 0.1 },
+      grading: { categories: [{ name: "Homework", weight: 0.2, count: 10 }, { name: "Exams", weight: 0.8 }] },
+    });
+    // the no-penalty answer survives parsing (audit fix) and has no grading key
+    expect(out[1]).toEqual({ courseId: 2, policy: { kind: "flat", value: 0 } });
+  });
+
+  it("garbage grading is dropped without losing the policy", () => {
+    const out = parseLatePolicies(wrap([{ id: 1, kind: "none", value: 0, grading: "lots of homework" }]), inputs);
+    expect(out).toEqual([{ courseId: 1, policy: { kind: "none", value: 0 } }]);
+  });
+
+  it("the prompt asks for grading, forbids invented numbers and non-JSON prose", async () => {
+    const { DEFAULT_LATE_INSTRUCTION, GRADING_INSTRUCTION } = await import("@/lib/latePolicy");
+    expect(DEFAULT_LATE_INSTRUCTION).toContain(GRADING_INSTRUCTION);
+    expect(GRADING_INSTRUCTION).toMatch(/Never estimate, guess, or invent a number/);
+    expect(GRADING_INSTRUCTION).toMatch(/Output JSON only/);
+    expect(DEFAULT_LATE_INSTRUCTION).toContain('Late work accepted with NO penalty → {"kind":"flat","value":0}');
+    expect(buildLatePolicyPrompt(inputs)).toContain('"grading"');
+  });
+
+  it("LATE_POLICY_VERSION was bumped so every course re-reads once", async () => {
+    const { LATE_POLICY_VERSION } = await import("@/lib/latePolicy");
+    expect(LATE_POLICY_VERSION).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("#144 review: a cut-off reply", () => {
+  const inputs: LatePolicyInput[] = [
+    { courseId: 1, courseName: "Micro", syllabus: "..." },
+    { courseId: 2, courseName: "Finance", syllabus: "..." },
+    { courseId: 3, courseName: "History", syllabus: "..." },
+  ];
+  const cut = (text: string, finishReason = "MAX_TOKENS") => ({ candidates: [{ finishReason, content: { parts: [{ text }] } }] });
+
+  it("keeps complete entries, keeps the POLICY of the entry cut inside its grading (marked truncated), drops one cut before its value ends", () => {
+    const text =
+      '[{"id":1,"kind":"perday","value":0.1,"grading":{"totalPoints":1000}},' +
+      '{"id":2,"kind":"flat","value":0.5,"grading":{"categories":[{"name":"Home' +
+      "";
+    const out = parseLatePolicies(cut(text), inputs);
+    expect(out).toEqual([
+      { courseId: 1, policy: { kind: "perday", value: 0.1 }, grading: { totalPoints: 1000 } },
+      { courseId: 2, policy: { kind: "flat", value: 0.5 }, truncated: true },
+    ]);
+    // cut mid-number: "0.1" might have been "0.15" → not read
+    expect(parseLatePolicies(cut('[{"id":3,"kind":"perday","value":0.1'), inputs)).toEqual([]);
+  });
+
+  it("unbalanced JSON is treated as cut even without finishReason", () => {
+    const out = parseLatePolicies(cut('[{"id":3,"kind":"none","value":0,"grading":{"totalPo', "STOP"), inputs);
+    expect(out).toEqual([{ courseId: 3, policy: { kind: "none", value: 0 }, truncated: true }]);
+  });
+
+  it("a complete reply marks nothing truncated", () => {
+    const out = parseLatePolicies(cut('[{"id":1,"kind":"none","value":0}]', "STOP"), inputs);
+    expect(out).toEqual([{ courseId: 1, policy: { kind: "none", value: 0 } }]);
   });
 });

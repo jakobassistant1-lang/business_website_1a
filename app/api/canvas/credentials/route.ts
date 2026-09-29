@@ -6,6 +6,7 @@ import { normalizeHost, apiBase, validateCredentials } from "@/lib/canvas";
 import { messageFor } from "@/lib/messages";
 import { encryptSecret } from "@/lib/crypto";
 import { logEvent } from "@/lib/funnel";
+import { refreshStudentZone } from "@/lib/sync";
 
 // FR-4: read the saved connection + its last status (for initial page state).
 export async function GET() {
@@ -73,6 +74,10 @@ export async function POST(req: Request) {
     },
   });
 
+  // THE student's zone (lib/studentZone) from their Canvas profile. Fail-open and
+  // awaited (Vercel freezes work after the response): a profile error never fails
+  // the connect and never clears a zone already stored.
+  if (v.status === "valid") await refreshStudentZone(user.id, host, token, Date.now() + 5000); // retries never past 5s
   if (v.status === "valid") await logEvent("canvas_connected", user.id, { host });
   return NextResponse.json({
     status: v.status,

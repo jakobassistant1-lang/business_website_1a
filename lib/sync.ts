@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import {
   validateCredentials,
@@ -6,15 +7,19 @@ import {
   fetchAnnouncements,
   fetchAssignmentGroups,
   fetchSyllabus,
+  fetchProfileTimeZone,
   courseGradeFromEnrollment,
   CanvasError,
   type CanvasAssignment,
   type CanvasAssignmentGroup,
   type CourseFetchStats,
 } from "./canvas";
-import { computeGradeWeights } from "./gradeWeight";
+import { computeGradeWeights, courseGradeShares, usesGroupWeights, type GradeShare, type GroupForWeight, type ShareItem } from "./gradeWeight";
+import { parseGradingScheme, type GradingScheme } from "./gradingScheme";
+import { itemType } from "./itemType";
+import { isValidZone } from "./studentZone";
 import { MAX_BRIEF_CHARS } from "./limits";
-import { analyzeLatePolicies, latePolicyWorkToDo, type LatePolicyInput } from "./latePolicy";
+import { analyzeLatePolicies, latePolicyWorkToDo, LATE_POLICY_TIMEOUT_MS, type LatePolicyInput } from "./latePolicy";
 import { CanvasStatus, messageFor } from "./messages";
 import { decryptSecret } from "./crypto";
 import { MOUNT_FRESH_MS, type SyncMode } from "./syncPolicy";
@@ -51,6 +56,13 @@ export interface SyncResult {
 /** Soft time budget for one run (#123): stop starting new courses past this and
  *  report the rest as "out of time". The route's 50s deadline is the hard backstop. */
 export const SYNC_BUDGET_MS = 45_000;
+/** How far past the soft budget the one late-policy Gemini read may run (budget
+ *  45s + 10s = 55s < the route's 60s maxDuration). */
+export const LATE_POLICY_GRACE_MS = 10_000;
+/** The late-policy call's timeout for a run whose budget ends at `deadline`. */
+export function latePolicyTimeoutMs(deadline: number, now: number): number {
+  return Math.max(1_000, Math.min(LATE_POLICY_TIMEOUT_MS, deadline + LATE_POLICY_GRACE_MS - now));
+}
 /** Quick mode fans out at most this many course reads at once — a 10+-course
  *  account otherwise fires everything together and trips Canvas's rate limit. */
 export const QUICK_CONCURRENCY = 4;
@@ -98,8 +110,42 @@ export function quickAssignmentData(a: CanvasAssignment, ctx: { userId: number; 
     submittedAt: toDate(a.submission?.submitted_at),
     submissionScore: a.submission?.score ?? null,
     submissionState: a.submission?.workflow_state ?? null,
+    // Availability window: written by quick too, so an item the teacher opens
+    // mid-week flips on the next tab-return refresh (another rule scores it).
+    unlockAt: toDate(a.unlock_at),
+    lockAt: toDate(a.lock_at),
+    lockedForUser: typeof a.locked_for_user === "boolean" ? a.locked_for_user : null,
   };
 }
+
+/**
+ * THE student's zone (lib/studentZone) from their Canvas profile, stored on
+ * User.timeZone — at connect (credentials route) and on every FULL sync. Fails
+ * open and never throws: a profile error, throttle or unknown zone writes
+ * nothing, so a valid stored zone is never replaced by null.
+ */
+export async function refreshStudentZone(userId: number, host: string, token: string, deadline?: number): Promise<string | null> {
+  try {
+    const tz = await fetchProfileTimeZone(host, token, deadline);
+    if (!isValidZone(tz)) return null;
+    await prisma.user.update({ where: { id: userId }, data: { timeZone: tz } });
+    return tz;
+  } catch (e) {
+    // The error CODE only — a Prisma error object carries the userId and zone.
+    const code = (e as { code?: unknown } | null)?.code;
+    console.warn("[sync] time zone not saved", typeof code === "string" ? code : "error");
+    return null;
+  }
+}
+
+/** The inputs `courseGradeShares` needs for one Canvas assignment. */
+function shareItemOf(a: CanvasAssignment, groupName: string | null): ShareItem {
+  const submissionType = Array.isArray(a.submission_types) ? a.submission_types.join(",") : null;
+  const name = a.name ?? `Assignment ${a.id}`;
+  return { canvasId: a.id, name, points: a.points_possible ?? null, groupName, type: itemType(submissionType, name) };
+}
+
+const sameScheme = (a: GradingScheme | null, b: GradingScheme | null) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /**
  * Cache-on-demand sync (FR-6). On any validation/abort failure the existing
@@ -146,7 +192,11 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   // Per-course outcomes for the persisted report (#132); `finish` saves it (fail-open)
   // and hands the result back untouched.
   const reportCourses: SyncReportCourse[] = [];
+  // The profile zone is read alongside the course list (fail-open, never rejects)
+  // and stored before the run answers — whatever the run's outcome.
+  const zoneRead = refreshStudentZone(userId, cred.host, token, deadline);
   const finish = async (r: SyncResult): Promise<SyncResult> => {
+    await zoneRead;
     await writeSyncReport(userId, buildSyncReport({ at: new Date(), mode, result: r, courses: reportCourses, skippedNonStudent: courseStats.skippedNonStudent }));
     return r;
   };
@@ -169,6 +219,9 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   // what the course's current policy was parsed from; unchanged syllabi are skipped.
   const syllabiToParse: Array<LatePolicyInput & { storedHash: string | null }> = [];
   const courseDbIdByCanvasId = new Map<number, number>(); // map late-policy results back to course rows
+  // Per course: what its grade shares were computed from, so a grading scheme read
+  // by THIS run's syllabus pass re-shares the course at once (first connect too).
+  const shareCtx = new Map<number, { items: ShareItem[]; canvasWeighted: Map<number, number | null> | null; scheme: GradingScheme | null; shares: Map<number, GradeShare> }>();
   for (let i = 0; i < courses.length; i++) {
     const c = courses[i];
     // Soft budget: past it, the remaining courses keep their cache and are
@@ -186,46 +239,63 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
     // The student's own course total (include[]=total_scores). Null is preserved
     // verbatim — the loader decides "hidden" vs "no grades yet" from the work.
     const grade = courseGradeFromEnrollment(c);
-    const course = await prisma.course.upsert({
-      where: { userId_canvasId: { userId, canvasId: c.id } },
-      create: { canvasId: c.id, userId, name: courseName, currentScore: grade.score, currentGrade: grade.grade },
-      update: { name: courseName, currentScore: grade.score, currentGrade: grade.grade },
-    });
-    courseDbIdByCanvasId.set(c.id, course.id);
 
     try {
+      // Inside the try: a DB error here is this course's failure, and the run
+      // still reaches finish() (which awaits the zone read + saves the report).
+      const course = await prisma.course.upsert({
+        where: { userId_canvasId: { userId, canvasId: c.id } },
+        create: { canvasId: c.id, userId, name: courseName, currentScore: grade.score, currentGrade: grade.grade },
+        update: { name: courseName, currentScore: grade.score, currentGrade: grade.grade },
+      });
+      courseDbIdByCanvasId.set(c.id, course.id);
       // assignment_groups + syllabus fail OPEN (a missing group/syllabus must not
       // fail the whole course); they enrich the prioritizer + the grade calculator.
       const [assignments, announcements, groups, syllabus] = await Promise.all([
         fetchAssignments(cred.host, token, c.id, deadline),
         fetchAnnouncements(cred.host, token, c.id, deadline),
-        fetchAssignmentGroups(cred.host, token, c.id, deadline).catch(() => [] as CanvasAssignmentGroup[]),
+        fetchAssignmentGroups(cred.host, token, c.id, deadline).catch(() => null as CanvasAssignmentGroup[] | null),
         fetchSyllabus(cred.host, token, c.id, deadline).catch(() => null),
       ]);
-      const groupById = new Map(groups.map((g) => [g.id, g] as const));
+      // null = the groups read FAILED (≠ [] = a course with no groups): a weighted
+      // course's shares can't be recomputed without it, so the stored gradeWeight
+      // and group fields are left untouched this run.
+      const groupsFailed = groups === null;
+      const groupById = new Map((groups ?? []).map((g) => [g.id, g] as const));
 
       if (syllabus) syllabiToParse.push({ courseId: c.id, courseName, syllabus, storedHash: course.latePolicyHash ?? null });
-      const weightById = new Map(
-        computeGradeWeights(
-          groups.map((g) => ({
-            id: g.id,
-            groupWeight: g.group_weight,
-            assignments: (g.assignments ?? []).map((a) => ({ canvasId: a.id, pointsPossible: a.points_possible })),
-          })),
-        ).map((w) => [w.canvasId, w.gradeWeight]),
+      // Share of the course grade for EVERY assignment (#144, lib/gradeWeight's one
+      // rule): Canvas weighted groups → stored syllabus scheme → posted points
+      // (≥ 5 pointed items) → type default. A points-based course's Canvas split is
+      // NOT step 1 — it is the posted-points step, gated by the thin-course rule.
+      const groupInputs: GroupForWeight[] = (groups ?? []).map((g) => ({
+        id: g.id,
+        groupWeight: g.group_weight,
+        assignments: (g.assignments ?? []).map((a) => ({ canvasId: a.id, pointsPossible: a.points_possible })),
+      }));
+      const canvasWeighted = usesGroupWeights(groupInputs)
+        ? new Map(computeGradeWeights(groupInputs).map((w) => [w.canvasId, w.gradeWeight] as const))
+        : null;
+      const scheme = parseGradingScheme(course.gradingScheme ?? null);
+      const shareItems = assignments.map((a) =>
+        shareItemOf(a, a.assignment_group_id != null ? (groupById.get(a.assignment_group_id)?.name ?? null) : null),
       );
+      const shares = courseGradeShares(shareItems, { canvasWeighted, scheme });
+      if (!groupsFailed) shareCtx.set(c.id, { items: shareItems, canvasWeighted, scheme, shares });
 
       for (const a of assignments) {
         const group = a.assignment_group_id != null ? groupById.get(a.assignment_group_id) : undefined;
         const data = {
           ...quickAssignmentData(a, { userId, courseId: course.id, courseCanvasId: c.id }),
-          // Share of the course grade (weighted-group courses); null → caller uses
-          // points / course-total (lib/gradeWeight).
-          gradeWeight: weightById.get(a.id) ?? null,
           // Raw assignment group + weight → the weighted grade calculator.
           groupId: a.assignment_group_id ?? null,
-          groupName: group?.name ?? null,
-          groupWeight: group?.group_weight ?? null,
+          ...(groupsFailed
+            ? {}
+            : {
+                gradeWeight: shares.get(a.id)?.share ?? null,
+                groupName: group?.name ?? null,
+                groupWeight: group?.group_weight ?? null,
+              }),
         };
         await prisma.assignment.upsert({
           where: { userId_canvasId: { userId, canvasId: a.id } },
@@ -276,17 +346,33 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   const { toParse: lateToParse, hashes: lateHashes } = latePolicyWorkToDo(syllabiToParse);
   if (lateToParse.length > 0 && !overBudget()) {
     try {
-      const lp = await analyzeLatePolicies(lateToParse);
+      // Started only inside the budget (above); its timeout is the 20s default,
+      // shortened so it can't run past budget + LATE_POLICY_GRACE_MS — the
+      // function's own 60s ceiling (maxDuration) stays out of reach.
+      const lp = await analyzeLatePolicies(lateToParse, undefined, { timeoutMs: latePolicyTimeoutMs(deadline, Date.now()) });
       if (lp.ok) {
         for (const r of lp.items) {
           const courseDbId = courseDbIdByCanvasId.get(r.courseId);
           if (courseDbId == null) continue;
-          await prisma.course
+          // Policy + grading scheme + hash land together (success-only, #126/#144).
+          // An entry the reply cut off keeps only its policy: no hash (re-asked
+          // next sync) and the stored grading scheme is left alone.
+          const grading = r.grading ?? null;
+          const saved = await prisma.course
             .update({
               where: { id: courseDbId },
-              data: { latePolicyKind: r.policy.kind, latePolicyValue: r.policy.value, latePolicyHash: lateHashes.get(r.courseId) },
+              data: r.truncated
+                ? { latePolicyKind: r.policy.kind, latePolicyValue: r.policy.value }
+                : {
+                    latePolicyKind: r.policy.kind,
+                    latePolicyValue: r.policy.value,
+                    latePolicyHash: lateHashes.get(r.courseId),
+                    gradingScheme: grading ? (grading as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+                  },
             })
-            .catch(() => {});
+            .then(() => true)
+            .catch(() => false);
+          if (saved && !r.truncated) await reshareCourse(userId, shareCtx.get(r.courseId), grading);
         }
       }
     } catch {
@@ -324,6 +410,28 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
     ...(outOfTime.length > 0 ? { outOfTime } : {}),
     ...(courseStats.skippedNonStudent > 0 ? { skippedNonStudent: courseStats.skippedNonStudent } : {}),
   });
+}
+
+/**
+ * A grading scheme that changed in this run's syllabus pass re-shares the
+ * course's assignments right away (rows whose share moved only). Best-effort:
+ * a failed write leaves the earlier share, and the next full sync recomputes.
+ */
+async function reshareCourse(
+  userId: number,
+  ctx: { items: ShareItem[]; canvasWeighted: Map<number, number | null> | null; scheme: GradingScheme | null; shares: Map<number, GradeShare> } | undefined,
+  scheme: GradingScheme | null,
+): Promise<void> {
+  if (!ctx || sameScheme(ctx.scheme, scheme)) return;
+  const next = courseGradeShares(ctx.items, { canvasWeighted: ctx.canvasWeighted, scheme });
+  for (const [canvasId, s] of next) {
+    if (ctx.shares.get(canvasId)?.share === s.share) continue;
+    try {
+      await prisma.assignment.update({ where: { userId_canvasId: { userId, canvasId } }, data: { gradeWeight: s.share } });
+    } catch {
+      /* best-effort; the next full sync recomputes */
+    }
+  }
 }
 
 /** The success line, with the partial-failure / out-of-time / skipped-course

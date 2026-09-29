@@ -12,6 +12,7 @@ vi.mock("@/lib/prisma", () => ({
     course: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     assignment: { upsert: vi.fn() },
     announcement: { upsert: vi.fn() },
+    user: { update: vi.fn(async () => ({})) },
   },
 }));
 vi.mock("@/lib/canvas", async (importOriginal) => {
@@ -24,6 +25,7 @@ vi.mock("@/lib/canvas", async (importOriginal) => {
     fetchAnnouncements: vi.fn(),
     fetchAssignmentGroups: vi.fn(),
     fetchSyllabus: vi.fn(),
+    fetchProfileTimeZone: vi.fn(async () => null), // no live Canvas: the profile read is stubbed
   };
 });
 
@@ -142,7 +144,7 @@ describe("runSync quick mode", () => {
     const arg = assignmentUpsert.mock.calls[0][0];
     expect(arg.where).toEqual({ userId_canvasId: { userId: 1, canvasId: 1 } });
     expect(Object.keys(arg.update).sort()).toEqual(
-      ["userId", "courseId", "courseCanvasId", "name", "dueAt", "pointsPossible", "htmlUrl", "submissionType", "description", "submittedAt", "submissionScore", "submissionState"].sort(),
+      ["userId", "courseId", "courseCanvasId", "name", "dueAt", "pointsPossible", "htmlUrl", "submissionType", "description", "submittedAt", "submissionScore", "submissionState", "unlockAt", "lockAt", "lockedForUser"].sort(),
     );
     expect(arg.update).toMatchObject({
       courseId: 11,
@@ -288,7 +290,7 @@ describe("runSync full mode (write shape pinned)", () => {
     assignmentUpsert.mockResolvedValue({});
   });
 
-  it("upserts exactly the 16 assignment keys (quick's 12 + the 4 grade-group keys)", async () => {
+  it("upserts exactly the 19 assignment keys (quick's 15 + the 4 grade-group keys)", async () => {
     vAssignments.mockResolvedValue([
       {
         id: 1,
@@ -310,7 +312,8 @@ describe("runSync full mode (write shape pinned)", () => {
     expect(Object.keys(arg.update).sort()).toEqual(
       [
         "userId", "courseId", "courseCanvasId", "name", "dueAt", "pointsPossible", "htmlUrl", "submissionType", "description",
-        "submittedAt", "submissionScore", "submissionState", "gradeWeight", "groupId", "groupName", "groupWeight",
+        "submittedAt", "submissionScore", "submissionState", "unlockAt", "lockAt", "lockedForUser",
+        "gradeWeight", "groupId", "groupName", "groupWeight",
       ].sort(),
     );
     expect(arg.update).toMatchObject({ groupId: 77, groupName: "Homework", groupWeight: 40, submissionState: "unsubmitted" });
@@ -337,11 +340,12 @@ describe("auto-sync wiring guards", () => {
     expect(calendar).toMatch(/import \{ useAutoSync \} from "@\/components\/useAutoSync"/);
     expect(dashboard).toContain("useAutoSync({");
     expect(calendar).toContain("useAutoSync({");
-    // both surface the hook's warning line (quiet, neutral — never red)
+    // both surface the hook's state through the ONE sync indicator (#136): exactly
+    // one visible state at a time, so "Up to date" can never sit beside "Syncing…"
     for (const src of [dashboard, calendar]) {
-      expect(src).toMatch(/\{syncWarning && \([\s\S]*?text-\[13px\] text-muted[\s\S]*?\{syncWarning\}/);
+      expect(src).toContain("<SyncStatus");
+      expect(src).not.toMatch(/\{syncWarning && \(/);
     }
-    expect(readFileSync("components/PlanView.tsx", "utf8")).not.toContain("sp_autosynced");
   });
   it("/api/sync declares a function budget", () => {
     expect(route).toMatch(/export const maxDuration = \d+;/);
