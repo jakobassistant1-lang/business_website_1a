@@ -2,45 +2,44 @@
 
 // The assignment-detail leaf (/assignment/[id]). The one place a student lands to
 // actually DO an assignment: what it is, where it stands, an AI "how to approach"
-// with concrete sub-steps, the Canvas brief, a best-effort rubric, and a jump out
-// to Canvas. The AI plan and rubric are both fetched client-side and fail open —
-// the page is fully useful without them, and neither blocks the page's SSR.
-// The Canvas brief arrives ALREADY sanitized (`safeHtml`, from lib/sanitizeBrief
-// on the server), so it renders formatted on first paint — no text-then-HTML swap.
+// with concrete sub-steps, then ALWAYS the Canvas instructions word-for-word
+// (#145: the AI section stays first, the teacher's own words sit right under it),
+// a best-effort rubric, and a jump out to Canvas. The AI plan and rubric are both
+// fetched client-side and fail open — the page is fully useful without them, and
+// neither blocks the page's SSR. The Canvas brief arrives ALREADY sanitized
+// (`safeHtml`, from lib/sanitizeBrief on the server), so it renders formatted on
+// first paint — no text-then-HTML swap. Every date is read in the student's
+// Canvas zone (`timeZone`, lib/studentZone), so server and client render the same.
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isPastDue } from "@/lib/dueLabel";
 import { DueLabel } from "@/components/DueLabel";
-import { useMounted } from "@/components/useMounted";
-import { useLocalToday } from "@/components/useLocalToday";
+import { DEFAULT_STUDENT_ZONE } from "@/lib/studentZone";
 import { cleanCourse } from "@/lib/courseName";
 import { toneSoft, type Tone } from "@/lib/tone";
 import { TYPE_LABEL, type ItemType } from "@/lib/itemType";
 import { EffortTag, EffortEditor, MarkDoneButton } from "@/components/calendar/parts";
 import type { CanvasRubricCriterion } from "@/lib/canvas";
+import type { DoneReason } from "@/lib/assignmentStatus";
 
-/** `pastDue` comes from lib/dueLabel's isPastDue, read in the same zone as the
- *  header's DueLabel (UTC before mount, the viewer's after), so the badge and the
- *  "Past due · …" date never disagree and server and client render the same. */
-function submissionBadge(
-  state: string | null,
-  score: number | null,
-  points: number | null,
-  submittedAt: string | null,
-  pastDue: boolean,
-  manuallyDone = false
-): { label: string; tone: Tone } {
-  if (state === "graded") {
-    const pts = score != null ? `${score}${points != null && points > 0 ? `/${points}` : ""} pts` : "";
-    return { label: pts ? `Graded · ${pts}` : "Graded", tone: "success" };
+/** The status chip. `doneReason` comes from the page, which decides "done" with THE
+ *  shared rule (lib/assignmentStatus.assignmentDoneReason) — this component never
+ *  re-derives it. `pastDue` is lib/dueLabel's isPastDue read in the student's zone
+ *  like the header's DueLabel, so the chip and the "Past due · …" date agree. */
+function submissionBadge(doneReason: DoneReason | null, score: number | null, points: number | null, pastDue: boolean): { label: string; tone: Tone } {
+  switch (doneReason) {
+    case "graded": {
+      const pts = score != null ? `${score}${points != null && points > 0 ? `/${points}` : ""} pts` : "";
+      return { label: pts ? `Graded · ${pts}` : "Graded", tone: "success" };
+    }
+    case "submitted":
+      return { label: "Submitted", tone: "success" };
+    case "manual": // the student's own checkoff (no Canvas submission): their word, labeled as such
+      return { label: "Marked done by you", tone: "success" };
+    case "date_passed":
+      return { label: "Date passed", tone: "neutral" };
   }
-  // Treat a recorded submission time as submitted even if Canvas didn't sync a
-  // workflow_state — keeps this badge consistent with the "Completed" sections.
-  if (state === "submitted" || state === "pending_review" || submittedAt) return { label: "Submitted", tone: "success" };
-  // The student's own checkoff (no Canvas submission): their word, labeled as such.
-  if (manuallyDone) return { label: "Marked done by you", tone: "success" };
-  // Not submitted — is it already late?
   return pastDue ? { label: "Not submitted, past due", tone: "danger" } : { label: "Not submitted yet", tone: "warning" };
 }
 
@@ -57,18 +56,31 @@ export function AssignmentPage(props: {
   // The Canvas brief, ALREADY sanitized on the server (lib/sanitizeBrief). Never
   // pass raw Canvas HTML here. null = no brief.
   safeHtml: string | null;
-  submissionState: string | null;
-  submittedAt: string | null;
+  submissionState?: string | null; // kept for callers; "done" comes from `done`/`doneReason`
+  submittedAt?: string | null; // kept for callers; "done" comes from `done`/`doneReason`
   submissionScore: number | null;
   summary: string | null;
   manuallyDone?: boolean; // student's own checkoff (manualDoneAt) — see lib/assignmentStatus
+  /** THE done decision, made by the page with lib/assignmentStatus.isAssignmentDone. */
+  done?: boolean;
+  /** Why it counts as done (null/undefined = not done). */
+  doneReason?: DoneReason | null;
+  /** Today in the student's zone (lib/studentZone.todayInZone). */
   todayYmd: string;
+  /** The student's Canvas zone (lib/studentZone.studentZone); every date here is read in it. */
+  timeZone?: string;
+  /** Canvas's unlock date (ISO) — passed ONLY while it is still in the future: the
+   *  item isn't open yet, so there is no AI plan, just "Not open yet. Opens …". */
+  opensAt?: string | null;
   // Demo wiring (optional, additive): `demo` skips the live AI/rubric fetches so the
   // page renders purely from props; `onBack` overrides the router for in-demo back.
   demo?: boolean;
   onBack?: () => void;
 }) {
-  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, safeHtml, submissionState, submittedAt, submissionScore, summary, manuallyDone = false, todayYmd, demo, onBack } = props;
+  const { canvasId, name, courseName, type, dueAt, points, estimatedEffortHours, effortOverrideHours, htmlUrl, safeHtml, submissionScore, summary, manuallyDone = false, todayYmd, opensAt = null, demo, onBack } = props;
+  const zone = props.timeZone ?? DEFAULT_STUDENT_ZONE;
+  const notOpenYet = Boolean(opensAt);
+  const hasInstructions = Boolean(safeHtml && safeHtml.trim());
   const router = useRouter();
 
   // The student's own checkoff, owned HERE so the two Mark-as-done buttons (inline
@@ -81,21 +93,17 @@ export function AssignmentPage(props: {
   // (if any) so something useful shows instantly, then upgrade in place. The parent
   // keys this component by canvasId, so navigating to another assignment remounts
   // it — state never leaks between assignments.
-  const [approach, setApproach] = useState<string | null>(summary);
+  const [approach, setApproach] = useState<string | null>(notOpenYet ? null : summary);
   const [steps, setSteps] = useState<string[]>([]);
-  const [loadingPlan, setLoadingPlan] = useState(!demo);
+  const [loadingPlan, setLoadingPlan] = useState(!demo && !notOpenYet);
   const [rubric, setRubric] = useState<CanvasRubricCriterion[] | null>(null);
 
   useEffect(() => {
-    if (demo) return; // demo: render from the seeded summary; no live fetch
+    if (demo || notOpenYet) return; // demo: seeded summary only; not open yet: no plan to make
     let cancelled = false;
     setLoadingPlan(true);
-    // The viewer's zone, so the prompt's "today" and due day match their calendar (#140).
-    let tz = "";
-    try {
-      tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
-    } catch {}
-    fetch(`/api/assignment/approach?id=${canvasId}&tz=${encodeURIComponent(tz)}`)
+    // The server reads the student's Canvas zone itself (lib/studentZone).
+    fetch(`/api/assignment/approach?id=${canvasId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (cancelled || !body) return;
@@ -109,7 +117,7 @@ export function AssignmentPage(props: {
     return () => {
       cancelled = true;
     };
-  }, [canvasId, demo]);
+  }, [canvasId, demo, notOpenYet]);
 
   // Rubric — live Canvas call, fetched here (not in SSR) so it never blocks render.
   useEffect(() => {
@@ -126,13 +134,14 @@ export function AssignmentPage(props: {
     };
   }, [canvasId, demo]);
 
-  const mounted = useMounted();
-  const localToday = useLocalToday(todayYmd);
-  const pastDue = isPastDue(dueAt, mounted ? { todayYmd: localToday } : { todayYmd, timeZone: "UTC" });
-  const badge = submissionBadge(submissionState, submissionScore, points, submittedAt, pastDue, manuallyDone);
+  const pastDue = isPastDue(dueAt, { todayYmd, timeZone: zone });
+  // THE done decision comes from the caller (lib/assignmentStatus) — never re-derived here.
+  const doneReason: DoneReason | null = props.done ? (props.doneReason ?? null) : null;
+  const badge = submissionBadge(doneReason, submissionScore, points, pastDue);
   const hasPlan = Boolean(approach) || steps.length > 0;
-  // Manual checkoff — hidden in demo and once Canvas itself confirms a submission.
-  const canMarkDone = !demo && !(submittedAt || submissionState === "submitted" || submissionState === "pending_review" || submissionState === "graded");
+  // Manual checkoff — hidden in demo and whenever the item is done for any reason
+  // other than the student's own checkoff (which they can undo here).
+  const canMarkDone = !demo && (doneReason === null || doneReason === "manual");
   // Phones (#39): a thumb-zone action bar carries Open in Canvas + Mark as done.
   const hasActionBar = Boolean(htmlUrl) || canMarkDone;
 
@@ -158,7 +167,7 @@ export function AssignmentPage(props: {
       <h1 className="mt-1 text-[28px] font-bold leading-tight tracking-tight text-ink">{name}</h1>
 
       <div className="mt-3 flex flex-wrap items-center gap-2.5 text-[13.5px] font-medium">
-        <DueLabel iso={dueAt} format="long" todayYmd={todayYmd} empty="No due date" className="rounded-full bg-surface-soft px-3 py-1 text-ink" />
+        <DueLabel iso={dueAt} format="long" todayYmd={todayYmd} timeZone={zone} empty="No due date" className="rounded-full bg-surface-soft px-3 py-1 text-ink" />
         {points != null && points > 0 && <span className="rounded-full bg-surface-soft px-3 py-1 text-ink">{points} pts</span>}
         {demo ? (
           <EffortTag hours={estimatedEffortHours} className="rounded-full bg-surface-soft px-3 py-1" />
@@ -198,24 +207,42 @@ export function AssignmentPage(props: {
         </section>
       )}
 
-      {/* Canvas brief (the assignment body), sanitized on the server — so it is
-          formatted from the very first paint, with basic prose styling. */}
-      {safeHtml && safeHtml.trim() && (
-        <section className="card mt-6 p-6">
-          <h2 className="text-[19px] font-semibold text-ink">Assignment brief</h2>
-          {/* `brief` wrapper: Canvas HTML is arbitrary — images/embeds shrink to fit
-              everywhere; on phones wide tables and code scroll sideways instead of
-              widening the page (desktop table layout unchanged). `relative
-              overflow-hidden [contain:layout_paint]` is a backstop: nothing inside the
-              brief can paint outside its own box, whatever styling slips through. */}
+      {/* Canvas instructions — ALWAYS rendered, directly under the AI section (#145):
+          the teacher's words verbatim (sanitized on the server, formatted from the
+          first paint), or one plain line saying why there are none. */}
+      <section className="card mt-6 p-6" aria-labelledby="canvas-instructions">
+        <h2 id="canvas-instructions" className="text-[19px] font-semibold text-ink">Canvas instructions</h2>
+        {notOpenYet && (
+          <p className="mt-2 text-[15px] leading-relaxed text-ink">
+            Not open yet. Opens <DueLabel iso={opensAt} format="long-time" todayYmd={todayYmd} timeZone={zone} />.
+          </p>
+        )}
+        {safeHtml && hasInstructions ? (
+          /* `brief` wrapper: Canvas HTML is arbitrary — images/embeds shrink to fit
+             everywhere; on phones wide tables and code scroll sideways instead of
+             widening the page (desktop table layout unchanged). `relative
+             overflow-hidden [contain:layout_paint]` is a backstop: nothing inside the
+             brief can paint outside its own box, whatever styling slips through. */
           <div className="brief relative overflow-hidden [contain:layout_paint] [&_iframe]:max-w-full [&_img]:h-auto [&_img]:max-w-full max-md:[&_pre]:overflow-x-auto max-md:[&_table]:block max-md:[&_table]:max-w-full max-md:[&_table]:overflow-x-auto">
             <div
               className="mt-2 text-[15px] leading-relaxed text-ink [&_a]:text-accent [&_a]:underline [&_h1]:mt-3 [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:text-[16px] [&_h2]:font-semibold [&_li]:mb-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
               dangerouslySetInnerHTML={{ __html: safeHtml }}
             />
           </div>
-        </section>
-      )}
+        ) : (
+          !notOpenYet && <p className="mt-2 text-[15px] leading-relaxed text-muted">Your teacher hasn&rsquo;t added instructions in Canvas.</p>
+        )}
+        {/* md+: the way out to Canvas lives with the instructions. Phones get it in
+            the thumb-zone action bar below. */}
+        {htmlUrl && (
+          <div className="mt-5 hidden md:block">
+            <a href={htmlUrl} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-1.5">
+              Open in Canvas
+              <ExternalIcon />
+            </a>
+          </div>
+        )}
+      </section>
 
       {/* Best-effort rubric — what it's graded on. */}
       {rubric && rubric.length > 0 && (
@@ -233,15 +260,6 @@ export function AssignmentPage(props: {
             ))}
           </ul>
         </section>
-      )}
-
-      {htmlUrl && (
-        <div className="mt-7 hidden md:block">
-          <a href={htmlUrl} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-1.5">
-            Open in Canvas
-            <ExternalIcon />
-          </a>
-        </div>
       )}
 
       {/* Phones: sticky thumb-zone actions, sitting just above the fixed tab bar

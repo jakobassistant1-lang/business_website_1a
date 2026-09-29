@@ -1,16 +1,19 @@
 import { notFound } from "next/navigation";
 import { requirePageAccess } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
-import { itemType } from "@/lib/itemType";
-import { ymd } from "@/lib/calendarDates";
+import { itemType, type ItemType } from "@/lib/itemType";
+import { effortOrDefault } from "@/lib/effort";
+import { assignmentDoneReason } from "@/lib/assignmentStatus";
+import { studentZone, todayInZone } from "@/lib/studentZone";
 import { AssignmentPage } from "@/components/AssignmentPage";
 import { sanitizeBrief } from "@/lib/sanitizeBrief";
 
 export const dynamic = "force-dynamic";
 
 // /assignment/[id] — the rich leaf for an assignment: submission status, the AI
-// "how to approach" + sub-steps, the Canvas description, and (best-effort) rubric.
-// The AI plan and the rubric are both fetched CLIENT-side (so neither blocks SSR).
+// "how to approach" + sub-steps, the Canvas instructions (always shown), and
+// (best-effort) rubric. The AI plan and the rubric are both fetched CLIENT-side
+// (so neither blocks SSR). Dates are read in the student's Canvas zone.
 export default async function AssignmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePageAccess(); // #119 gate, re-run per page (see lib/access)
   const { id } = await params;
@@ -32,16 +35,29 @@ export default async function AssignmentDetailPage({ params }: { params: Promise
   const cleaned = a.description && a.description.trim() ? sanitizeBrief(a.description, cred?.host ?? null) : "";
   const safeHtml = cleaned.trim() ? cleaned : null;
 
+  const zone = studentZone(user);
+  const now = new Date();
+  // Not open yet = Canvas's unlock date is still ahead: no AI plan, "Opens …".
+  const opensAt = a.unlockAt && a.unlockAt.getTime() > now.getTime() ? a.unlockAt.toISOString() : null;
+
+  // "Done" and its reason are THE shared rule (lib/assignmentStatus), so the badge
+  // and the Mark-as-done control agree with every list.
+  const type: ItemType = itemType(a.submissionType, a.name);
+  const doneReason = assignmentDoneReason(a, { type, dueAt: a.dueAt, zone, now });
+  const done = doneReason != null;
+
   return (
     <AssignmentPage
       key={a.canvasId} // remount on navigation so AI-plan state never leaks between assignments
       canvasId={a.canvasId}
       name={a.name}
       courseName={a.course.name}
-      type={itemType(a.submissionType, a.name)}
+      type={type}
       dueAt={a.dueAt ? a.dueAt.toISOString() : null}
       points={a.pointsPossible ?? null}
-      estimatedEffortHours={a.estimatedEffortHours ?? null}
+      // THE effort rule (lib/effort): the AI estimate padded once, or the student's
+      // default hours; the student's own number is passed as typed (unpadded).
+      estimatedEffortHours={effortOrDefault({ estimatedEffortHours: a.estimatedEffortHours }, user.defaultEffortHours)}
       effortOverrideHours={a.effortOverrideHours ?? null}
       htmlUrl={a.htmlUrl ?? null}
       safeHtml={safeHtml}
@@ -50,7 +66,11 @@ export default async function AssignmentDetailPage({ params }: { params: Promise
       submissionScore={a.submissionScore ?? null}
       summary={a.aiSummary ?? null}
       manuallyDone={a.manualDoneAt != null}
-      todayYmd={ymd(new Date())}
+      done={done}
+      doneReason={doneReason}
+      todayYmd={todayInZone(zone, now)}
+      timeZone={zone}
+      opensAt={opensAt}
     />
   );
 }

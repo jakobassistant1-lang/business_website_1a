@@ -31,12 +31,14 @@ import {
   type CanvasModuleItem,
 } from "./canvas";
 import type { Plan } from "./scheduler";
-import { ymdInZone } from "./calendarDates";
-import { dayCount, inDays, NO_GREETING_RULE } from "./briefing";
+import { dayDiffInZone, DEFAULT_STUDENT_ZONE, todayInZone } from "./studentZone";
+import { isStudySessionBlock } from "./studyWeek";
+import { CONFIDENCE_RULE, NO_GREETING_RULE, WORDING_RULE, promptDate, promptToday, promptType } from "./briefing";
+import { shortCourse } from "./courseName";
 import { installPdfPolyfills } from "./pdfPolyfills";
 
 const TIMEOUT_MS = 25000; // study artifacts are bigger than one-liners
-export const STUDY_PROMPT_VERSION = 2; // bump → all cached generations revalidate (v2: relevance filter)
+export const STUDY_PROMPT_VERSION = 3; // bump → all cached generations revalidate (v2: relevance filter; v3: #145 voice rules)
 
 // Question types, content shapes, and the short-answer grader live in the
 // client-safe lib/studyShared.ts (StudyView bundles them); re-exported here so
@@ -59,12 +61,20 @@ export function studyHash(parts: Array<string | number | null | undefined>): str
 }
 
 /** The scheduler's existing study blocks for one assessment — the deterministic
- *  "when" the plan layer annotates. */
-export function studySessionsFor(plan: Plan, canvasId: number): { date: string; hours: number }[] {
+ *  "when" the plan layer annotates. "Is this a study session" is lib/studyWeek's
+ *  `isStudySessionBlock` (THE rule: real study, not a zero-hour due-day marker,
+ *  for an assessment not already past), read in the student's zone. */
+export function studySessionsFor(
+  plan: Plan,
+  canvasId: number,
+  opts: { todayYmd?: string; zone?: string } = {},
+): { date: string; hours: number }[] {
+  const zone = opts.zone ?? DEFAULT_STUDENT_ZONE;
+  const todayYmd = opts.todayYmd ?? todayInZone(zone);
   const out: { date: string; hours: number }[] = [];
   for (const day of plan.days) {
     for (const b of day.blocks) {
-      if (b.study && b.canvasId === canvasId && b.hours > 0) out.push({ date: day.date, hours: b.hours });
+      if (b.canvasId === canvasId && isStudySessionBlock(b, todayYmd, zone)) out.push({ date: day.date, hours: b.hours });
     }
   }
   return out;
@@ -117,8 +127,8 @@ export interface AssessmentMeta {
   pointsPossible: number | null;
   description: string | null; // Canvas HTML
   aiSummary: string | null;
-  /** The viewer's IANA zone (validated by safeTimeZone); due and today are read in
-   *  it. Omitted = "UTC". */
+  /** The student's Canvas zone (lib/studentZone.studentZone); due and today are
+   *  read in it. Omitted = DEFAULT_STUDENT_ZONE. */
   timeZone?: string;
   /** Effective days-ahead-to-study (the scheduler's lead time); null/undefined =
    *  unknown. Only the plan prompt reads it. */
@@ -355,12 +365,18 @@ export async function collectStudyMaterial(
 
 // ---------- prompts ----------
 
-function metaLines(a: AssessmentMeta): string {
-  const due = a.dueAt ? ymdInZone(a.dueAt, a.timeZone ?? "UTC") : "unknown";
+const zoneOf = (a: AssessmentMeta) => a.timeZone ?? DEFAULT_STUDENT_ZONE;
+
+/** The assessment's facts, worded like the screen (clean course, type label, due in
+ *  the student's zone). A missing due date or points value is OMITTED, never
+ *  handed to the model as "unknown" / "?" (#145). The due date carries NO day
+ *  count: plans, guides and questions are saved and re-shown on later days. */
+function metaLines(a: AssessmentMeta, now: Date = new Date()): string {
   return [
-    `Assessment: ${a.name} (${a.type})`,
-    `Course: ${a.courseName}`,
-    `Due: ${due} · Points: ${a.pointsPossible ?? "?"}`,
+    `Assessment: ${a.name} (${promptType(a.type)})`,
+    `Course: ${shortCourse(a.courseName)}`,
+    a.dueAt ? `Due: ${promptDate(a.dueAt, zoneOf(a), now)}` : "",
+    a.pointsPossible != null && a.pointsPossible > 0 ? `Points: ${a.pointsPossible}` : "",
     a.aiSummary ? `Summary: ${a.aiSummary}` : "",
   ]
     .filter(Boolean)
@@ -376,10 +392,24 @@ function materialBlock(material: StudyMaterial): string {
   return `Source material (use ONLY what is relevant to this assessment; ignore the rest).${notesNote}\n${chunks.join("\n\n")}`;
 }
 
+/** The ONLY rules study CONTENT (the guide and the practice questions) gets (#145).
+ *  Deliberately no word ban, no "never ask a question", no "open with the next
+ *  action": a probability guide must be free to say "likely", algebra "unknown",
+ *  and a practice question is a question. Subject vocabulary is never restricted. */
+export const CONTENT_RULE =
+  "Write the content as plain statements of fact. Never say you are unsure or that material is missing.";
+export const CONTENT_RULES: readonly string[] = [WORDING_RULE, CONTENT_RULE];
+
+/** The coaching rules the saved study PLAN gets: the confident voice, no greeting,
+ *  course/past-due wording — and PLAN_TIMING_RULE instead of TIMING_RULE (the plan
+ *  is re-shown on later days, so it names dates, never day counts). */
+const PLAN_VOICE_RULES: readonly string[] = [CONFIDENCE_RULE, NO_GREETING_RULE, WORDING_RULE];
+
+// An instruction to the model, never something it voices: the output states what it
+// covers plainly (CONTENT_RULE forbids remarking on thin or missing material).
 const LOW_MATERIAL_NOTE =
-  "The Canvas material is thin. Lean on the assessment name, type, and course subject plus general " +
-  "knowledge of the field; keep output focused and slightly shorter, and never invent specific " +
-  "page numbers, dates, or teacher policies.";
+  "Build this from the assessment name, type, and course subject plus general knowledge of the field; keep " +
+  "output focused and slightly shorter, and never invent specific page numbers, dates, or teacher policies.";
 
 // Admin-editable instructions (the coaching/voice half of each prompt — tunable
 // from /admin/ai under "Study outputs"). The data blocks and the JSON output
@@ -402,7 +432,7 @@ export const DEFAULT_STUDY_QUESTIONS_INSTRUCTION =
 // Plan advice is SAVED (StudyGeneration) and served again on later days while its
 // inputs hold, so it names the due DATE, not a day count that would go stale.
 export const PLAN_TIMING_RULE =
-  "Timing: when you mention when the test is, use its date (\"before Oct 12\"), not a day count — this advice is " +
+  "Plan timing: when you mention when the test is, use its date (\"by Wed, Oct 12\"), not a day count — this advice is " +
   "saved and shown again on later days. Never call the test imminent, urgent or last-minute, and never give " +
   "cramming advice, unless it is due within 3 days.";
 
@@ -410,10 +440,12 @@ export const PLAN_TIMING_RULE =
  *  the model "the test is imminent" whenever no sessions were scheduled — true for
  *  a test tomorrow, false for one 15 days out (the planner only schedules study
  *  blocks in the days before a test). */
-function planTimingLines(a: AssessmentMeta, hasSessions: boolean, todayYmd: string): string[] {
-  const dueYmd = a.dueAt ? ymdInZone(a.dueAt, a.timeZone ?? "UTC") : null;
-  const days = dueYmd ? dayCount(dueYmd, todayYmd) : null;
-  const when = dueYmd && days != null ? `Today is ${todayYmd}. The test is due ${dueYmd} (${inDays(days)}).` : `Today is ${todayYmd}. The due date is unknown.`;
+function planTimingLines(a: AssessmentMeta, hasSessions: boolean, now: Date): string[] {
+  const zone = zoneOf(a);
+  const days = a.dueAt ? dayDiffInZone(a.dueAt, zone, now) : null;
+  // No due date → the sentence about it is simply absent (never "unknown"). No day
+  // count either: the plan is saved and shown again on later days.
+  const when = a.dueAt ? `${promptToday(zone, now)} The test is due ${promptDate(a.dueAt, zone, now)}.` : promptToday(zone, now);
   let task: string;
   if (hasSessions) task = "Also include 1-2 sentences of overall `advice`.";
   else if (days != null && days <= 3)
@@ -425,32 +457,34 @@ function planTimingLines(a: AssessmentMeta, hasSessions: boolean, todayYmd: stri
         ? `No study sessions are scheduled YET: the student's plan starts study time ${lead} day${lead === 1 ? "" : "s"} before the test, so sessions will appear closer to the date.`
         : lead === 0
           ? "No study sessions are scheduled: the student has set no study time ahead of this test."
-          : "No study sessions are scheduled right now (the planner may add some in the days before the test, depending on the student's settings).";
+          : "No study sessions are scheduled right now.";
     task =
       `${why} This is NOT last-minute. Return an empty sessions array; in \`advice\`, give the first concrete ` +
       "step to take now and when regular review should begin.";
   }
-  return [when, task, PLAN_TIMING_RULE, NO_GREETING_RULE];
+  return [when, task, PLAN_TIMING_RULE, ...PLAN_VOICE_RULES];
 }
 
 export function buildPlanPrompt(
   a: AssessmentMeta,
   sessions: { date: string; hours: number }[],
   instruction: string = DEFAULT_STUDY_PLAN_INSTRUCTION,
-  todayYmd: string = ymdInZone(new Date(), a.timeZone ?? "UTC"),
+  now: Date = new Date(),
 ): string {
-  const sess =
-    sessions.length > 0
-      ? sessions.map((s, i) => `${i + 1}. ${s.date} — ${s.hours}h`).join("\n")
-      : "(none scheduled)";
+  // No sessions → no list at all (the timing lines already say so).
+  const sess = sessions.map((s, i) => `${i + 1}. ${s.date} — ${s.hours}h`).join("\n");
   return [
     instruction,
-    ...planTimingLines(a, sessions.length > 0, todayYmd),
+    ...planTimingLines(a, sessions.length > 0, now),
     "",
-    metaLines(a),
+    metaLines(a, now),
     "",
-    `Scheduled study sessions:\n${sess}`,
-    "",
+    ...(sess
+      ? [
+          `Scheduled study sessions (the dates are ISO machine dates, YYYY-MM-DD — copy them exactly into "date"; in \`advice\`, write any date the way the due date above is written):\n${sess}`,
+          "",
+        ]
+      : []),
     'Return ONLY JSON: {"advice": string, "sessions": [{"date":"YYYY-MM-DD","focus":string,"techniques":[string],"activities":[string]}]} — sessions MUST use exactly the dates listed.',
   ].join("\n");
 }
@@ -463,6 +497,7 @@ export function buildGuidePrompt(
   return [
     instruction,
     material.sparse ? LOW_MATERIAL_NOTE : "",
+    ...CONTENT_RULES,
     "",
     metaLines(a),
     "",
@@ -494,6 +529,7 @@ export function buildQuestionsPrompt(
       ? "`acceptable` must be SHORT key phrases a correct answer would contain (they are matched mechanically against the student's words), not full sentences."
       : "",
     material.sparse ? LOW_MATERIAL_NOTE : "",
+    ...CONTENT_RULES,
     "",
     metaLines(a),
     "",
@@ -642,9 +678,9 @@ export async function generateStudyPlan(
   a: AssessmentMeta,
   sessions: { date: string; hours: number }[],
   instruction?: string,
-  todayYmd?: string,
+  now?: Date,
 ): Promise<{ ok: true; content: StudyPlanContent } | StudyGenError> {
-  const res = await callGemini(buildPlanPrompt(a, sessions, instruction ?? DEFAULT_STUDY_PLAN_INSTRUCTION, todayYmd), 1600);
+  const res = await callGemini(buildPlanPrompt(a, sessions, instruction ?? DEFAULT_STUDY_PLAN_INSTRUCTION, now), 1600);
   if (!res.ok) return res;
   const parsed = parsePlanContent(parseJsonText(res.json), new Set(sessions.map((s) => s.date)));
   if (!parsed) return { ok: false, reason: "bad_response" };

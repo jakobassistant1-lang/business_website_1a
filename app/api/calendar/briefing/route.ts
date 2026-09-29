@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { requireActiveUser } from "@/lib/access";
 import { loadCalendarData } from "@/lib/calendarData";
-import { effortHoursText } from "@/lib/effortFormat";
-import { startOfDay, ymd, parseYmd } from "@/lib/calendarDates";
-import { generatePeriodBriefing, DEFAULT_PERIOD_COACH_INSTRUCTION, type PeriodTopItem } from "@/lib/briefing";
+import { MONTHS_LONG, MONTHS_SHORT, parseYmd, ymd, ymdInZone } from "@/lib/calendarDates";
+import { studentZone, todayInZone } from "@/lib/studentZone";
+import { generatePeriodBriefing, DEFAULT_PERIOD_COACH_INSTRUCTION, VOICE_VERSION, type PromptItem } from "@/lib/briefing";
 import { getSetting, PERIOD_COACH_PROMPT_KEY } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -31,88 +31,93 @@ function cacheSet(key: string, text: string) {
   CACHE.set(key, { text, at: Date.now() });
 }
 
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** Null-tolerant wrapper for the ?start= query param around the shared parseYmd. */
-function parseYmdParam(s: string | null): Date | null {
-  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const d = parseYmd(s);
-  return Number.isNaN(d.getTime()) ? null : d;
+/** A calendar day `n` days after `dayYmd` (zone-free calendar arithmetic). */
+function addDaysYmd(dayYmd: string, n: number): string {
+  const d = parseYmd(dayYmd);
+  d.setDate(d.getDate() + n);
+  return ymd(d);
 }
-function effortLabel(it: { estimatedEffortHours: number | null; effortBucket: string | null }): string | null {
-  // Canonical formatter (lib/effortFormat): sub-hour reads as minutes ("~45m"),
-  // never "0.8h" — the same text students see on every EffortTag in the app.
-  return effortHoursText(it.estimatedEffortHours) ?? it.effortBucket ?? null;
-}
-function dueLabel(iso: string, view: "day" | "week" | "month"): string {
-  const d = new Date(iso);
-  if (view === "day") return d.toLocaleString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]} ${MON[d.getMonth()]} ${d.getDate()}`;
-}
-function rangeLabelFor(view: "day" | "week" | "month", start: Date, end: Date): string {
-  if (view === "day") {
-    const today = startOfDay(new Date());
-    if (start.getTime() === today.getTime()) return "today";
-    return `${MON[start.getMonth()]} ${start.getDate()}`;
-  }
-  if (view === "month") return `${MONTHS[start.getMonth()]} ${start.getFullYear()}`;
-  const last = new Date(end);
-  last.setDate(last.getDate() - 1);
-  return `${MON[start.getMonth()]} ${start.getDate()}–${MON[last.getMonth()] !== MON[start.getMonth()] ? `${MON[last.getMonth()]} ` : ""}${last.getDate()}`;
+function rangeLabelFor(view: "day" | "week" | "month", startYmd: string, endYmd: string, todayYmd: string): string {
+  const start = parseYmd(startYmd);
+  if (view === "day") return startYmd === todayYmd ? "today" : `${MONTHS_SHORT[start.getMonth()]} ${start.getDate()}`;
+  if (view === "month") return `${MONTHS_LONG[start.getMonth()]} ${start.getFullYear()}`;
+  const last = parseYmd(addDaysYmd(endYmd, -1));
+  const sameMonth = last.getMonth() === start.getMonth();
+  return `${MONTHS_SHORT[start.getMonth()]} ${start.getDate()}–${sameMonth ? "" : `${MONTHS_SHORT[last.getMonth()]} `}${last.getDate()}`;
 }
 
 // GET /api/calendar/briefing?view=day|week|month&start=YYYY-MM-DD&days=N
 // AI "study coach" game plan for the selected period. Always degrades: returns
 // text=null whenever the AI is unavailable, so the view renders without it.
+// Every day here is read in the student's Canvas zone (lib/studentZone), and the
+// items reach the model in the app's IMPORTANCE order (CalendarData.ranked — the
+// same order the Dashboard and Plan list show), never re-sorted by due date.
 export async function GET(req: Request) {
   const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
+  const zone = studentZone(user);
+  const now = new Date();
+  const todayYmd = todayInZone(zone, now);
+
   const url = new URL(req.url);
   const viewRaw = url.searchParams.get("view");
   const view: "day" | "week" | "month" = viewRaw === "week" || viewRaw === "month" ? viewRaw : "day";
-  const start = parseYmdParam(url.searchParams.get("start")) ?? startOfDay(new Date());
+  const startParam = url.searchParams.get("start");
+  const startYmd = startParam && /^\d{4}-\d{2}-\d{2}$/.test(startParam) && !Number.isNaN(parseYmd(startParam).getTime()) ? startParam : todayYmd;
   const daysRaw = Number(url.searchParams.get("days"));
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(45, Math.floor(daysRaw)) : view === "day" ? 1 : view === "week" ? 7 : 31;
-  const end = new Date(start);
-  end.setDate(end.getDate() + days);
+  const endYmd = addDaysYmd(startYmd, days); // exclusive
+  const inPeriod = (iso: string) => {
+    const d = ymdInZone(iso, zone);
+    return d >= startYmd && d < endYmd;
+  };
 
   const data = await loadCalendarData(user.id);
   if (!data.connected) return NextResponse.json({ ok: false, text: null, reason: "not_connected" });
 
-  const inRange = data.items.filter((it) => {
-    if (!it.dueAt) return false;
-    const d = new Date(it.dueAt);
-    return d >= start && d < end;
-  });
+  // Active work only: a done item is not part of the period's game plan.
+  const inRange = data.items.filter((it) => it.status !== "done" && it.dueAt && inPeriod(it.dueAt));
   if (inRange.length === 0) return NextResponse.json({ ok: false, text: null, reason: "empty_period" });
 
-  const atRiskCount = inRange.filter((it) => it.status === "overdue").length;
+  const pastDueCount = inRange.filter((it) => it.status === "overdue").length;
   const busyHours = data.events
-    .filter((e) => !e.allDay)
-    .reduce((s, e) => {
-      const lo = Math.max(new Date(e.startTime).getTime(), start.getTime());
-      const hi = Math.min(new Date(e.endTime).getTime(), end.getTime());
-      return hi > lo ? s + (hi - lo) / 3_600_000 : s;
-    }, 0);
+    .filter((e) => !e.allDay && inPeriod(new Date(e.startTime).toISOString()))
+    .reduce((s, e) => s + Math.max(0, new Date(e.endTime).getTime() - new Date(e.startTime).getTime()) / 3_600_000, 0);
 
-  const top: PeriodTopItem[] = [...inRange]
-    .sort((a, b) => new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime())
+  // The app's importance order (the full `ranked` list); anything unranked goes
+  // last, earliest-due first.
+  const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
+  const top: PromptItem[] = [...inRange]
+    .sort((a, b) => {
+      const ra = rank.get(a.canvasId) ?? 1e9;
+      const rb = rank.get(b.canvasId) ?? 1e9;
+      return ra !== rb ? ra - rb : new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime();
+    })
     .slice(0, 5)
-    .map((it) => ({ name: it.name, courseName: it.courseName, dueLabel: dueLabel(it.dueAt!, view), effort: effortLabel(it), type: it.type }));
+    .map((it) => ({
+      name: it.name,
+      courseName: it.courseName,
+      type: it.type,
+      dueAt: it.dueAt,
+      points: it.pointsPossible,
+      effortHours: it.estimatedEffortHours, // effectiveEffort; worded once by effortHoursText in the builder
+    }));
 
   const instruction = (await getSetting(PERIOD_COACH_PROMPT_KEY)) || DEFAULT_PERIOD_COACH_INSTRUCTION;
   const sig = JSON.stringify({
+    ver: VOICE_VERSION,
     u: user.id,
+    z: zone,
+    today: todayYmd,
     v: view,
-    s: ymd(start),
+    s: startYmd,
     n: days,
     d: inRange.length,
-    r: atRiskCount,
+    r: pastDueCount,
     b: Math.round(busyHours),
     p: instruction,
-    t: top.map((t) => `${t.name}:${t.dueLabel}`),
+    t: top.map((t) => `${t.name}:${t.dueAt}:${t.effortHours ?? ""}`),
   });
   const key = createHash("sha1").update(sig).digest("hex");
   const cached = cacheGet(key);
@@ -120,13 +125,14 @@ export async function GET(req: Request) {
 
   const result = await generatePeriodBriefing(
     {
-      firstName: user.fullName.trim().split(/\s+/)[0] ?? "",
       period: view,
-      rangeLabel: rangeLabelFor(view, start, end),
+      rangeLabel: rangeLabelFor(view, startYmd, endYmd, todayYmd),
       dueCount: inRange.length,
-      atRiskCount,
+      pastDueCount,
       busyHours,
       top,
+      timeZone: zone,
+      now,
     },
     instruction,
   );

@@ -13,7 +13,8 @@ import {
   NO_GREETING_RULE,
   STUDY_HUB_INSTRUCTION,
   DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION,
-  SHORT_BRIEF_PREFIX,
+  CONFIDENCE_RULE,
+  NO_INSTRUCTIONS_LINE,
 } from "@/lib/briefing";
 import { buildPlanPrompt, PLAN_TIMING_RULE, type AssessmentMeta } from "@/lib/study";
 import { sanitizeBrief } from "@/lib/sanitizeBrief";
@@ -33,7 +34,7 @@ describe("1. due dates go through the shared zone-aware DueLabel", () => {
     for (const src of [VIEW, TOOLS, ASSIGN]) expect(src).toMatch(/import \{ DueLabel \} from "@\/components\/DueLabel"/);
     expect(VIEW).toMatch(/<DueLabel[^>]*format="long-time"/);
     expect(TOOLS).toMatch(/<DueLabel[^>]*format="long-time"/);
-    expect(ASSIGN).toMatch(/<DueLabel[^>]*format="long"[^>]*empty="No due date"/);
+    expect(ASSIGN).toMatch(/<DueLabel[^>]*format="long"[^>]*timeZone=\{zone\}[^>]*empty="No due date"/);
   });
   it("no local dueLabel() or server-zone ymd(new Date(iso)) left in these components", () => {
     for (const src of [VIEW, UI, TOOLS, ASSIGN]) {
@@ -42,13 +43,35 @@ describe("1. due dates go through the shared zone-aware DueLabel", () => {
       expect(src).not.toMatch(/new Date\(iso\)/); // sessionDateLabel's parseYmd(ymd string) is zone-free and fine
     }
   });
-  it("the overdue badge uses isPastDue with the useMounted pattern (UTC pre-mount, local after)", () => {
+  it("the past-due badge uses isPastDue in the student's zone (#145: no mounted/UTC swap)", () => {
     expect(ASSIGN).toMatch(/import \{ isPastDue \} from "@\/lib\/dueLabel"/);
-    expect(ASSIGN).toMatch(/useMounted\(\)/);
-    expect(ASSIGN).toMatch(/isPastDue\(dueAt, mounted \? \{ todayYmd: localToday \} : \{ todayYmd, timeZone: "UTC" \}\)/);
+    expect(ASSIGN).not.toMatch(/useMounted\(\)/);
+    expect(ASSIGN).toMatch(/isPastDue\(dueAt, \{ todayYmd, timeZone: zone \}\)/);
+    // every DueLabel on the page is rendered in that zone
+    const labels = ASSIGN.match(/<DueLabel\b[^>]*>/g) ?? [];
+    expect(labels.length).toBeGreaterThanOrEqual(2);
+    for (const l of labels) expect(l).toMatch(/timeZone=\{zone\}/);
   });
-  it("the hub page passes the server day down", () => {
-    expect(HUB_PAGE).toMatch(/todayYmd=\{ymd\(new Date\(\)\)\}/);
+  it("the hub and test pages pass the STUDENT's day and zone down (lib/studentZone), never the server's", () => {
+    for (const page of [HUB_PAGE, TOOLS_PAGE]) {
+      expect(page).toContain("const todayYmd = dataToday(data);");
+      expect(page).toContain("const timeZone = dataZone(data);");
+      expect(page).toMatch(/todayYmd=\{todayYmd\}/);
+      expect(page).toMatch(/timeZone=\{timeZone\}/);
+      expect(page).not.toMatch(/ymd\(new Date\(/);
+      // study sessions through the ONE rule (lib/study → lib/studyWeek.isStudySessionBlock), in that zone
+      expect(page).toMatch(/studySessionsFor\(data\.plan, [a-zA-Z.]+, \{ todayYmd, zone: timeZone \}\)/);
+    }
+    // every due date on these pages renders in that zone
+    for (const src of [VIEW, TOOLS]) {
+      const labels = src.match(/<DueLabel [^>]*>/g) ?? [];
+      expect(labels.length).toBeGreaterThan(0);
+      for (const tag of labels) expect(tag).toContain("timeZone={timeZone}");
+    }
+  });
+  it("the hub's coach-line cache turns over at the student's midnight, not the browser's", () => {
+    expect(VIEW).toMatch(/studyCoachCacheKey\(\s*timeZone \? todayInZone\(timeZone\) : todayYmd,/);
+    expect(VIEW).not.toMatch(/ymd\(new Date\(\)\)/);
   });
 });
 
@@ -103,13 +126,13 @@ describe("3. practice questions and study hub accessibility", () => {
 describe("4. AI copy: grounded timing, no greeting, cached, no hedging", () => {
   it("the hub prompt carries the day-count rule and the no-greeting rule, and no name", () => {
     const p = buildStudyHubPrompt({
-      firstName: "Calvin",
       count: 2,
-      todayYmd: "2026-09-27",
-      top: [{ name: "Quiz 4", courseName: "Micro", type: "quiz", dueLabel: "in 15 days", dueYmd: "2026-10-12" }],
+      timeZone: "America/New_York",
+      now: new Date("2026-09-27T16:00:00Z"),
+      top: [{ name: "Quiz 4", courseName: "Micro", type: "quiz", dueAt: "2026-10-13T03:59:00Z" }],
     });
-    expect(p).toContain("Today is 2026-09-27.");
-    expect(p).toContain("1. Quiz 4 (Micro) [quiz] — due in 15 days (2026-10-12)");
+    expect(p).toContain("Today is Sunday, Sep 27.");
+    expect(p).toContain("1. Quiz 4 (Micro) [Quiz] — due Mon, Oct 12 · 11:59 PM (in 15 days)");
     expect(p).toContain(TIMING_RULE);
     expect(p).toContain(NO_GREETING_RULE);
     expect(p).not.toContain("Calvin");
@@ -139,64 +162,73 @@ describe("4. AI copy: grounded timing, no greeting, cached, no hedging", () => {
     timeZone: "America/New_York",
   };
 
-  it("study plan: due and today are read in the viewer's zone (11:59 PM ET stays Oct 12)", () => {
-    expect(buildPlanPrompt(meta, [], undefined, "2026-09-27")).toContain("due 2026-10-12 (in 15 days)");
-    expect(buildPlanPrompt(meta, [], undefined, "2026-09-27")).toContain("Due: 2026-10-12");
-    const utc = buildPlanPrompt({ ...meta, timeZone: undefined }, [], undefined, "2026-09-27");
-    expect(utc).toContain("due 2026-10-13 (in 16 days)"); // what UTC alone would have said
+  const SEP27 = new Date("2026-09-27T16:00:00Z"); // noon in New York
+  it("study plan: due and today are read in the student's zone (11:59 PM ET stays Oct 12); no day count (the plan is saved)", () => {
+    const p = buildPlanPrompt(meta, [], undefined, SEP27);
+    expect(p).toContain("The test is due Mon, Oct 12 · 11:59 PM.");
+    expect(p).toContain("Due: Mon, Oct 12 · 11:59 PM");
+    expect(p).not.toMatch(/\(in \d+ days\)/);
+    expect(p).not.toContain(TIMING_RULE); // PLAN_TIMING_RULE replaces it
+    const utc = buildPlanPrompt({ ...meta, timeZone: "UTC" }, [], undefined, SEP27);
+    expect(utc).toContain("The test is due Tue, Oct 13 · 3:59 AM."); // what UTC alone would have said
   });
-  it("study plan: 'sessions will appear' only when the lead time is > 0", () => {
-    expect(buildPlanPrompt({ ...meta, studyLeadDays: 3 }, [], undefined, "2026-09-27")).toMatch(/starts study time 3 days before the test, so sessions will appear/);
-    const zero = buildPlanPrompt({ ...meta, studyLeadDays: 0 }, [], undefined, "2026-09-27");
+  it("study plan: 'sessions will appear' only when the lead time is > 0; no hedged planner facts", () => {
+    expect(buildPlanPrompt({ ...meta, studyLeadDays: 3 }, [], undefined, SEP27)).toMatch(/starts study time 3 days before the test, so sessions will appear/);
+    const zero = buildPlanPrompt({ ...meta, studyLeadDays: 0 }, [], undefined, SEP27);
     expect(zero).toContain("has set no study time ahead of this test");
     expect(zero).not.toMatch(/will appear/);
-    const unknown = buildPlanPrompt(meta, [], undefined, "2026-09-27");
-    expect(unknown).not.toMatch(/will appear/);
-    expect(unknown).toMatch(/may add some/);
+    const noLead = buildPlanPrompt(meta, [], undefined, SEP27);
+    expect(noLead).not.toMatch(/will appear/);
+    expect(noLead).not.toMatch(/may add some|depending on/);
+    expect(noLead).toContain("No study sessions are scheduled right now.");
   });
 
   it("study plan: a test 15 days out with no sessions is NOT called imminent (the reported bug)", () => {
-    const p = buildPlanPrompt(meta, [], undefined, "2026-09-27");
-    expect(p).toContain("Today is 2026-09-27. The test is due 2026-10-12 (in 15 days).");
+    const p = buildPlanPrompt(meta, [], undefined, SEP27);
+    expect(p).toContain("Today is Sunday, Sep 27. The test is due Mon, Oct 12 · 11:59 PM.");
     expect(p).not.toMatch(/the test is imminent/i);
     expect(p).toContain("This is NOT last-minute.");
     expect(p).toContain(PLAN_TIMING_RULE);
     expect(p).toContain(NO_GREETING_RULE);
   });
   it("study plan: within 3 days and no sessions still gets the last-minute strategy", () => {
-    const p = buildPlanPrompt(meta, [], undefined, "2026-10-10");
-    expect(p).toContain("(in 2 days)");
+    const p = buildPlanPrompt(meta, [], undefined, new Date("2026-10-10T16:00:00Z"));
+    expect(p).toContain("the test is within 3 days");
     expect(p).toContain("last-minute strategy");
   });
   it("study plan: the rules survive an admin-edited instruction", () => {
-    const p = buildPlanPrompt(meta, [{ date: "2026-10-10", hours: 1 }], "CUSTOM VOICE", "2026-10-01");
+    const p = buildPlanPrompt(meta, [{ date: "2026-10-10", hours: 1 }], "CUSTOM VOICE", new Date("2026-10-01T16:00:00Z"));
     expect(p).toContain("CUSTOM VOICE");
     expect(p).toContain(PLAN_TIMING_RULE);
+    expect(p).toContain(CONFIDENCE_RULE);
     expect(p).toContain("Also include 1-2 sentences of overall `advice`.");
+    expect(p).toContain("the dates are ISO machine dates, YYYY-MM-DD"); // sessions = machine dates, due = display text
   });
 
-  it("assignment approach: a real brief → state it directly; a short one → the guess prefix; none → no hedging", () => {
-    const base = { name: "Lab 3", courseName: "Chem", type: "assignment", points: 50, dueLabel: "2026-10-12", todayYmd: "2026-09-27" };
+  it("assignment approach: a brief → use only what it states; short or none → no guess prefix, nothing about the brief", () => {
+    const base = { name: "Lab 3", courseName: "Chem", type: "assignment", points: 50, dueAt: "2026-10-13T03:59:00Z", timeZone: "America/New_York", now: SEP27 };
     const long = assignmentFacts({ ...base, brief: "Measure the boiling point of three solutions. ".repeat(8) });
-    expect(long).toContain("Due 2026-10-12 (in 15 days).");
-    expect(long).toContain("Assignment brief from Canvas:");
-    expect(long).toMatch(/state the approach directly/);
-    expect(long).not.toContain(SHORT_BRIEF_PREFIX);
+    expect(long).toContain("Due Mon, Oct 12 · 11:59 PM (in 15 days).");
+    expect(long).toContain("Assignment instructions from Canvas:");
+    expect(long).toContain("Use only the requirements these instructions state.");
 
     const short = assignmentFacts({ ...base, brief: "See handout." });
-    expect(short).toContain(`Begin with exactly "${SHORT_BRIEF_PREFIX}"`);
-    expect(SHORT_BRIEF_PREFIX).toBe("The brief is short, so this is a guess:");
+    expect(short).toContain("See handout.");
+    const beforeRules = (t: string) => t.slice(0, t.indexOf(CONFIDENCE_RULE)); // the rule itself names the banned words
+    expect(beforeRules(short)).not.toMatch(/guess|short|thin/i);
 
     const none = assignmentFacts(base);
-    expect(none).toContain("Only the title is given");
-    expect(none).not.toContain(SHORT_BRIEF_PREFIX);
+    expect(none).toContain(NO_INSTRUCTIONS_LINE);
+    expect(beforeRules(none)).not.toMatch(/guess|brief/i);
 
     for (const p of [buildDescriptionPrompt(base), buildAssignmentPlanPrompt(base)]) {
       expect(p).toContain(TIMING_RULE);
       expect(p).toContain(NO_GREETING_RULE);
+      expect(p).toContain(CONFIDENCE_RULE);
       expect(p).not.toMatch(/most likely involves/);
     }
     expect(DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION).toContain("Start by…");
+    expect(DEFAULT_ASSIGNMENT_PLAN_INSTRUCTION).not.toMatch(/likely/);
   });
 
   it("the hub caches the coach line for the session, keyed by a hash of its inputs", () => {
@@ -216,12 +248,10 @@ describe("4. AI copy: grounded timing, no greeting, cached, no hedging", () => {
   });
 });
 
-describe("AI routes get the viewer's zone; the demo never fetches the coach line", () => {
-  it("every AI fetch sends the IANA zone", () => {
-    expect(VIEW).toMatch(/\/api\/study-summary\?tz=\$\{encodeURIComponent\(viewerTimeZone\(\)\)\}/);
-    expect(TOOLS).toMatch(/JSON\.stringify\(\{ \.\.\.body, tz: viewerTimeZone\(\) \}\)/);
-    expect(ASSIGN).toMatch(/\/api\/assignment\/approach\?id=\$\{canvasId\}&tz=/);
-    expect(UI).toMatch(/Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone/);
+describe("AI routes read the student's zone server-side; the demo never fetches the coach line", () => {
+  it("the assignment page no longer sends a browser zone: the server reads the student's Canvas zone (#145)", () => {
+    expect(ASSIGN).toMatch(/\/api\/assignment\/approach\?id=\$\{canvasId\}`/);
+    expect(ASSIGN).not.toMatch(/resolvedOptions\(\)\.timeZone|&tz=/);
   });
   it("demo (prop, or anywhere under /demo) skips the fetch and the cache", () => {
     expect(VIEW).toMatch(/const isDemo = demo \|\| \(pathname \?\? ""\)\.startsWith\("\/demo"\)/);

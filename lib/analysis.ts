@@ -5,6 +5,10 @@
 
 import { createHash } from "crypto";
 import { geminiPost, salvageJsonObjects, GEMINI_URL, geminiKey } from "./geminiFetch";
+import { CONFIDENCE_RULE, WORDING_RULE } from "./briefing";
+import { shortCourse } from "./courseName";
+import { ymdInZone } from "./calendarDates";
+import { DEFAULT_STUDENT_ZONE } from "./studentZone";
 
 const TIMEOUT_MS = 12000;
 export const MAX_BATCH = 40;
@@ -17,9 +21,9 @@ export { MAX_ANALYZE_ROUNDS, shouldContinue, type AnalyzeRoundResponse } from ".
 // Editable from /admin/ai (stored under ANALYSIS_PROMPT_KEY); this is the fallback.
 export const DEFAULT_ANALYSIS_INSTRUCTION =
   "You are Navo's workload estimator. For EACH assignment given, estimate how long a typical " +
-  "college student needs, write one short factual sentence summarizing the task, AND rate its " +
+  "college student needs, write one short, confident, factual sentence summarizing the task, AND rate its " +
   "importance 1-5 (how high-stakes / weighty / cumulative it is for the grade: a final exam, midterm, " +
-  "or major project ≈ 5; a routine low-point homework ≈ 2; use 3 if unsure). " +
+  "or major project ≈ 5; a routine low-point homework ≈ 2; default to 3). " +
   "hours is your best numeric estimate (0.25–20); if unsure, still give your best number and set the " +
   "bucket as the coarse fallback (quick≈1h, medium≈3h, long≈6h). Keep summaries under 1 sentence. " +
   "requiresAction=false is RARE — set it ONLY for an explicitly PASSIVE grade with nothing for the " +
@@ -108,6 +112,9 @@ export function cleanDescription(html: string | null | undefined, maxLen = 500):
  *  is bumped when the analysis output shape changes (e.g. adding `importance`), so
  *  previously-analyzed rows re-run once to pick up the new field. */
 const ANALYSIS_VERSION = 5; // bumped: structured-output schema + conservative screen prompt → re-run
+// #145 deliberately did NOT bump this (a bump re-analyses every row of every student
+// and re-rolls effort/importance). Only ACTIVE rows whose stored summary hedges are
+// re-run (`hedgedSummary` below), and for those only the summary is rewritten.
 export function analysisInputHash(i: AnalysisItemInput): string {
   const basis = JSON.stringify({ v: ANALYSIS_VERSION, n: i.name, c: i.courseName, p: i.pointsPossible, d: cleanDescription(i.description) });
   return createHash("sha1").update(basis).digest("hex");
@@ -116,10 +123,30 @@ export function analysisInputHash(i: AnalysisItemInput): string {
 export interface AnalyzableRow extends AnalysisItemInput {
   analyzedAt: Date | null;
   analysisHash: string | null;
+  /** The stored one-line summary (optional: only the targeted #145 re-run reads it). */
+  aiSummary?: string | null;
+  /** True when the row is still active (not done) — only active rows are re-run for a hedge. */
+  active?: boolean;
 }
+
+/** Hedge words a stored summary must not carry (#145). "may" matches lowercase
+ *  only, so a "May 4" date never counts. */
+const HEDGE_WORDS = /\b(likely|probably|possibly|might|seems|appears|perhaps|guess\w*)\b/i;
+const HEDGE_MAY = /\bmay\b/;
+export function hasHedge(summary: string | null | undefined): boolean {
+  return !!summary && (HEDGE_WORDS.test(summary) || HEDGE_MAY.test(summary));
+}
+
+/** An ACTIVE row whose content is already analyzed but whose stored summary hedges:
+ *  re-run once for the summary only (runAnalysis never stores a hedged summary, so
+ *  this can't loop). */
+export function hedgedSummary(row: AnalyzableRow): boolean {
+  return row.active === true && hasHedge(row.aiSummary);
+}
+
 export function needsAnalysis(row: AnalyzableRow): boolean {
   if (row.analyzedAt === null) return true;
-  return row.analysisHash !== analysisInputHash(row);
+  return row.analysisHash !== analysisInputHash(row) || hedgedSummary(row);
 }
 export function selectUnanalyzed(rows: AnalyzableRow[]): AnalysisItemInput[] {
   return rows.filter(needsAnalysis).map((r) => ({
@@ -132,9 +159,20 @@ export function selectUnanalyzed(rows: AnalyzableRow[]): AnalysisItemInput[] {
   }));
 }
 
-export function buildAnalysisPrompt(items: AnalysisItemInput[]): string {
+/** The due DAY in the student's zone ("YYYY-MM-DD"); an already-bare day passes through. */
+function dueDay(dueAt: string, timeZone: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dueAt) ? dueAt : ymdInZone(dueAt, timeZone);
+}
+
+/** The batch prompt. Missing points / due date are OMITTED (never "?" / "none"),
+ *  the course is the clean name, and the voice rules govern the one-line summary
+ *  students read under "About this" (#145). The numeric guidance in the
+ *  instruction ("use 3 if unsure") is for the NUMBERS only. */
+export function buildAnalysisPrompt(items: AnalysisItemInput[], timeZone: string = DEFAULT_STUDENT_ZONE): string {
   const lines = items.map((i) => {
-    const parts = [`#${i.canvasId}`, i.name, i.courseName, `${i.pointsPossible ?? "?"} pts`, `due ${i.dueAt ?? "none"}`];
+    const parts = [`#${i.canvasId}`, i.name, shortCourse(i.courseName)];
+    if (i.pointsPossible != null && i.pointsPossible > 0) parts.push(`${i.pointsPossible} pts`);
+    if (i.dueAt) parts.push(`due ${dueDay(i.dueAt, timeZone)}`);
     const desc = cleanDescription(i.description);
     if (desc) parts.push(desc);
     return parts.join(" | ");
@@ -142,6 +180,9 @@ export function buildAnalysisPrompt(items: AnalysisItemInput[]): string {
   return [
     "Assignments (estimate each, SAME ORDER):",
     ...lines,
+    "Rules for each summary sentence (students read it):",
+    CONFIDENCE_RULE,
+    WORDING_RULE,
     'Return ONLY a JSON array, one object per assignment: ' +
       '{"id":<number>,"hours":<number>,"bucket":"quick|medium|long","summary":"<one sentence>","importance":<1-5>,"requiresAction":<true|false>}.',
   ].join("\n");
@@ -219,13 +260,14 @@ export function parseAnalysis(json: unknown, inputs: AnalysisItemInput[]): Analy
 export async function analyzeAssignments(
   items: AnalysisItemInput[],
   instruction: string = DEFAULT_ANALYSIS_INSTRUCTION,
+  timeZone: string = DEFAULT_STUDENT_ZONE, // the student's Canvas zone (lib/studentZone)
 ): Promise<AnalysisResult> {
   const key = geminiKey();
   if (!key) return { ok: false, reason: "no_key" };
   if (items.length === 0) return { ok: true, items: [], source: "gemini" };
 
   const body = {
-    contents: [{ role: "user", parts: [{ text: `${instruction}\n\n${buildAnalysisPrompt(items)}` }] }],
+    contents: [{ role: "user", parts: [{ text: `${instruction}\n\n${buildAnalysisPrompt(items, timeZone)}` }] }],
     generationConfig: {
       temperature: 0.2,
       maxOutputTokens: Math.min(6000, 256 + items.length * 110),

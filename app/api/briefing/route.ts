@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { requireActiveUser } from "@/lib/access";
 import { loadPlan } from "@/lib/plan";
-import { generateBriefing, DEFAULT_BRIEFING_INSTRUCTION } from "@/lib/briefing";
+import { generateBriefing, DEFAULT_BRIEFING_INSTRUCTION, VOICE_VERSION } from "@/lib/briefing";
 import { getSetting, BRIEFING_PROMPT_KEY } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +53,7 @@ export async function GET(req: Request) {
   const atRiskCount = payload.plan.atRisk.length;
   const instruction = (await getSetting(BRIEFING_PROMPT_KEY)) || DEFAULT_BRIEFING_INSTRUCTION;
   const sig = JSON.stringify({
+    ver: VOICE_VERSION,
     u: user.id,
     w: payload.windowDays,
     h: payload.hours,
@@ -68,7 +69,6 @@ export async function GET(req: Request) {
 
   const result = await generateBriefing(
     {
-      firstName: user.fullName.trim().split(/\s+/)[0] ?? "",
       windowDays: payload.windowDays,
       inWindowDueCount: payload.plan.inWindowDueCount,
       atRiskCount,

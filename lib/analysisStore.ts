@@ -1,9 +1,14 @@
 import { prisma } from "./prisma";
 import { getSetting, ANALYSIS_PROMPT_KEY } from "./settings";
+import { studentZone } from "./studentZone";
+import { isAssignmentDone } from "./assignmentStatus";
+import { itemType } from "./itemType";
 import {
   analyzeAssignments,
   selectUnanalyzed,
   analysisInputHash,
+  hasHedge,
+  hedgedSummary,
   DEFAULT_ANALYSIS_INSTRUCTION,
   MAX_BATCH,
   type AnalyzableRow,
@@ -25,7 +30,13 @@ import {
 export async function runAnalysis(
   userId: number,
 ): Promise<{ analyzed: number; skipped: number; ok: boolean; remaining: number; done: boolean }> {
-  const rows = await prisma.assignment.findMany({ where: { userId }, include: { course: true } });
+  const rows = await prisma.assignment.findMany({
+    where: { userId },
+    include: { course: true, user: { select: { timeZone: true } } },
+  });
+  // THE date zone: the student's Canvas profile zone (every row carries the same user).
+  const zone = studentZone(rows[0]?.user);
+  const now = new Date();
 
   const analyzable: AnalyzableRow[] = rows.map((r) => ({
     canvasId: r.canvasId,
@@ -36,7 +47,19 @@ export async function runAnalysis(
     description: r.description,
     analyzedAt: r.analyzedAt,
     analysisHash: r.analysisHash,
+    aiSummary: r.aiSummary ?? null,
+    active: !isAssignmentDone(
+      { manualDoneAt: r.manualDoneAt ?? null, submittedAt: r.submittedAt ?? null, submissionState: r.submissionState ?? null },
+      { type: itemType(r.submissionType, r.name), dueAt: r.dueAt ?? null, zone, now },
+    ),
   }));
+  // #145 targeted re-run: rows whose content is already analyzed and only their
+  // stored summary hedges get ONLY a new summary — effort/importance stay put.
+  const summaryOnly = new Set(
+    analyzable
+      .filter((r) => r.analyzedAt !== null && r.analysisHash === analysisInputHash(r) && hedgedSummary(r))
+      .map((r) => r.canvasId),
+  );
 
   const pending = selectUnanalyzed(analyzable);
   const todo = pending.slice(0, MAX_BATCH);
@@ -44,7 +67,7 @@ export async function runAnalysis(
   if (todo.length === 0) return { analyzed: 0, skipped: rows.length, ok: true, remaining: 0, done: true };
 
   const instruction = (await getSetting(ANALYSIS_PROMPT_KEY)) || DEFAULT_ANALYSIS_INSTRUCTION;
-  const res = await analyzeAssignments(todo, instruction);
+  const res = await analyzeAssignments(todo, instruction, zone);
   // AI unavailable → nothing written; the backlog is unchanged and the client's
   // `analyzed === 0` check ends the drain (fail open, no retry storm).
   if (!res.ok) return { analyzed: 0, skipped: rows.length, ok: false, remaining: pending.length, done: false };
@@ -54,7 +77,18 @@ export async function runAnalysis(
   for (const item of res.items) {
     const input = inputById.get(item.canvasId);
     if (!input) continue;
+    // A hedged summary is never stored (#145): it is cleared instead, so the
+    // targeted re-run can't loop and the page falls back to the describe route.
+    const summary = item.summary == null ? undefined : hasHedge(item.summary) ? null : item.summary;
     try {
+      if (summaryOnly.has(item.canvasId)) {
+        await prisma.assignment.update({
+          where: { userId_canvasId: { userId, canvasId: item.canvasId } },
+          data: { aiSummary: summary ?? null, analyzedAt: new Date() },
+        });
+        analyzed++;
+        continue;
+      }
       await prisma.assignment.update({
         where: { userId_canvasId: { userId, canvasId: item.canvasId } },
         data: {
@@ -62,7 +96,7 @@ export async function runAnalysis(
           estimatedEffortHours: item.estimatedEffortHours ?? undefined,
           effortBucket: item.bucket ?? undefined,
           aiImportance: item.importance ?? undefined,
-          aiSummary: item.summary ?? undefined,
+          aiSummary: summary,
           // false (passive grade) must persist; only null means "leave unchanged".
           aiRequiresAction: item.requiresAction ?? undefined,
           analysisHash: analysisInputHash(input),
