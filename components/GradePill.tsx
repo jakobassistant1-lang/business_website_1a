@@ -38,7 +38,7 @@ export function GradePill({ grade, size = "md" }: { grade: CourseGrade; size?: "
   if (grade.state === "hidden") {
     return (
       <span
-        title="Your instructor hides total grades for students in Canvas, so there's no grade to show."
+        title="Your instructor hides total grades for students in Canvas, so there’s no grade to show."
         className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-surface-soft ${lg ? "px-3.5 py-2 text-[13px]" : "px-3 py-1.5 text-[12px]"} font-medium text-muted`}
       >
         <LockIcon /> Grades hidden

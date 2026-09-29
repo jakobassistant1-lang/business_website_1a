@@ -32,12 +32,14 @@ import { logEvent } from "./funnel";
 import { priceDisplay } from "./stripe";
 import { formatDateHuman, formatDateTimeHuman } from "./calendarDates";
 import { firstNameOf, type BuiltEmail } from "./welcomeEmail";
+import { PRICE_FALLBACK } from "./messages";
 
 const SUPPORT_EMAIL = "support@navolearning.com";
 
-/** What the copy says when Stripe can't tell us the price right now. Never a
- *  number: we don't print a figure we can't stand behind. */
-export const TRIAL_ENDING_PRICE_FALLBACK = "your monthly plan price";
+/** What the copy says when Stripe can't tell us the price right now — THE shared
+ *  PRICE_FALLBACK (lib/messages). Never a number: we don't print a figure we
+ *  can't stand behind. */
+export const TRIAL_ENDING_PRICE_FALLBACK = PRICE_FALLBACK;
 
 /** The price string for this email: Stripe's, or the neutral fallback. Shared
  *  by the webhook sender and the preview route so both degrade identically. */
@@ -49,7 +51,7 @@ export async function trialEndingPrice(): Promise<string> {
 /** "Your Navo trial ends Monday, October 6 — here's what happens next" (the
  *  subject carries the day only; the exact cutoff is in the body). */
 export function trialEndingSubject(trialEnd: Date | number): string {
-  return `Your Navo trial ends ${formatDateHuman(trialEnd, { weekday: true })} — here's what happens next`;
+  return `Your Navo trial ends ${formatDateHuman(trialEnd, { weekday: true })} — here’s what happens next`;
 }
 
 /** Pure builder. `trialEnd` is the instant the trial ends (Stripe's `trial_end`
@@ -75,15 +77,14 @@ export function trialEndingEmail({
 
   const text =
     `Hi ${firstName},\n\n` +
-    `Your free Navo trial ends ${cutoff}. After that, ${price} is charged to the card on file each month. ` +
-    `You can cancel anytime from your account, and you won't be charged.\n\n` +
-    `Nothing changes on your end: your courses, your plan, and everything you've set up stay exactly where they are.\n\n` +
+    `Your free Navo trial ends ${cutoff}. After that, ${price} is charged to the card on file.\n\n` +
+    `Nothing changes on your end: your courses, your plan, and everything you’ve set up stay exactly where they are.\n\n` +
     `Keep going: ${keepLink}\n` +
     `Manage or cancel: ${manageLink}\n\n` +
-    `If you'd rather not continue, cancel before then and nothing is charged.\n\n` +
+    `If you’d rather not continue, cancel before then and nothing is charged. After that, cancelling stops future charges.\n\n` +
     `Questions, or something looks wrong? Email us at ${SUPPORT_EMAIL} — a real person reads it.\n\n` +
     `— The Navo team\n\n` +
-    `You're getting this because your Navo free trial is about to end. It's a one-time message about your account.`;
+    `You’re getting this because your Navo free trial is about to end. It’s a one-time message about your account.`;
 
   // Inline styles only (email clients strip <style>), single column, plain-text-
   // shaped body — identical palette and spacing to lib/welcomeEmail.
@@ -102,14 +103,14 @@ export function trialEndingEmail({
     `<div style="${wrap}">` +
     `<div style="${card}">` +
     `<p style="${p}">Hi ${firstName},</p>` +
-    `<p style="${p}">Your free Navo trial ends <strong>${cutoff}</strong>. After that, <strong>${price}</strong> is charged to the card on file each month. You can cancel anytime from your account, and you won't be charged.</p>` +
-    `<p style="${p}">Nothing changes on your end: your courses, your plan, and everything you've set up stay exactly where they are.</p>` +
+    `<p style="${p}">Your free Navo trial ends <strong>${cutoff}</strong>. After that, <strong>${price}</strong> is charged to the card on file.</p>` +
+    `<p style="${p}">Nothing changes on your end: your courses, your plan, and everything you’ve set up stay exactly where they are.</p>` +
     `<p style="margin:0 0 24px;"><a href="${keepLink}" style="${button}">Keep going</a><a href="${manageLink}" style="${secondary}">Manage or cancel</a></p>` +
-    `<p style="${p}">If you'd rather not continue, cancel before then and nothing is charged.</p>` +
+    `<p style="${p}">If you’d rather not continue, cancel before then and nothing is charged. After that, cancelling stops future charges.</p>` +
     `<p style="${p}">Questions, or something looks wrong? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#6a47e0;">${SUPPORT_EMAIL}</a> — a real person reads it.</p>` +
     `<p style="${p}">— The Navo team</p>` +
     `<hr style="border:none;border-top:1px solid #e4e4e7;margin:24px 0;" />` +
-    `<p style="${foot}">You're getting this because your Navo free trial is about to end. It's a one-time message about your account.</p>` +
+    `<p style="${foot}">You’re getting this because your Navo free trial is about to end. It’s a one-time message about your account.</p>` +
     `</div></div>`;
 
   return { subject, html, text };

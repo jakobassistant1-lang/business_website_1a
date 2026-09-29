@@ -13,7 +13,7 @@ import Link from "next/link";
 // Type only (erased at build): the terms are computed on the server — the price
 // comes from Stripe and the trial length from TRIAL_DAYS, never from this file.
 import type { TrialTerms } from "@/lib/subscription";
-import { NETWORK_ERROR, TOS_REQUIRED } from "@/lib/messages";
+import { NETWORK_ERROR, PRICE_FALLBACK, TOS_REQUIRED } from "@/lib/messages";
 
 type Role = "student" | "admin";
 type Mode = "login" | "signup";
@@ -27,7 +27,7 @@ const HEADING: Record<Role, Record<Mode, string>> = {
 };
 
 /** The one value line on the student signup door (the price line below it comes from Stripe). */
-const VALUE_LINE = "Navo connects to your Canvas classes and tells you what to work on next.";
+const VALUE_LINE = "Navo connects to your Canvas courses and tells you what to work on next.";
 
 export type SignupField = "inviteCode" | "fullName" | "email" | "password" | "tos";
 export type SignupErrors = Partial<Record<SignupField, string>>;
@@ -93,10 +93,10 @@ export function AuthFlow({
           <p className="mb-5 rounded-lg bg-surface-soft px-3 py-2.5 text-[13px] leading-relaxed text-muted">
             {trialTerms.price ? (
               <>
-                Free for {trialTerms.trialDays} days, then {trialTerms.price}. Cancel anytime — you won&apos;t be charged until your trial ends.
+                Free for {trialTerms.trialDays} days, then {trialTerms.price}. Cancel anytime — you won’t be charged until your trial ends.
               </>
             ) : (
-              <>Free for {trialTerms.trialDays} days, then a small monthly fee. Cancel anytime.</>
+              <>Free for {trialTerms.trialDays} days, then {PRICE_FALLBACK}. Cancel anytime — you won’t be charged until your trial ends.</>
             )}
           </p>
         )}
@@ -198,7 +198,7 @@ function LoginForm({ onDone }: { onDone: (isAdmin: boolean) => void }) {
         onDone(body.isAdmin === true);
         return;
       }
-      setError(body.error ?? "That email and password don't match. Check them and try again.");
+      setError(body.error ?? "That email and password don’t match. Check them and try again.");
       setInvalid(loginFieldsInvalid(res.status));
     } catch {
       setError(NETWORK_ERROR);
@@ -294,7 +294,7 @@ function SignupForm({ role, inviteConfigured, onDone }: { role: Role; inviteConf
       }
       const body = await res.json().catch(() => ({}));
       if (body.errors) showErrors(body.errors);
-      else setFormError(body.error ?? "Couldn't create your account. Try again.");
+      else setFormError(body.error ?? "Couldn’t create your account. Try again.");
     } catch {
       setFormError(NETWORK_ERROR);
     } finally {
@@ -305,7 +305,7 @@ function SignupForm({ role, inviteConfigured, onDone }: { role: Role; inviteConf
   if (isAdmin && !inviteConfigured) {
     return (
       <p className="text-sm text-muted">
-        Admin sign-up isn&apos;t enabled yet — set a <code className="text-ink">SIGNUP_INVITE_CODE</code> so the first admin can register.
+        Admin sign-up isn’t enabled yet — set a <code className="text-ink">SIGNUP_INVITE_CODE</code> so the first admin can register.
       </p>
     );
   }

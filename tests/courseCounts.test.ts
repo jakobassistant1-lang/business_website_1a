@@ -171,7 +171,7 @@ describe("the course header adds up, and 'You're clear' only when it's true", ()
     const src = read("components/CoursePage.tsx");
     expect(src).toContain('{courseSummaryParts(counts).join(" · ")}');
     expect(src).toMatch(/\{\(counts\.upcoming > 0 \|\| isClear\(counts\)\) && <Section title="Upcoming"/);
-    expect(src).toContain(`empty="You're clear. Nothing to do right now."`);
+    expect(src).toContain(`empty="You’re clear. Nothing to do right now."`);
     expect(src).not.toContain("Nothing upcoming. You're clear.");
   });
 });

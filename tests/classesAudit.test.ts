@@ -1,4 +1,4 @@
-// Ticket #141 — UI audit round 1, Classes + wayfinding. One guard (or real unit
+// Ticket #141 — UI audit round 1, Courses + wayfinding. One guard (or real unit
 // test) per finding so the fixes can't quietly regress:
 //   1 dates in the viewer's zone (DueLabel)   5 CalendarView a11y + URL place
 //   2 truncation that destroyed identity      6 rolling 7-day Week view
@@ -75,7 +75,7 @@ describe("2 · titles keep their identity", () => {
     const src = read(GRID);
     const title = tokens(openingTag(src, "<h2"));
     expect(title.has("line-clamp-2")).toBe(true);
-    expect(title.has("min-h-[2lh]")).toBe(true); // "Do next" rows align across cards
+    expect(title.has("min-h-[2lh]")).toBe(true); // "Next in this course" rows align across cards
     expect(title.has("truncate")).toBe(false);
     expect(src).toMatch(/className="min-w-0[^"]*">[\s\S]{0,200}?<h2/);
   });
@@ -114,25 +114,26 @@ describe("2 · titles keep their identity", () => {
   });
 });
 
-describe("3 · 'Classes' everywhere a student reads it", () => {
+describe("3 · 'Courses' everywhere a student reads it (owner canon 2026-09-28, #146)", () => {
   it("nav label, tab label and top-bar title", () => {
     const item = navItems.find((i) => i.href === "/courses")!;
-    expect(item.label).toBe("Classes");
-    expect(item.tabLabel).toBe("Classes");
-    expect(pageTitle("/courses")).toBe("Classes");
+    expect(item.label).toBe("Courses");
+    expect(item.tabLabel).toBe("Courses");
+    expect(pageTitle("/courses")).toBe("Courses");
+    expect(pageTitle("/class/12")).toBe("Course");
   });
   it("the Courses page heading — real app and demo (owner canon 2026-09-28)", () => {
     expect(read(COURSES)).toMatch(/<h1[^>]*>Courses<\/h1>/);
     expect(read(DEMO)).toMatch(/<h1[^>]*>Courses<\/h1>/);
     expect(read(DEMO)).toMatch(/section: "courses", label: "Courses"/);
   });
-  it("the demo tour's page label (lib/tour/demoTour, owned elsewhere)", () => {
-    expect(DEMO_VIEW_LABEL.courses).toBe("Classes");
+  it("the demo tour's page label", () => {
+    expect(DEMO_VIEW_LABEL.courses).toBe("Courses");
   });
   // The course surfaces say "course"/"courses" — never "class"/"classes" (owner
-  // canon 2026-09-28). Calendar and Plan flipped with #135/#136; the nav and tour
-  // files keep their own guard below until their owners flip them.
-  for (const file of [GRID, PAGE, EXCL, COURSES, DEMO, "components/CourseCarousel.tsx", CAL, PLAN]) {
+  // canon 2026-09-28). Calendar and Plan flipped with #135/#136; the nav, tour,
+  // carousel and sync-report files with #146 (tests/wordingCanon guards the rest).
+  for (const file of [GRID, PAGE, EXCL, COURSES, DEMO, "components/CourseCarousel.tsx", CAL, PLAN, TOUR, "components/navItems.ts", "lib/carousel.ts", "lib/syncReport.ts"]) {
     it(`${file}: no "class"/"classes" in user-facing strings`, () => {
       const src = code(file).replace(/^import .*$/gm, "");
       const strings = [...src.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2]);
@@ -144,22 +145,10 @@ describe("3 · 'Classes' everywhere a student reads it", () => {
       for (const t of userFacing) expect(t, t).not.toMatch(/\bclass(es)?\b/i);
     });
   }
-  for (const file of [TOUR, "components/navItems.ts"]) {
-    it(`${file}: no "course" in user-facing strings`, () => {
-      const src = code(file).replace(/^import .*$/gm, "");
-      const strings = [...src.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2]);
-      const jsxText = [...src.matchAll(/>([^<>{}]+)</g)].map((m) => m[1]);
-      const userFacing = [...strings, ...jsxText]
-        .map((t) => t.replace(/\$\{[^}]*\}/g, "")) // template holes are code
-        .filter((t) => !/^[/@]/.test(t.trim())) // paths, hrefs
-        .filter((t) => !/^[a-z0-9-]+$/.test(t.trim())); // kebab ids (data-tour, keys)
-      for (const t of userFacing) expect(t, t).not.toMatch(/\bcourses?\b/i);
-    });
-  }
 });
 
 describe("4 · wayfinding", () => {
-  it("class page: history-aware back, falling back to Classes (never '← Dashboard')", () => {
+  it("course page: history-aware back, falling back to Courses (never '← Dashboard')", () => {
     const src = code(PAGE);
     expect(src).not.toContain("← Dashboard");
     expect(src).toContain("window.history.length <= 1");

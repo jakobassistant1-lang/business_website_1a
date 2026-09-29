@@ -27,7 +27,7 @@ export function ForgotPasswordForm() {
       <div className="card p-6 text-center">
         <h1 className="text-xl font-semibold tracking-tight">Check your email</h1>
         <p className="mt-2 text-sm text-muted">
-          If an account exists for <span className="font-medium text-ink">{email}</span>, we&apos;ve sent a link to reset
+          If an account exists for <span className="font-medium text-ink">{email}</span>, we’ve sent a link to reset
           your password. It expires in 1 hour.
         </p>
       </div>
@@ -38,7 +38,7 @@ export function ForgotPasswordForm() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">Reset your password</h1>
-        <p className="mt-1 text-sm text-muted">Enter your email and we&apos;ll send you a reset link.</p>
+        <p className="mt-1 text-sm text-muted">Enter your email and we’ll send you a reset link.</p>
       </div>
       <div className="card p-6">
         <form onSubmit={onSubmit} className="space-y-4">

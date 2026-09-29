@@ -166,6 +166,22 @@ export function trialBannerText({
 }): string | null {
   if (daysLeft === null || daysLeft <= 0) return null;
   const lead = daysLeft <= 1 ? "Last day of your free trial" : `${daysLeft} days left in your free trial`;
-  if (cancelAtPeriodEnd) return `${lead} — your plan ends then and you won’t be charged.`;
+  if (cancelAtPeriodEnd) return `${lead}. ${NO_CHARGE_IN_TRIAL}`;
   return price ? `${lead} — then ${price}.` : `${lead}.`;
+}
+
+/** A trial that ends with a cancel scheduled: nothing was ever charged, so the
+ *  copy never says "again". */
+const NO_CHARGE_IN_TRIAL = "You won’t be charged.";
+
+/** THE cancel-scheduled sentence (#146), chosen by the existing trialing flag so
+ *  every surface (the /account billing card, the layout's CancelScheduledNote,
+ *  the trial banner's tail) is true in both states: a trial was never charged
+ *  ("You won’t be charged."); a paid subscription was ("…charged again."). The
+ *  word is always "subscription" — "plan" means the study plan in Navo.
+ *  `endsOn` is the already-formatted date; null falls back to words. */
+export function cancelScheduledText({ trialing, endsOn }: { trialing: boolean; endsOn: string | null }): string {
+  return trialing
+    ? `Your trial ends ${endsOn ?? "when your free days run out"}. ${NO_CHARGE_IN_TRIAL}`
+    : `Your subscription ends ${endsOn ?? "at the end of this billing period"}. You won’t be charged again.`;
 }

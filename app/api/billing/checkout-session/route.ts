@@ -23,6 +23,6 @@ export async function POST() {
     return NextResponse.json({ clientSecret, sessionId });
   } catch (e) {
     console.error("checkout-session failed", e);
-    return NextResponse.json({ error: "Couldn't start checkout. Try again in a moment." }, { status: 500 });
+    return NextResponse.json({ error: "Couldn’t start checkout. Try again in a moment." }, { status: 500 });
   }
 }

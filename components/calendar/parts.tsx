@@ -20,6 +20,7 @@ import type { CalendarItem } from "@/lib/calendarData";
 import type { CalendarEvent } from "@/lib/calendar/types";
 import type { AtRiskItem, DayBlock } from "@/lib/scheduler";
 import { isStudySessionBlock } from "@/lib/studyWeek";
+import { NETWORK_ERROR } from "@/lib/messages";
 import type { ScoredAssignment } from "@/lib/priority";
 
 export const ICON = {
@@ -192,7 +193,7 @@ export function ItemDetail({ item, onClose, todayYmd, timeZone }: { item: Calend
           )}
           {item.htmlUrl && (
             <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary tap flex-1">
-              Open in Canvas ↗
+              Open in Canvas
             </a>
           )}
         </div>
@@ -238,7 +239,7 @@ export function ItemDetail({ item, onClose, todayYmd, timeZone }: { item: Calend
             )}
             {item.htmlUrl && (
               <a href={item.htmlUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm">
-                Open in Canvas ↗
+                Open in Canvas
               </a>
             )}
           </div>
@@ -303,10 +304,10 @@ export function StudyLeadEditor({ item }: { item: CalendarItem }) {
         router.refresh();
       } else {
         const b = await res.json().catch(() => ({}));
-        setErr(typeof b.error === "string" ? b.error : "Couldn't save.");
+        setErr(typeof b.error === "string" ? b.error : "Couldn’t save.");
       }
     } catch {
-      setErr("Couldn't save.");
+      setErr(NETWORK_ERROR);
     }
     setBusy(false);
   }
@@ -393,10 +394,10 @@ export function EffortEditor({ canvasId, estimate, override }: { canvasId: numbe
         router.refresh(); // re-plan + re-render with the new effort
       } else {
         const b = await res.json().catch(() => ({}));
-        setErr(typeof b.error === "string" ? b.error : "Couldn't save — try again.");
+        setErr(typeof b.error === "string" ? b.error : "Couldn’t save — try again.");
       }
     } catch {
-      setErr("Couldn't save — check your connection.");
+      setErr(NETWORK_ERROR);
     } finally {
       setBusy(false);
     }
@@ -534,7 +535,7 @@ export function DayPeek({
               }}
               className="btn-ghost tap w-full"
             >
-              Open full day view →
+              Open full day view
             </button>
           ) : undefined
         }
@@ -597,7 +598,7 @@ export function DayPeek({
             }}
             className="btn-ghost w-full text-sm"
           >
-            Open full day view →
+            Open full day view
           </button>
         ) : undefined
       }
@@ -693,7 +694,7 @@ export function RecommendedOrder({ recs }: { recs: ScoredAssignment[] }) {
   return (
     <div className="card p-4">
       <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
-        <Glyph d={ICON.list} size={14} /> Do in this order
+        <Glyph d={ICON.list} size={14} /> Focus order
       </h2>
       <ol className="mt-2.5 space-y-1.5">
         {recs.map((r, i) => (
@@ -907,15 +908,15 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={open && !phone ? popId : undefined}
-        aria-label={`This week is over your study budget by about ${n} hours`}
+        aria-label={`This week is about ${n} ${n === 1 ? "hour" : "hours"} over your study budget`}
         className={`relative inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] md:after:hidden ${toneSoft.warning}`}
       >
         <Glyph d={ICON.clock} size={13} /> ~{n}h over this week
       </button>
       {open && phone && (
         <Sheet open onClose={() => setOpen(false)} title={`~${n}h over this week`}>
-          <p className="text-[15px] font-medium text-ink">This week needs ~{n}h more than you&apos;ve set aside.</p>
-          <p className="mt-1 text-[14px] text-muted">Raise your daily study time, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
+          <p className="text-[15px] font-medium text-ink">This week needs ~{n}h more than you’ve set aside.</p>
+          <p className="mt-1 text-[14px] text-muted">Raise your daily study time, start a deadline’s prep earlier, or trim lower-priority work.</p>
           <div className="mt-4 flex gap-3">
             <Link href="/settings" className="btn-primary tap flex-1" onClick={() => setOpen(false)}>
               Adjust daily hours
@@ -928,11 +929,11 @@ export function LoadHint({ overloadHours, weekKey }: { overloadHours: number; we
       )}
       {open && !phone && (
         <div id={popId} className="absolute right-0 z-30 mt-1.5 w-64 rounded-lg border border-warning/30 bg-warning-soft/40 px-3 py-2 text-xs shadow-md">
-          <p className="font-medium text-ink">This week needs ~{n}h more than you&apos;ve set aside.</p>
-          <p className="mt-0.5 text-muted">Raise your daily study time, start a deadline&apos;s prep earlier, or trim lower-priority work.</p>
+          <p className="font-medium text-ink">This week needs ~{n}h more than you’ve set aside.</p>
+          <p className="mt-0.5 text-muted">Raise your daily study time, start a deadline’s prep earlier, or trim lower-priority work.</p>
           <div className="mt-1.5 flex items-center gap-2">
             <Link href="/settings" className="font-medium text-accent hover:underline" onClick={() => setOpen(false)}>
-              Adjust daily hours →
+              Adjust daily hours
             </Link>
             <button onClick={dismiss} className="btn-ghost text-xs">
               Got it

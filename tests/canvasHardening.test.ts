@@ -319,7 +319,7 @@ describe("runSync full mode under throttling / budget", () => {
     ]);
     const r = await runSync(1, { mode: "full" });
     expect(r).toMatchObject({ ok: true, status: "valid", mode: "full", failedCourses: ["Micro"] });
-    expect(r.message).toBe("Synced with warnings: couldn't refresh 1 course(s). Cached data kept.");
+    expect(r.message).toBe("Checked Canvas with warnings: couldn’t refresh 1 course. Cached data kept.");
     expect(r.syncedAt).not.toBe(PREV.toISOString());
     expect(assignmentUpsert).toHaveBeenCalledTimes(1);
     // credential writes: step-1 "valid", then syncedAt — NEVER a throttled/insufficient_scope demotion
@@ -416,7 +416,7 @@ describe("runSync full mode under throttling / budget", () => {
     // budgetMs: -1 → "elapsed > budget" from the first check; course 0 always runs
     const r = await runSync(1, { mode: "full", budgetMs: -1 });
     expect(r).toMatchObject({ ok: true, status: "valid", failedCourses: ["Finance", "History"], outOfTime: ["Finance", "History"] });
-    expect(r.message).toBe("Synced with warnings: couldn't refresh 2 course(s) (2 ran out of time). Cached data kept.");
+    expect(r.message).toBe("Checked Canvas with warnings: couldn’t refresh 2 courses (2 ran out of time). Cached data kept.");
     expect(r.syncedAt).not.toBe(PREV.toISOString());
     expect(courseUpsert).toHaveBeenCalledTimes(1);
     expect(courseUpsert.mock.calls[0][0].where).toEqual({ userId_canvasId: { userId: 1, canvasId: 101 } });
@@ -430,7 +430,7 @@ describe("runSync full mode under throttling / budget", () => {
       [/\/courses\?/, () => json([course(101, "Micro"), course(102, "Finance"), course(103, "History")])],
     ]);
     const r = await runSync(1, { mode: "full" }); // default 45s budget; Date.now is frozen → elapsed 0
-    expect(r).toMatchObject({ ok: true, message: "Sync complete.", failedCourses: [] });
+    expect(r).toMatchObject({ ok: true, message: "Canvas check complete.", failedCourses: [] });
     expect(r.outOfTime).toBeUndefined();
     expect(courseUpsert).toHaveBeenCalledTimes(3);
   });
@@ -456,7 +456,7 @@ describe("runSync full mode under throttling / budget", () => {
     ]);
     const r = await runSync(1, { mode: "full" });
     expect(r).toMatchObject({ ok: true, skippedNonStudent: 2, failedCourses: [] });
-    expect(r.message).toBe("Sync complete. Skipped 2 non-student course(s).");
+    expect(r.message).toBe("Canvas check complete. Skipped 2 courses where you’re not a student.");
     expect(courseUpsert).toHaveBeenCalledTimes(1);
     expect(courseUpsert.mock.calls[0][0].where.userId_canvasId.canvasId).toBe(101);
   });
@@ -534,7 +534,7 @@ describe("runSync quick mode under throttling / budget", () => {
     expect(r).toMatchObject({ ok: true, status: "valid", syncedAt: PREV.toISOString() });
     expect(r.failedCourses).toEqual(["C102", "C103", "C104", "C105", "C106"]);
     expect(r.outOfTime).toEqual(r.failedCourses);
-    expect(r.message).toBe("Synced with warnings: couldn't refresh 5 course(s) (5 ran out of time). Cached data kept.");
+    expect(r.message).toBe("Checked Canvas with warnings: couldn’t refresh 5 courses (5 ran out of time). Cached data kept.");
     expect(fetchMock.mock.calls.filter((c) => /assignments/.test(String(c[0])))).toHaveLength(1);
     expect(credUpdate).toHaveBeenCalledTimes(1);
   });

@@ -21,7 +21,7 @@
 
 /** The toast copy for the two states a held row can be in. */
 export const DONE_MESSAGE = "Marked as done";
-export const UNDO_FAILED_MESSAGE = "Couldn't undo — try again";
+export const UNDO_FAILED_MESSAGE = "Couldn’t undo — try again";
 
 export type PendingRow<T> = { item: T; settled: boolean; message: string };
 export type PendingMap<T> = ReadonlyMap<number, PendingRow<T>>;

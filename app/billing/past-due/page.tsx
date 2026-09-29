@@ -42,19 +42,19 @@ export default async function PastDuePage({ searchParams }: { searchParams: Prom
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-[13px] font-semibold uppercase tracking-wider text-muted">Billing</p>
-      <h1 className="mt-2 text-[26px] font-bold tracking-tight text-ink">Your payment didn&apos;t go through</h1>
+      <h1 className="mt-2 text-[26px] font-bold tracking-tight text-ink">Your payment didn’t go through</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
-        We tried to charge the card on file and it didn&apos;t work — that happens with expired or replaced cards. Your plan is
+        We tried to charge the card on file and it didn’t work — that happens with expired or replaced cards. Your Navo access is
         paused until the card is updated. <span className="font-medium text-ink">Nothing is deleted</span>: your Canvas
         connection, plans, and notes are all waiting for you.
       </p>
       {fromPortal && (
-        <p className="mt-4 text-[14px] text-muted">Card updated? Stripe may take a minute to retry the charge — this page will let you back in as soon as it clears.</p>
+        <p className="mt-4 text-[14px] text-muted">Card updated? This page lets you back in as soon as the charge clears.</p>
       )}
       <div className="card mt-6 p-5 sm:p-6">
         <UpdatePaymentButton />
         <p className="mt-4 text-[14px] text-muted">
-          You&apos;ll be taken to a secure Stripe page to update your card, then brought straight back here.
+          You’ll be taken to a secure Stripe page to update your card, then brought straight back here.
         </p>
       </div>
       <p className="mt-6 text-[14px] text-muted">

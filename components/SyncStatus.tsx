@@ -22,6 +22,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { LocalRelativeTime } from "@/components/LocalRelativeTime";
 import { MOUNT_FRESH_MS } from "@/lib/syncPolicy";
+import { CANVAS_CHECK_FAILED } from "@/lib/messages";
 
 export type SyncState = "syncing" | "error" | "not_connected" | "never" | "reconnect" | "fresh" | "aging";
 
@@ -53,7 +54,7 @@ export function syncStateText(state: SyncState, warning: string | null): string 
     case "syncing":
       return "Checking Canvas…";
     case "error":
-      return warning ?? "Couldn’t reach Canvas just now — showing the last good data.";
+      return warning ?? CANVAS_CHECK_FAILED;
     case "not_connected":
       return "Canvas isn’t connected";
     case "never":
@@ -83,7 +84,7 @@ const DOT: Record<SyncState, string> = {
 };
 
 /** `onRetry` powers the error state's "Try again" button (and, with `manual`,
- *  a quiet "Check now" button in the calm states — the Calendar header). */
+ *  a quiet "Check Canvas now" button in the calm states — the Calendar header). */
 export function SyncStatus({
   inputs,
   onRetry,
@@ -129,7 +130,7 @@ export function SyncStatus({
       </p>
       {check && (
         <button type="button" onClick={onRetry} disabled={state === "syncing"} className="btn-ghost max-md:tap text-sm disabled:opacity-50">
-          Check now
+          Check Canvas now
         </button>
       )}
     </div>

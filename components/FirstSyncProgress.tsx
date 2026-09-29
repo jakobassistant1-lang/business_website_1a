@@ -9,6 +9,7 @@
 // errors don't block (the plan renders with defaults — fail-open by design).
 import { useEffect, useRef, useState } from "react";
 import { MAX_ANALYZE_ROUNDS, shouldContinue, type AnalyzeRoundResponse } from "@/lib/analysisLoop";
+import { CANVAS_CHECK_FAILED, canvasCheckFailed } from "@/lib/messages";
 
 type Stage = "sync" | "analyze" | "plan";
 const LABELS: Record<Stage, string> = {
@@ -40,7 +41,10 @@ export function FirstSyncProgress() {
         const sync = await fetch("/api/sync", { method: "POST" }).then((r) => r.json());
         if (cancelled) return;
         if (!sync?.ok) {
-          setError(sync?.message ?? "We couldn't reach your school's Canvas. Check the token and try again.");
+          // This IS the first Canvas check, so there is no "last good data" to
+          // fall back on: the later-check wording is swapped for the first-check one.
+          const msg = typeof sync?.message === "string" ? sync.message : null;
+          setError(!msg || msg === CANVAS_CHECK_FAILED ? canvasCheckFailed(false) : msg);
           running.current = false;
           return;
         }
@@ -58,7 +62,7 @@ export function FirstSyncProgress() {
         window.location.href = "/dashboard?welcome=1";
       } catch {
         if (!cancelled) {
-          setError("Something interrupted the first sync. Your connection is saved — retry when ready.");
+          setError("Something interrupted the first Canvas check. Your connection is saved — try again when you’re ready.");
           running.current = false;
         }
       }
@@ -90,7 +94,7 @@ export function FirstSyncProgress() {
               Try again
             </button>
             <a href="/dashboard" className="font-medium underline-offset-2 hover:underline">
-              Go to your plan anyway →
+              Go to your dashboard anyway
             </a>
           </div>
         </div>

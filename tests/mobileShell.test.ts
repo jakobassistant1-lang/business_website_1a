@@ -30,8 +30,8 @@ describe("pageTitle (phone top bar)", () => {
     ["/plan", "Plan"],
     ["/study", "Study"],
     ["/study/123", "Study"],
-    ["/courses", "Classes"],
-    ["/class/9", "Class"],
+    ["/courses", "Courses"],
+    ["/class/9", "Course"],
     ["/assignment/42", "Assignment"],
     ["/connections", "Connections"],
     ["/settings", "Settings"],
@@ -55,7 +55,7 @@ describe("activeTabHref (which tab lights up)", () => {
     ["/study", "/study"],
     ["/study/7", "/study"],
     ["/courses", "/courses"],
-    ["/class/3", "/courses"], // class page belongs to Classes
+    ["/class/3", "/courses"], // course page belongs to Courses
   ])("%s → %s", (path, href) => {
     expect(activeTabHref(path)).toBe(href);
   });
@@ -72,7 +72,7 @@ describe("navItems — the ONE nav list", () => {
   it("the first four entries are the phone tab destinations, in order", () => {
     expect(navItems.slice(0, 4).map((i) => i.href)).toEqual(["/dashboard", "/plan", "/study", "/courses"]);
     expect(TAB_ITEMS.map((i) => i.href)).toEqual(navItems.slice(0, 4).map((i) => i.href));
-    expect(TAB_ITEMS.map((i) => i.tabLabel)).toEqual(["Dashboard", "Plan", "Study", "Classes"]);
+    expect(TAB_ITEMS.map((i) => i.tabLabel)).toEqual(["Dashboard", "Plan", "Study", "Courses"]);
   });
   it("every item's icon key exists in NAV_ICONS", () => {
     for (const i of [...navItems, ...setupItems]) expect(NAV_ICONS[i.icon]).toBeTypeOf("string");

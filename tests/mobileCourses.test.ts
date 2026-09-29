@@ -1,4 +1,4 @@
-// Task E: on phones the Classes page is a swipeable one-card carousel with
+// Task E: on phones the Courses page is a swipeable one-card carousel with
 // Instagram-style dots; md+ keeps the grid. Unit tests for the pure centring
 // maths in lib/carousel.ts, plus grep guards so the phone/desktop split (both
 // rendered, CSS choosing — no JS width branch) and the carousel affordances
@@ -40,10 +40,10 @@ describe("nearestIndex (which slide is centred)", () => {
 });
 
 describe("dotLabel", () => {
-  it("is 1-based 'Class N of M'", () => {
-    expect(dotLabel(0, 5)).toBe("Class 1 of 5");
-    expect(dotLabel(4, 5)).toBe("Class 5 of 5");
-    expect(dotLabel(0, 1)).toBe("Class 1 of 1");
+  it("is 1-based 'Course N of M'", () => {
+    expect(dotLabel(0, 5)).toBe("Course 1 of 5");
+    expect(dotLabel(4, 5)).toBe("Course 5 of 5");
+    expect(dotLabel(0, 1)).toBe("Course 1 of 1");
   });
 });
 
@@ -77,7 +77,7 @@ describe("CourseCarousel affordances", () => {
     expect(src).toContain("motion-reduce:transition-none");
     expect(src).toContain("motion-reduce:scroll-auto");
   });
-  it("dots: tap-sized buttons, accent when active, labelled Class N of M", () => {
+  it("dots: tap-sized buttons, accent when active, labelled Course N of M", () => {
     expect(src).toMatch(/<button[\s\S]*?aria-label=\{dotLabel\(i, n\)\}/);
     expect(src).toMatch(/className="tap\b/);
     expect(src).toContain('"bg-accent"');

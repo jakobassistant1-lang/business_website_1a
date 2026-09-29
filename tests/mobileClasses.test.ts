@@ -1,4 +1,4 @@
-// Ticket #39 (M3): Classes, class page, grade calculator, assignment page and
+// Ticket #39 (M3): Courses, course page, grade calculator, assignment page and
 // Study on phones. Grep guards so the phone affordances (thumb-zone action bar,
 // overflow-safe Canvas brief, wrapping grade rows, scrolling study tabs, notes
 // sheets) can't be quietly undone. The checks look at the class TOKENS on the
@@ -183,7 +183,7 @@ describe("NotesSection (sheets on phones)", () => {
   });
 });
 
-describe("Classes (course menu, grid, class page)", () => {
+describe("Courses (course menu, grid, course page)", () => {
   it("the course kebab is a 44px target and becomes a Sheet on phones", () => {
     const src = read("components/CourseExclude.tsx");
     expect(hasTap(openingTag(src, 'aria-label="Course options"'))).toBe(true);

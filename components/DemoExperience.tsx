@@ -208,7 +208,7 @@ export function DemoExperience({ data, todayYmd: todayProp, firstName, studyAsse
             ...(place.align ? { align: place.align } : {}),
             ...(last
               ? {
-                  nextBtnText: isLastView ? "Finish ✓" : `Next: ${nextLabel} →`,
+                  nextBtnText: isLastView ? "Finish ✓" : `Next: ${nextLabel}`,
                   onNextClick: () => {
                     destroyTour();
                     advanceView();
@@ -244,7 +244,7 @@ export function DemoExperience({ data, todayYmd: todayProp, firstName, studyAsse
         disableActiveInteraction: true,
         showProgress: present.length > 1,
         allowClose: true,
-        nextBtnText: "Next →",
+        nextBtnText: "Next",
         prevBtnText: "← Back",
         doneBtnText: "Finish ✓",
         progressText: "{{current}} of {{total}}",
@@ -266,7 +266,7 @@ export function DemoExperience({ data, todayYmd: todayProp, firstName, studyAsse
             const skip = document.createElement("button");
             skip.type = "button";
             skip.className = "sp-demo-explore";
-            skip.textContent = "Skip — explore on my own →";
+            skip.textContent = "Skip — explore on my own";
             skip.addEventListener("click", () => {
               destroyTour();
               setPhase("exploring");
@@ -420,7 +420,7 @@ export function DemoExperience({ data, todayYmd: todayProp, firstName, studyAsse
             disabled={ending}
             className="demo-control group rounded-md text-xs font-semibold text-accent-on disabled:opacity-60 max-md:tap max-md:inline-flex max-md:items-center max-md:justify-center"
           >
-            <span className="block rounded-md px-2.5 py-1 transition-colors group-hover:bg-white/15">Exit demo →</span>
+            <span className="block rounded-md px-2.5 py-1 transition-colors group-hover:bg-white/15">Exit demo</span>
           </button>
         </div>
       </header>
@@ -541,7 +541,7 @@ export function DemoExperience({ data, todayYmd: todayProp, firstName, studyAsse
                 Explore on my own
               </button>
               <button type="button" onClick={startTour} autoFocus className="demo-control btn-primary">
-                Take the 30-sec tour →
+                Take the 2-minute tour
               </button>
             </div>
           </div>
@@ -581,7 +581,7 @@ export function DemoExperience({ data, todayYmd: todayProp, firstName, studyAsse
                 ↻ Replay tour
               </button>
               <button type="button" onClick={endDemo} disabled={ending} autoFocus className="demo-control btn-primary">
-                {ending ? "Loading…" : "Connect Canvas →"}
+                {ending ? "Loading…" : "Connect Canvas"}
               </button>
             </div>
             <button

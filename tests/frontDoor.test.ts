@@ -159,6 +159,7 @@ describe("single source: the network-error line", () => {
     "components/AccountForm.tsx",
     "components/ConnectionsForm.tsx",
     "components/StudyTools.tsx",
+    "components/NotesSection.tsx",
   ])("%s imports NETWORK_ERROR from lib/messages instead of typing it", (f) => {
     const src = read(f);
     expect(src).toMatch(/import \{[^}]*\bNETWORK_ERROR\b[^}]*\} from "@\/lib\/messages"/);
@@ -237,7 +238,7 @@ describe("7 · student copy, not developer copy", () => {
   });
   it("Google Calendar's unavailable state has one wording", () => {
     const g = read("components/GoogleCalendarCard.tsx");
-    expect(g).toContain(`const UNAVAILABLE = "Google Calendar sync isn't available yet."`);
+    expect(g).toContain(`const UNAVAILABLE = "Google Calendar isn’t available in Navo yet."`);
     expect((g.match(/\bUNAVAILABLE\b/g) ?? []).length).toBe(3);
   });
 });

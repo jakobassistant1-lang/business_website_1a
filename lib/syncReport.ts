@@ -71,12 +71,12 @@ export function reasonText(reason: SyncReportReason): string {
     case "insufficient_scope":
       return messageFor(reason);
     case "out_of_time":
-      return "Didn't finish this time. It'll refresh on the next sync.";
+      return "Ran out of time. Navo checks it again next time.";
     case "restricted":
-      return "Canvas hides this class's assignments.";
+      return "Canvas hides this course’s assignments.";
     case "error":
     default:
-      return "Couldn't refresh this class. It'll retry on the next sync.";
+      return "Couldn’t check this course. Navo tries again next time.";
   }
 }
 
@@ -90,7 +90,7 @@ const CANVAS_STATUSES: readonly CanvasStatus[] = ["valid", "invalid_token", "bad
 export function runSummary(report: Pick<SyncReport, "ok" | "status" | "courses">): { text: string; reason: SyncReportReason } | null {
   if (report.ok) return null;
   if (report.courses.length > 0 && report.courses.every((c) => !c.ok && c.reason === "restricted")) {
-    return { text: "Canvas hides the assignments for all of these classes — they may have ended.", reason: "restricted" };
+    return { text: "Canvas hides the assignments for all of these courses.", reason: "restricted" };
   }
   const status = (CANVAS_STATUSES as readonly string[]).includes(report.status) ? (report.status as CanvasStatus) : "error";
   return { text: messageFor(status), reason: reasonForStatus(status) };
@@ -107,7 +107,7 @@ export function courseLine(c: SyncReportCourse): string {
  *  footer. Null when there are none. */
 export function skippedNonStudentText(n: number): string | null {
   if (!(n > 0)) return null;
-  return `Skipped ${n} non-student course(s).`;
+  return n === 1 ? "Skipped 1 course where you’re not a student." : `Skipped ${n} courses where you’re not a student.`;
 }
 
 export function buildSyncReport(input: {

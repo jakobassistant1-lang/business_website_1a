@@ -93,7 +93,7 @@ const ROWS: DemoRow[] = [
   { canvasId: 10, name: "Research Paper", courseName: COURSE.history, submissionType: "online_upload", dueOffsetDays: 6, pointsPossible: 120, estimatedEffortHours: 4, effortBucket: "long", summary: "8–10 pages with a works-cited page.", groupId: 2031, groupName: "Essays", groupWeight: 60 },
   { canvasId: 17, name: "Reading Response 1", courseName: COURSE.history, submissionType: "discussion_topic", dueOffsetDays: -9, pointsPossible: 15, done: true, score: 14, groupId: 2032, groupName: "Responses", groupWeight: 40, summary: "Chapter 1 reaction — graded." },
   // Literature — points-based (no category weights), nothing graded yet
-  { canvasId: 7, name: "Discussion Post", courseName: COURSE.english, submissionType: "discussion_topic", dueOffsetDays: 4, dueHour: 23, pointsPossible: 20, summary: "Post a short reaction to this week's reading, then reply to at least one classmate before midnight." },
+  { canvasId: 7, name: "Discussion Post", courseName: COURSE.english, submissionType: "discussion_topic", dueOffsetDays: 4, dueHour: 23, pointsPossible: 20, summary: "Post a short reaction to this week’s reading, then reply to at least one classmate before midnight." },
   { canvasId: 8, name: "Vocabulary Quiz", courseName: COURSE.english, submissionType: "online_quiz", dueOffsetDays: 5, pointsPossible: 20, studyLeadDays: 2 },
   { canvasId: 11, name: "Participation", courseName: COURSE.english, submissionType: "none", requiresAction: false, dueOffsetDays: null, pointsPossible: 30, summary: "Stay engaged in lectures: ask questions and join discussions. Graded on your contributions across the term." },
 ];

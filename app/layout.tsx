@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "Navo",
-  description: "Turn what's due into what to do today.",
+  description: "Turn what’s due into what to do today.",
   // Home-screen install (#39): manifest + iOS standalone hints + touch icon.
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Navo", statusBarStyle: "default" },

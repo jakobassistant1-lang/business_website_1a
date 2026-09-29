@@ -78,7 +78,7 @@ N=6 → 0.12 / 0.20 / 0.24 / 0.20 / 0.14 / 0.10
 
 ## 6. Budgeting
 
-- **Inflate every effort/study estimate ×1.2** (planning-fallacy correction) before scheduling. This same inflated estimate should feed the prioritizer's effort term for consistency. *(Per-user calibration of the multiplier = future.)*
+- **Pad every AI effort/study estimate by 10%, once, at the source** (planning-fallacy correction; `EFFORT_PADDING` = 1.1 in `lib/effort.ts`, owner 2026-09). A number the student typed is used as typed. Nothing downstream pads again, so the scheduler, the prioritizer's effort term and the `~Nh` tag all read the same padded number. *(Was ×1.2 in this spec's first draft. Per-user calibration of the multiplier = future.)*
 - **Schedule to 90% of the daily budget** (`User.defaultHoursPerDay`) — leaving ~10% headroom for overruns/catch-up.
 
 ---
@@ -123,11 +123,11 @@ When several assessments' (and deliverables') ideal sessions exceed available ti
 
 ## 10. Integration points
 
-- **`lib/scheduler.ts` (`generatePlan`)** — replace the continuous `studyLeadDays` window with the **discrete spaced-session expansion** (§4); add the ×1.2 inflation + 90% headroom (§6); add the contention/grade-allocation layer (§8). Keep EDF + slack mechanics.
+- **`lib/scheduler.ts` (`generatePlan`)** — replace the continuous `studyLeadDays` window with the **discrete spaced-session expansion** (§4); consume the already-padded effort (10%, `lib/effort.ts`) + 90% headroom (§6); add the contention/grade-allocation layer (§8). Keep EDF + slack mechanics.
 - **`lib/itemType.ts`** — add midterm/final detection for the 14-day tier (§3).
 - **`prisma/schema.prisma`** — add `User.studyDaysFinal` (default 14).
 - **`lib/calendarData.ts`** — thread the assessment type + `Course.currentScore` (already synced) + inflated effort into the scheduler; expose the generated sessions to the UI.
-- **`lib/marginalPriority.ts`** — reused as the contention currency (no change); its effort term consumes the ×1.2 estimate for consistency.
+- **`lib/marginalPriority.ts`** — reused as the contention currency (no change); its effort term consumes the same once-padded (10%) estimate for consistency.
 
 ---
 
@@ -155,4 +155,4 @@ And a **contention test**: two overlapping exams, one in an A-class and one in a
 
 ## 13. Tuning knobs
 
-Lead caps (14/7/3) · type minimums (4/3/2) · `MAX_BLOCK` (1h) · `MAX_SESSIONS` (~12) · bell-weight vectors · inflation (1.2×) · daily headroom (90%) · the contention allocation/compression order. Calibrate against the sample week + the contention test, same as the priority constants.
+Lead caps (14/7/3) · type minimums (4/3/2) · `MAX_BLOCK` (1h) · `MAX_SESSIONS` (~12) · bell-weight vectors · effort padding (1.1×, `EFFORT_PADDING`) · daily headroom (90%) · the contention allocation/compression order. Calibrate against the sample week + the contention test, same as the priority constants.

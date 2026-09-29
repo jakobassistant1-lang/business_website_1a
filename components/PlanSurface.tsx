@@ -219,7 +219,7 @@ function PlanList({ data, todayYmd, zone, focusOrder, demo = false }: { data: Ca
   const { groups, toDo, pastDue, counts, focusId } = planListView({ items: data.items, ranked: order.ranked, focusOrder: order.focusOrder, pending });
 
   if (groups.length === 0) {
-    return <div className="card p-10 text-center text-[16px] text-muted">Nothing on your plate — you&rsquo;re all caught up.</div>;
+    return <div className="card p-10 text-center text-[16px] text-muted">All caught up. Nothing on your plate.</div>;
   }
 
   return (

@@ -25,7 +25,7 @@ const vCred = prisma.canvasCredential.findUnique as unknown as Fn;
 const vRun = runSync as unknown as Fn;
 const vLog = logFirst as unknown as Fn;
 
-const OK = { ok: true, status: "valid", message: "Sync complete.", syncedAt: null, failedCourses: [], mode: "full" };
+const OK = { ok: true, status: "valid", message: "Canvas check complete.", syncedAt: null, failedCourses: [], mode: "full" };
 let uid = 5000; // fresh user per test → the route's module-scope maps start empty
 const post = (trigger = "manual") => POST(new Request("http://x/api/sync", { method: "POST", body: JSON.stringify({ trigger }) }));
 const runAfterTasks = () => Promise.all(afterTasks.splice(0).map((t) => t()));

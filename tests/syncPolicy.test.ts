@@ -34,6 +34,7 @@ import { validateCredentials, fetchCourses, fetchAssignments, fetchAnnouncements
 import { runSync, quickAssignmentData, QUICK_LIVE_WINDOW_MS } from "@/lib/sync";
 import { syncDecision, parseTrigger, MOUNT_FRESH_MS } from "@/lib/syncPolicy";
 import { fetchAssignmentGroups, fetchSyllabus } from "@/lib/canvas";
+import { CANVAS_CHECK_FAILED } from "@/lib/messages";
 
 type Fn = ReturnType<typeof vi.fn>;
 const credFind = prisma.canvasCredential.findUnique as unknown as Fn;
@@ -166,7 +167,7 @@ describe("runSync quick mode", () => {
     const r = await runSync(1, { mode: "quick" });
     expect(r.ok).toBe(true);
     expect(r.failedCourses).toEqual(["Micro"]);
-    expect(r.message).toBe("Synced with warnings: couldn't refresh 1 course(s). Cached data kept.");
+    expect(r.message).toBe("Checked Canvas with warnings: couldn’t refresh 1 course. Cached data kept.");
     expect(assignmentUpsert).toHaveBeenCalledTimes(1);
   });
 
@@ -190,7 +191,7 @@ describe("runSync quick mode", () => {
     const r = await runSync(1, { mode: "quick" });
     expect(r.ok).toBe(false);
     expect(r.status).toBe("unreachable");
-    expect(r.message).toBe("Couldn't refresh any courses right now. Showing cached data.");
+    expect(r.message).toBe(CANVAS_CHECK_FAILED);
     expect(r.failedCourses).toEqual(["Micro", "Finance"]);
     expect(r.syncedAt).toBe(PREV.toISOString());
     // the ONLY credential write in quick mode is step 1's validation result
@@ -305,7 +306,7 @@ describe("runSync full mode (write shape pinned)", () => {
       },
     ]);
     const r = await runSync(1); // default = full
-    expect(r).toMatchObject({ ok: true, mode: "full", message: "Sync complete." });
+    expect(r).toMatchObject({ ok: true, mode: "full", message: "Canvas check complete." });
     expect(vCourses).toHaveBeenCalledTimes(1);
     expect(assignmentUpsert).toHaveBeenCalledTimes(1);
     const arg = assignmentUpsert.mock.calls[0][0];

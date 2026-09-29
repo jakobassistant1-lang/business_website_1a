@@ -59,7 +59,7 @@ describe("skip response", () => {
   });
   it("no body → manual → full run even when fresh", async () => {
     vCred.mockResolvedValue({ syncedAt: new Date(), lastValidationStatus: "valid" });
-    vRun.mockResolvedValue({ ok: true, status: "valid", message: "Sync complete.", syncedAt: null, failedCourses: [], mode: "full" });
+    vRun.mockResolvedValue({ ok: true, status: "valid", message: "Canvas check complete.", syncedAt: null, failedCourses: [], mode: "full" });
     const body = await (await post(undefined)).json();
     expect(vRun).toHaveBeenCalledWith(nextUserId, { mode: "full" });
     expect(body.mode).toBe("full");
@@ -82,7 +82,7 @@ describe("in-flight coalescing", () => {
     const p2 = post({ trigger: "manual" });
     await new Promise((r) => setTimeout(r, 0));
     expect(vRun).toHaveBeenCalledTimes(1);
-    resolve({ ok: true, status: "valid", message: "Sync complete.", syncedAt: "x", failedCourses: [], mode: "full" });
+    resolve({ ok: true, status: "valid", message: "Canvas check complete.", syncedAt: "x", failedCourses: [], mode: "full" });
     const [b1, b2] = await Promise.all([p1.then((r) => r.json()), p2.then((r) => r.json())]);
     expect(b1.skipped).toBeUndefined();
     expect(b2.skipped).toBe("in_flight");
@@ -92,7 +92,7 @@ describe("in-flight coalescing", () => {
     vCred.mockResolvedValue({ syncedAt: stale, lastValidationStatus: "valid" });
     let resolveQuick!: (r: unknown) => void;
     vRun.mockReturnValueOnce(new Promise((r) => (resolveQuick = r)));
-    vRun.mockResolvedValueOnce({ ok: true, status: "valid", message: "Sync complete.", syncedAt: "y", failedCourses: [], mode: "full" });
+    vRun.mockResolvedValueOnce({ ok: true, status: "valid", message: "Canvas check complete.", syncedAt: "y", failedCourses: [], mode: "full" });
     const pq = post({ trigger: "focus" });
     await new Promise((r) => setTimeout(r, 0));
     const bf = await (await post({ trigger: "manual" })).json();
@@ -151,7 +151,7 @@ describe("in-flight coalescing", () => {
       expect(body).toMatchObject({ ok: false, status: "unreachable", message: "Canvas is taking longer than usual — showing the last good data.", skipped: "timeout" });
       // 56s later the entry is stale: a new request replaces it instead of hanging
       await vi.advanceTimersByTimeAsync(6_000);
-      vRun.mockResolvedValueOnce({ ok: true, status: "valid", message: "Sync complete.", syncedAt: "z", failedCourses: [], mode: "full" });
+      vRun.mockResolvedValueOnce({ ok: true, status: "valid", message: "Canvas check complete.", syncedAt: "z", failedCourses: [], mode: "full" });
       const p2 = post({ trigger: "manual" });
       await vi.advanceTimersByTimeAsync(0);
       expect(vRun).toHaveBeenCalledTimes(2);

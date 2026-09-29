@@ -15,12 +15,13 @@ import { syncDecision, type SyncTrigger } from "@/lib/syncPolicy";
 // so nothing server-side (node crypto, prisma, the Gemini fetch) reaches the bundle.
 import { MAX_ANALYZE_ROUNDS, shouldContinue, type AnalyzeRoundResponse } from "@/lib/analysisLoop";
 import type { SyncInputs } from "@/components/SyncStatus";
+import { CANVAS_CHECK_FAILED } from "@/lib/messages";
 
 /** A tab hidden/unfocused for at least this long asks for a quick refresh when
  *  it comes back (long enough to have submitted something in Canvas). */
 const FOCUS_AFTER_HIDDEN_MS = 60_000;
 
-const UNREACHABLE = "Couldn't reach Canvas just now — showing the last good data.";
+const UNREACHABLE = CANVAS_CHECK_FAILED;
 
 /** Breather between drain rounds so a big backlog doesn't hammer the AI route. */
 const ANALYZE_ROUND_PAUSE_MS = 300;
@@ -125,7 +126,7 @@ export function useAutoSync(opts: {
         if (body.ok === false) {
           setWarning(typeof body.message === "string" ? body.message : UNREACHABLE);
         } else if (failed > 0) {
-          setWarning(`Couldn't refresh ${failed} ${failed === 1 ? "course" : "courses"} from Canvas — showing the last good data.`);
+          setWarning(`Couldn’t check ${failed} ${failed === 1 ? "course" : "courses"} in Canvas — showing the last good data.`);
         } else {
           setWarning(null);
         }

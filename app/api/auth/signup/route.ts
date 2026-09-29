@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   const errors: Record<string, string> = {};
   if (role === "admin") {
     const code = signupInviteCode();
-    if (!code) return NextResponse.json({ error: "Admin sign-up isn't enabled." }, { status: 403 });
+    if (!code) return NextResponse.json({ error: "Admin sign-up isn’t enabled." }, { status: 403 });
     if (inviteCode !== code) errors.inviteCode = "Invalid invite code.";
   }
   if (!EMAIL_RE.test(email)) errors.email = "Enter a valid email address.";

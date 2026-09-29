@@ -146,8 +146,10 @@ export type BriefingResult =
 /** Compact, deterministic data summary handed to the model (unit-tested). */
 export function buildPrompt(input: BriefingInput): string {
   const lines: string[] = [];
-  // plan.atRisk holds past-due AND won't-fit items, so it is labelled "at risk".
-  lines.push(`Window: ${input.windowDays} days. Due in window: ${input.inWindowDueCount}. At risk (past due or not fitting the schedule): ${input.atRiskCount}.`);
+  // plan.atRisk mixes past-due AND won't-fit items in ONE count, so it gets a
+  // neutral heading: the model echoes its labels, and a won't-fit item must never
+  // be called "past due" (nor "at risk" — owner canon #146).
+  lines.push(`Window: ${input.windowDays} days. Due in window: ${input.inWindowDueCount}. Needs attention: ${input.atRiskCount}.`);
   if (input.top.length) {
     lines.push("Top priorities, in the app's importance order (most important first):");
     input.top.forEach((t, i) => lines.push(`${i + 1}. ${t.name} (${shortCourse(t.courseName)})`));

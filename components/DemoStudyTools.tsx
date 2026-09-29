@@ -17,7 +17,7 @@ const GUIDE = [
 ];
 const TERMS = ["Mitochondria", "ATP", "Osmosis", "Allele", "Phenotype"];
 const QUESTION = {
-  prompt: "Which organelle produces most of the cell's ATP?",
+  prompt: "Which organelle produces most of the cell’s ATP?",
   options: ["Nucleus", "Mitochondria", "Ribosome", "Golgi apparatus"],
   answer: 1,
 };
@@ -97,7 +97,7 @@ export function DemoStudyTools() {
             {picked === null ? (
               <span className="text-faint">Pick an answer</span>
             ) : picked === QUESTION.answer ? (
-              <span className="text-success">Correct — mitochondria are the cell&apos;s power plants.</span>
+              <span className="text-success">Correct — mitochondria are the cell’s power plants.</span>
             ) : (
               <span className="text-danger">Not quite — the answer is Mitochondria.</span>
             )}

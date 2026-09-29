@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       },
     });
     // Don't sync inline — on a heavy calendar that can outlast the redirect.
-    // The Connections card auto-syncs on mount (and offers a manual "Sync now").
+    // The Connections card auto-syncs on mount (and offers a manual "Check Google now").
     return NextResponse.redirect(`${base}/connections?google=connected`);
   } catch {
     return NextResponse.redirect(`${base}/connections?google=error`);

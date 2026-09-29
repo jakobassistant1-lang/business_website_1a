@@ -20,7 +20,7 @@ import { itemType } from "./itemType";
 import { isValidZone } from "./studentZone";
 import { MAX_BRIEF_CHARS } from "./limits";
 import { analyzeLatePolicies, latePolicyWorkToDo, LATE_POLICY_TIMEOUT_MS, type LatePolicyInput } from "./latePolicy";
-import { CanvasStatus, messageFor } from "./messages";
+import { canvasCheckFailed, CanvasStatus, messageFor } from "./messages";
 import { decryptSecret } from "./crypto";
 import { MOUNT_FRESH_MS, type SyncMode } from "./syncPolicy";
 import { buildSyncReport, parseSyncReport, reasonForStatus, skippedNonStudentText, type SyncReport, type SyncReportCourse } from "./syncReport";
@@ -392,14 +392,14 @@ export async function runSync(userId: number, opts?: { mode?: SyncMode; budgetMs
   if (courses.length > 0 && failedCourses.length === courses.length) {
     const status = lastCourseError ?? "error";
     await prisma.canvasCredential.update({ where: { userId }, data: { lastValidationStatus: status } });
-    return finish({ ok: false, status, message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: prevSyncedAt, failedCourses, mode });
+    return finish({ ok: false, status, message: canvasCheckFailed(prevSyncedAt !== null), syncedAt: prevSyncedAt, failedCourses, mode });
   }
 
   // 4c. Mark sync time (FR-6.1). Full or partial success; stale label clears.
   const syncedAt = new Date();
   await prisma.canvasCredential.update({ where: { userId }, data: { syncedAt } });
 
-  const message = syncMessage("Sync complete.", failedCourses, outOfTime, courseStats.skippedNonStudent);
+  const message = syncMessage("Canvas check complete.", failedCourses, outOfTime, courseStats.skippedNonStudent);
   return finish({
     ok: true,
     status: "valid",
@@ -439,7 +439,7 @@ async function reshareCourse(
 function syncMessage(okText: string, failedCourses: string[], outOfTime: string[], skippedNonStudent = 0): string {
   let msg =
     failedCourses.length > 0
-      ? `Synced with warnings: couldn't refresh ${failedCourses.length} course(s)${
+      ? `Checked Canvas with warnings: couldn’t refresh ${failedCourses.length} ${failedCourses.length === 1 ? "course" : "courses"}${
           outOfTime.length > 0 ? ` (${outOfTime.length} ran out of time)` : ""
         }. Cached data kept.`
       : okText;
@@ -598,7 +598,7 @@ async function runQuickSync(
     // status — step 1 already recorded the token as valid and quick mode may not
     // overrule it. (Only the #132 report is saved, via finish.)
     const status: CanvasStatus = lastCourseError ?? "unreachable";
-    return finish({ ok: false, status, message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: prevSyncedAt, failedCourses, mode });
+    return finish({ ok: false, status, message: canvasCheckFailed(prevSyncedAt !== null), syncedAt: prevSyncedAt, failedCourses, mode });
   }
 
   const message = syncMessage("Refreshed submissions.", failedCourses, outOfTime);

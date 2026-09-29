@@ -28,7 +28,7 @@ function geminiResponse(text: string) {
 describe("buildPrompt", () => {
   it("includes the summary and each ranked priority", () => {
     const p = buildPrompt(INPUT);
-    expect(p).toContain("Due in window: 3. At risk (past due or not fitting the schedule): 1.");
+    expect(p).toContain("Due in window: 3. Needs attention: 1.");
     expect(p).toContain("1. Essay 2 (English)");
     expect(p).not.toContain("Due in 1 day"); // the ranking's reason string is not echoed (#145)
     expect(p).toContain("Write the briefing.");

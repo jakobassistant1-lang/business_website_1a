@@ -1,4 +1,4 @@
-// Pure helpers for the phone Classes carousel (components/CourseCarousel.tsx).
+// Pure helpers for the phone Courses carousel (components/CourseCarousel.tsx).
 // Kept out of the component so the "which card is centered" maths is unit-tested.
 
 /**
@@ -21,7 +21,7 @@ export function nearestIndex(scrollLeft: number, slideOffsets: number[], viewpor
   return best;
 }
 
-/** Accessible name for dot / slide `i` (0-based) of `n`: "Class 1 of 5". */
+/** Accessible name for dot / slide `i` (0-based) of `n`: "Course 1 of 5". */
 export function dotLabel(i: number, n: number): string {
-  return `Class ${i + 1} of ${n}`;
+  return `Course ${i + 1} of ${n}`;
 }

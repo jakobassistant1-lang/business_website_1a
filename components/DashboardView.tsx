@@ -658,7 +658,7 @@ function FocusTodayCard({
 
 // ── Upcoming assessments → a glance at tests/quizzes + a door to /study. ─────────
 function UpcomingTestsCard({ data, todayYmd, zone }: { data: CalendarData; todayYmd: string; zone: string }) {
-  // "Study booked" only when a REAL study session exists (lib/studyWeek — THE
+  // "Study session booked" only when a REAL study session exists (lib/studyWeek — THE
   // rule); a zero-hour "due this day" marker never counts.
   const studyBooked = new Set(data.plan.days.flatMap((d) => d.blocks.filter((b) => isStudySessionBlock(b, todayYmd, zone)).map((b) => b.canvasId)));
   const rank = new Map(data.ranked.map((r, i) => [r.canvasId, i] as const));
@@ -685,8 +685,8 @@ function UpcomingTestsCard({ data, todayYmd, zone }: { data: CalendarData; today
               {TYPE_LABEL[next.type]} · {shortCourse(next.courseName)}
               {next.pointsPossible != null && next.pointsPossible > 0 ? ` · ${next.pointsPossible} pts` : ""}
             </span>
-            <DueLabel iso={next.dueAt} format="countdown" todayYmd={todayYmd} timeZone={zone} empty="No date" className="mt-1 block text-[14px] font-semibold text-accent max-md:font-medium max-md:text-muted" />
-            {studyBooked.has(next.canvasId) && <span className="mt-0.5 block text-[12px] font-medium text-success">Study booked</span>}
+            <DueLabel iso={next.dueAt} format="countdown" todayYmd={todayYmd} timeZone={zone} empty="No due date" className="mt-1 block text-[14px] font-semibold text-accent max-md:font-medium max-md:text-muted" />
+            {studyBooked.has(next.canvasId) && <span className="mt-0.5 block text-[12px] font-medium text-success">Study session booked</span>}
           </Link>
           {tests.length > 1 && (
             <Link href="/study" className={`mt-2 block border-t border-line-subtle pt-3 text-[14px] font-medium text-accent hover:underline ${TAP_PHONE}`}>
@@ -728,7 +728,7 @@ function CatchUpList({ items, side, undo, demo = false, className = "" }: { item
     <div className={className}>
       <p className="text-[14px] text-muted">Past due, most important first — start at the top.</p>
       {items.length === 0 ? (
-        <p className="py-6 text-center text-[15px] text-muted">All caught up.</p>
+        <p className="py-6 text-center text-[15px] text-muted">Nothing past due.</p>
       ) : (
         <div className="-mx-3 mt-2 space-y-0.5">
           {items.map((it) => (

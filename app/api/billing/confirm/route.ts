@@ -36,6 +36,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ complete: true, next: returning ? "/dashboard" : "/dashboard?welcome=1" });
   } catch (e) {
     console.error("billing confirm failed", e);
-    return NextResponse.json({ error: "Couldn't confirm your subscription. Refresh to retry." }, { status: 500 });
+    return NextResponse.json({ error: "Couldn’t confirm your subscription. Refresh to retry." }, { status: 500 });
   }
 }

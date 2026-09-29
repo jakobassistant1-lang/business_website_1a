@@ -88,7 +88,7 @@ describe("POST /api/account/email-preview", () => {
     const res = await post({ template: "trial_ending" });
     expect(res.status).toBe(200);
     const subject = trialEndingSubject(u.trialEndsAt as Date);
-    expect(subject).toBe("Your Navo trial ends Thursday, October 9 — here's what happens next");
+    expect(subject).toBe("Your Navo trial ends Thursday, October 9 — here’s what happens next");
     expect(await res.json()).toEqual({ ok: true, to: u.email, subject });
     expect(send).toHaveBeenCalledTimes(1);
     expect(sent().to).toBe(u.email);

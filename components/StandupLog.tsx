@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocalToday } from "./useLocalToday";
 import { ymd } from "@/lib/calendarDates";
+import { NETWORK_ERROR } from "@/lib/messages";
 import {
   formatStandupDay,
   groupByDate,
@@ -109,7 +110,7 @@ export function StandupLog({
       setBlockers(saved.blockers ?? "");
       setStatus({ kind: "ok", text: mine ? "Standup updated." : "Standup saved." });
     } catch {
-      setStatus({ kind: "error", text: "Couldn't reach the server. Try again." });
+      setStatus({ kind: "error", text: NETWORK_ERROR });
     } finally {
       setSaving(false);
     }

@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join, sep } from "path";
-import { TRIAL_DAYS, isTrialing, trialBannerText, trialDaysLeft, SUBSCRIPTION_STATUSES } from "@/lib/subscription";
+import { TRIAL_DAYS, isTrialing, trialBannerText, trialDaysLeft, cancelScheduledText, SUBSCRIPTION_STATUSES } from "@/lib/subscription";
 import { trialDaysFor } from "@/lib/stripe";
 import {
   PRICE_RETRY_AFTER_MS,
@@ -68,12 +68,31 @@ describe("trialBannerText — the banner's wording", () => {
     expect(t).toBe(`Last day of your free trial — then ${PRICE}.`);
     expect(t).not.toContain("1 days");
   });
+  it("cancelScheduledText: a trial was never charged; a paid subscription was (#146)", () => {
+    expect(cancelScheduledText({ trialing: true, endsOn: "Friday, October 10" })).toBe("Your trial ends Friday, October 10. You won’t be charged.");
+    expect(cancelScheduledText({ trialing: false, endsOn: "Friday, October 10" })).toBe("Your subscription ends Friday, October 10. You won’t be charged again.");
+    expect(cancelScheduledText({ trialing: true, endsOn: null })).not.toContain("again");
+    expect(cancelScheduledText({ trialing: false, endsOn: null })).toBe("Your subscription ends at the end of this billing period. You won’t be charged again.");
+    for (const trialing of [true, false]) expect(cancelScheduledText({ trialing, endsOn: "x" })).not.toMatch(/\bplan\b/);
+  });
+  it("BillingCard and CancelScheduledNote print the one sentence, and say 'subscription' not 'plan'", () => {
+    for (const f of ["components/BillingCard.tsx", "components/CancelScheduledNote.tsx"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).toContain("cancelScheduledText(");
+      expect(src, f).not.toMatch(/Keep (my|your) plan|charged again/);
+    }
+    // A trial's cancel ends at trialEndsAt (the date the trialing state shows); a paid one at currentPeriodEnd.
+    const card = readFileSync("components/BillingCard.tsx", "utf8");
+    expect(card).toContain("const trialing = isTrialing(user.subscriptionStatus);");
+    expect(card).toContain("const cancelEnds = trialing ? user.trialEndsAt : user.currentPeriodEnd;");
+    expect(card).toContain("cancelScheduledText({ trialing, endsOn: cancelEnds ? day(cancelEnds) : null })");
+  });
   it("a scheduled cancel is NEVER told about a future charge — the plan just ends", () => {
     expect(trialBannerText({ daysLeft: 4, price: PRICE, cancelAtPeriodEnd: true })).toBe(
-      "4 days left in your free trial — your plan ends then and you won’t be charged.",
+      "4 days left in your free trial. You won’t be charged.",
     );
     expect(trialBannerText({ daysLeft: 1, price: PRICE, cancelAtPeriodEnd: true })).toBe(
-      "Last day of your free trial — your plan ends then and you won’t be charged.",
+      "Last day of your free trial. You won’t be charged.",
     );
     for (const daysLeft of [1, 3, 7]) {
       expect(trialBannerText({ daysLeft, price: PRICE, cancelAtPeriodEnd: true })).not.toContain(PRICE);
@@ -84,7 +103,7 @@ describe("trialBannerText — the banner's wording", () => {
     expect(trialBannerText({ daysLeft: 3, price: null })).toBe("3 days left in your free trial.");
     expect(trialBannerText({ daysLeft: 1, price: null })).toBe("Last day of your free trial.");
     expect(trialBannerText({ daysLeft: 3, price: null, cancelAtPeriodEnd: true })).toBe(
-      "3 days left in your free trial — your plan ends then and you won’t be charged.",
+      "3 days left in your free trial. You won’t be charged.",
     );
   });
   it("a spent or unknown trial renders nothing (day 0 = webhook lag; the status flip moves them)", () => {
@@ -251,7 +270,7 @@ describe("grep guard: the signup terms line renders only when the server sent te
     expect(guardAt).toBeGreaterThan(-1);
     for (const copy of [
       "Free for {trialTerms.trialDays} days, then {trialTerms.price}.",
-      "Free for {trialTerms.trialDays} days, then a small monthly fee.",
+      "Free for {trialTerms.trialDays} days, then {PRICE_FALLBACK}.",
     ]) {
       expect(src.indexOf(copy)).toBeGreaterThan(guardAt);
     }

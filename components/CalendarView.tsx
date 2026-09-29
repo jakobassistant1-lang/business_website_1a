@@ -1,5 +1,6 @@
 "use client";
 
+import { planGroupOf, sortByRank } from "@/lib/planFocus";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAutoSync } from "@/components/useAutoSync";
@@ -125,7 +126,9 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
     for (const d of data.plan.days) m.set(d.date, d);
     return m;
   }, [data.plan.days]);
-  const undated = useMemo(() => data.items.filter((it) => !it.dueAt), [data.items]);
+  // Same membership and order as the Plan list's "No due date" group (lib/planFocus):
+  // undated, not teacher-graded, not unopened, in the app's importance order.
+  const undated = useMemo(() => sortByRank(data.items.filter((it) => planGroupOf(it) === "noDate"), data.ranked), [data.items, data.ranked]);
 
   // Written only when the student moves. The demo owns its own URL.
   function goTo(nextView: View, nextAnchor: Date) {
@@ -160,7 +163,7 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
           <div className="flex justify-center text-accent">
             <Glyph d={ICON.calendar} size={32} />
           </div>
-          <p className="mt-3 text-sm font-medium text-ink">Let&apos;s build your calendar.</p>
+          <p className="mt-3 text-sm font-medium text-ink">Let’s build your calendar.</p>
           <p className="mt-1 text-sm text-muted">Connect your Canvas account and your coursework will appear here.</p>
           <Link href="/connections" className="btn-primary mt-4">
             Connect Canvas
@@ -232,7 +235,7 @@ export function CalendarView({ data, todayYmd, demo = false, defaultView = "day"
                     aria-controls="calendar-completed"
                     className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-success"
                   >
-                    <Glyph d={ICON.check} size={14} /> Completed ({data.completed.length}) <span aria-hidden>{showCompleted ? "▾" : "▸"}</span>
+                    <Glyph d={ICON.check} size={14} /> Done ({data.completed.length}) <span aria-hidden>{showCompleted ? "▾" : "▸"}</span>
                   </button>
                   {showCompleted && (
                     <div id="calendar-completed" className="mt-2 space-y-1.5">

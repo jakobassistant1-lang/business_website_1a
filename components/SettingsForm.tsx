@@ -56,7 +56,7 @@ export function SettingsForm({ initial }: { initial: Initial }) {
       }
       const body = await res.json().catch(() => ({}));
       if (body.errors) setErrors(body.errors);
-      else setFormError("Couldn't save your settings. Reload the page and try again.");
+      else setFormError("Couldn’t save your settings. Reload the page and try again.");
     } catch {
       setFormError(NETWORK_ERROR);
     } finally {

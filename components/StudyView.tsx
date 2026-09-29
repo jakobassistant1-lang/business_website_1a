@@ -102,7 +102,7 @@ export function StudyView({
       <div className="mx-auto max-w-xl">
         <div className="card p-10 text-center">
           <h1 className="text-base font-medium text-ink">Connect Canvas to start studying.</h1>
-          <p className="mt-1.5 text-sm text-muted">Once your coursework is synced, this page builds a study plan, guide, and practice questions for each upcoming test.</p>
+          <p className="mt-1.5 text-sm text-muted">Once Navo has checked Canvas, this page builds a study plan, guide, and practice questions for each upcoming test.</p>
           <Link href="/connections" className="btn-primary mt-5">Connect Canvas</Link>
         </div>
       </div>
@@ -116,7 +116,7 @@ export function StudyView({
         {notice}
         <div className="card p-10 text-center">
           <h1 className="text-base font-medium text-ink">No upcoming tests or quizzes.</h1>
-          <p className="mt-1.5 text-sm text-muted">When one lands on your plan, it&apos;ll show up here with a study plan ready to go.</p>
+          <p className="mt-1.5 text-sm text-muted">When one lands on your plan, it’ll show up here with a study plan ready to go.</p>
           <Link href="/plan" className="btn-primary mt-5">Open plan</Link>
         </div>
       </div>
@@ -139,7 +139,7 @@ export function StudyView({
       {/* Featured: the next-up test. Text is `accent-on` (not white) so it keeps
           its contrast on the lighter dark-mode violet. */}
       <div data-tour="study-featured" className="rounded-xl bg-accent p-7 text-accent-on shadow-card">
-        <p className="text-[13px] font-semibold text-accent-on">Next up</p>
+        <p className="text-[13px] font-semibold text-accent-on">Next test</p>
         <p className="mt-1.5 text-[2rem] font-bold leading-[1.1] tracking-tight max-md:line-clamp-3 max-md:break-words max-md:text-2xl" title={featured.name}>{featured.name}</p>
         <p className="mt-1 text-[15px] text-accent-on">
           {TYPE_LABEL[featured.type]} · {shortCourse(featured.courseName)}
@@ -166,7 +166,7 @@ export function StudyView({
         </div>
       </div>
 
-      {/* The rest, in recommended order */}
+      {/* The rest, in Focus order */}
       {others.length > 0 && (
         <div className="card mt-6 p-6">
           <h2 className="text-lg font-semibold text-ink">Also coming up</h2>
@@ -201,7 +201,7 @@ function MissingNotice() {
         <circle cx="12" cy="12" r="9" />
         <path d="M12 8v5M12 16.5v.01" strokeLinecap="round" />
       </svg>
-      That test isn&apos;t in your plan anymore. Here&apos;s what&apos;s next.
+      That test isn’t in your plan anymore. Here’s what’s next.
     </p>
   );
 }

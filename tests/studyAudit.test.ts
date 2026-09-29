@@ -264,7 +264,7 @@ describe("5. wayfinding", () => {
     expect(TOOLS_PAGE).toContain('redirect("/study?missing=1")');
     expect(TOOLS_PAGE).not.toMatch(/if \(!assessment\) redirect\("\/study"\)/);
     expect(HUB_PAGE).toMatch(/missing=\{missing === "1"\}/);
-    expect(VIEW).toContain("That test isn&apos;t in your plan anymore. Here&apos;s what&apos;s next.");
+    expect(VIEW).toContain("That test isn’t in your plan anymore. Here’s what’s next.");
     expect(VIEW).toMatch(/window\.history\.replaceState\(null, "", "\/study"\)/);
   });
   it("the phone tab row fades out at the right edge while more tabs are off-screen", () => {

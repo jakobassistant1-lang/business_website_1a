@@ -131,7 +131,7 @@ export function gradeHeadline(official: CourseGrade | undefined, estimate: numbe
     return { label: "Current grade", value: gradePercentText(official.score), letter: official.letter, note: "From Canvas", start: official.score };
   }
   if (estimate != null) {
-    const note = official?.state === "hidden" ? "Your teacher hides the course total in Canvas" : "Canvas hasn't shown a course total yet";
+    const note = official?.state === "hidden" ? "Your teacher hides the course total in Canvas" : "Canvas hasn’t shown a course total yet";
     return { label: "Estimated from your graded work", value: gradePercentText(estimate), letter: null, note, start: estimate };
   }
   return { label: "Current grade", value: "—", letter: null, note: "No grades yet", start: null };

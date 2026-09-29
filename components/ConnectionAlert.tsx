@@ -16,7 +16,7 @@ export function ConnectionAlert({ status }: { status: string | null }) {
   const msg =
     status === "insufficient_scope"
       ? "Your Canvas access token is missing a permission Navo needs, so your plan can’t stay up to date."
-      : "Your Canvas connection expired or was disconnected — your plan may be out of date until you reconnect.";
+      : "Your Canvas connection expired or was disconnected, so Navo can’t check Canvas until you reconnect. Your plan shows the last good data.";
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger-soft/40 px-4 py-3">
       <p className="text-sm font-medium text-ink">
@@ -26,7 +26,7 @@ export function ConnectionAlert({ status }: { status: string | null }) {
         {msg}
       </p>
       <Link href="/connections" className="btn-primary shrink-0 text-sm">
-        Reconnect Canvas →
+        Reconnect Canvas
       </Link>
     </div>
   );

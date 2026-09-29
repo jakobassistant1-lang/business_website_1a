@@ -79,7 +79,7 @@ describe("scoreAssignments", () => {
     );
     expect(risky.factors!.risk).toBeGreaterThan(0);
     expect(risky.score).toBeGreaterThan(safe.score);
-    expect(risky.reason).toContain("won't fit");
+    expect(risky.reason).toContain("won’t fit");
   });
 
   it("damps already-submitted work to the bottom", () => {
@@ -111,7 +111,7 @@ describe("scoreAssignments", () => {
     );
     expect(today.reason).toBe("Due today · 30 pts");
     // Same words as the date labels (lib/dueLabel countdown), never "Overdue".
-    expect(soon.reason).toBe("Due tomorrow · 50 pts · 1.5h won't fit");
+    expect(soon.reason).toBe("Due tomorrow · 50 pts · 1.5h won’t fit");
     expect(overdue.reason).toBe("Past due · 20 pts");
   });
 

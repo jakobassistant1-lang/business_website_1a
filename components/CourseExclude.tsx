@@ -167,7 +167,7 @@ export function ExcludedBanner({ courseCanvasId }: { courseCanvasId: number }) {
     <div className="mt-5 flex items-center justify-between gap-3 rounded-lg border border-dashed border-line bg-surface-soft px-4 py-3">
       <p className="min-w-0 text-[14px] text-muted">
         <EyeOffIcon className="mr-1.5 inline h-4 w-4 align-[-3px]" />
-        This course is excluded from your plan — its work doesn&apos;t appear in your lists or schedule.
+        This course is excluded from your plan — its work doesn’t appear in your lists or schedule.
       </p>
       <button type="button" onClick={include} disabled={busy} className="max-md:tap inline-flex shrink-0 items-center text-[14px] font-medium text-accent hover:underline disabled:opacity-50">
         {busy ? "Including…" : "Include again"}
@@ -192,7 +192,7 @@ export function ExcludeCourseAction({ courseCanvasId }: { courseCanvasId: number
       type="button"
       onClick={exclude}
       disabled={busy}
-      title="Hides this course's work from your plan and lists. Undo anytime."
+      title="Hides this course’s work from your plan and lists. Undo anytime."
       className="max-md:tap inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition hover:text-ink disabled:opacity-50"
     >
       <EyeOffIcon className="h-3.5 w-3.5" />

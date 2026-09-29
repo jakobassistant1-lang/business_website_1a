@@ -50,7 +50,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
     if (message) messageRef.current?.focus();
   }, [message]);
   const [busy, setBusy] = useState(false);
-  // Set when THIS visit completed a connect — swaps the static "Go to your plan"
+  // Set when THIS visit completed a connect — swaps the static "Go to your dashboard"
   // link for the staged first-sync progress (#64), which lands on the dashboard.
   const [justConnected, setJustConnected] = useState(false);
   // "Paste" affordance for the token field (#39): shown only where the async
@@ -182,7 +182,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
           </dl>
           {justConnected && <FirstSyncProgress />}
           <div className="mt-4 flex items-center gap-3 max-md:flex-wrap">
-            {!justConnected && <a href="/dashboard" className="btn-primary max-md:tap">Go to your plan →</a>}
+            {!justConnected && <a href="/dashboard" className="btn-primary max-md:tap">Go to your dashboard</a>}
             <button
               type="button"
               className="btn-ghost max-md:tap"
@@ -282,7 +282,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
                   rel="noopener noreferrer"
                   className="btn-ghost mt-3 inline-flex max-md:tap max-sm:w-full"
                 >
-                  Open Canvas to get your token ↗
+                  Open Canvas to get your token
                 </a>
               )}
             </div>
@@ -324,7 +324,7 @@ export function ConnectionsForm({ initial }: { initial: Initial }) {
               </div>
               {pasteFailed && (
                 <p className="mt-1 text-[13px] text-muted md:hidden" role="status">
-                  Couldn&apos;t read the clipboard — long-press the field and Paste.
+                  Couldn’t read the clipboard — long-press the field and Paste.
                 </p>
               )}
             </div>

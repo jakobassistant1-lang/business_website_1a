@@ -6,12 +6,15 @@ import { toneSoft } from "@/lib/tone";
 import { LocalRelativeTime } from "@/components/LocalRelativeTime";
 
 /** Shown when the server has no Google OAuth client set up (one wording for the card and the post-redirect notice). */
-const UNAVAILABLE = "Google Calendar sync isn't available yet.";
+const UNAVAILABLE = "Google Calendar isn’t available in Navo yet.";
+
+/** A Google check that failed for any other reason. */
+const GOOGLE_CHECK_FAILED = "Couldn’t check Google Calendar. Try again.";
 
 function friendly(reason?: string): string {
   if (reason === "rate_limited") return "Google is rate-limiting us. Try again in a minute.";
-  if (reason === "token_expired" || reason === "not_connected") return "Your Google connection expired — please reconnect.";
-  return "Sync failed. Please try again.";
+  if (reason === "token_expired" || reason === "not_connected") return "Your Google connection expired. Reconnect Google Calendar to keep checking it.";
+  return GOOGLE_CHECK_FAILED;
 }
 
 export function GoogleCalendarCard({
@@ -35,7 +38,7 @@ export function GoogleCalendarCard({
     flash === "connected"
       ? { kind: "ok", text: "Google Calendar connected." }
       : flash === "error"
-        ? { kind: "error", text: "Couldn't connect to Google. Please try again." }
+        ? { kind: "error", text: "Couldn’t connect to Google. Please try again." }
         : flash === "unconfigured"
           ? { kind: "error", text: UNAVAILABLE }
           : null,
@@ -49,11 +52,11 @@ export function GoogleCalendarCard({
       const body = await res.json().catch(() => ({}));
       setNotice(
         body.ok
-          ? { kind: "ok", text: `Synced ${body.synced} event${body.synced === 1 ? "" : "s"}.` }
+          ? { kind: "ok", text: `Checked Google: ${body.synced} event${body.synced === 1 ? "" : "s"}.` }
           : { kind: "error", text: friendly(body.reason) },
       );
     } catch {
-      setNotice({ kind: "error", text: "Sync failed. Please try again." });
+      setNotice({ kind: "error", text: GOOGLE_CHECK_FAILED });
     }
     setBusy(null);
     router.refresh();
@@ -64,9 +67,9 @@ export function GoogleCalendarCard({
     setNotice(null);
     try {
       const res = await fetch("/api/connections/google/disconnect", { method: "POST" });
-      if (!res.ok) setNotice({ kind: "error", text: "Couldn't fully disconnect. Please try again." });
+      if (!res.ok) setNotice({ kind: "error", text: "Couldn’t fully disconnect. Please try again." });
     } catch {
-      setNotice({ kind: "error", text: "Couldn't fully disconnect. Please try again." });
+      setNotice({ kind: "error", text: "Couldn’t fully disconnect. Please try again." });
     }
     setBusy(null);
     router.refresh();
@@ -150,7 +153,7 @@ export function GoogleCalendarCard({
           </dl>
           <div className="mt-4 flex items-center gap-3">
             <button onClick={sync} className="btn-primary" disabled={busy !== null}>
-              {busy === "sync" ? "Syncing…" : "Sync now"}
+              {busy === "sync" ? "Checking Google…" : "Check Google now"}
             </button>
             <button onClick={disconnect} className="btn-ghost" disabled={busy !== null}>
               {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}

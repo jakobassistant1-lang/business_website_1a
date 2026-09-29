@@ -153,7 +153,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
             <Glyph d={ICON.list} size={32} />
           </div>
           <p className="mt-3 text-sm font-medium text-ink">Nothing to sequence yet.</p>
-          <p className="mt-1 text-sm text-muted">Connect Canvas and your work will line up here in a recommended order.</p>
+          <p className="mt-1 text-sm text-muted">Connect Canvas and your work will line up here in Focus order.</p>
           <Link href="/connections" className="btn-primary mt-4">
             Connect Canvas
           </Link>
@@ -164,7 +164,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
           <PeriodSummary view="week" start={data.plan.days[0]?.date ?? ""} days={7} />
 
           {!hasWork ? (
-            <div className="card p-8 text-center text-sm text-muted">No upcoming work to sequence. You&apos;re clear.</div>
+            <div className="card p-8 text-center text-sm text-muted">No upcoming work to sequence. You’re clear.</div>
           ) : (
             <>
               {/* Phones (#39): no Gantt — the same week's blocks as a day-grouped
@@ -175,7 +175,7 @@ export function TimelineView({ data }: { data: CalendarData }) {
               <div className="hidden md:block">
                 <p className="mb-2 mt-4 text-[13px] text-muted">
                   Each bar is the days set aside to <span className="font-semibold text-ink">work</span> on something; the{" "}
-                  <span className="font-semibold text-ink">◆</span> marks when it&rsquo;s due, and the number is the order to tackle them.
+                  <span className="font-semibold text-ink">◆</span> marks when it&rsquo;s due, and the number is its Focus order.
                 </p>
                 <div data-tour="tl-gantt">
                   <WeekGantt courses={courses} days={weekDays} rank={rank} typeOf={typeOf} effortOf={effortOf} onPick={pick} zone={zone} todayYmd={todayYmd} topId={topId} shortNote={shortNote} />
@@ -429,7 +429,7 @@ function TimelineLegend() {
         study (exam / quiz prep)
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="font-bold text-ink">1.</span> recommended order
+        <span className="font-bold text-ink">1.</span> Focus order
       </span>
     </div>
   );

@@ -159,7 +159,7 @@ export function CoursePage({ courseName, grade, active, completed, rankedIds, to
             {counts.pastDue > 0 && <Section title="Past due" items={b.pastDue} kind="pastDue" todayYmd={todayYmd} timeZone={timeZone} demo={demo} />}
             {/* Upcoming shows when it has rows; empty, it shows only when there is
                 nothing else to do ("You're clear"), never beside past-due work. */}
-            {(counts.upcoming > 0 || isClear(counts)) && <Section title="Upcoming" items={b.upcoming} kind="upcoming" todayYmd={todayYmd} timeZone={timeZone} empty="You're clear. Nothing to do right now." demo={demo} />}
+            {(counts.upcoming > 0 || isClear(counts)) && <Section title="Upcoming" items={b.upcoming} kind="upcoming" todayYmd={todayYmd} timeZone={timeZone} empty="You’re clear. Nothing to do right now." demo={demo} />}
             {counts.notOpenYet > 0 && <Section title="Not open yet" items={b.notOpenYet} kind="notOpenYet" todayYmd={todayYmd} timeZone={timeZone} demo={demo} />}
             {counts.passive > 0 && <Section title="Graded by your teacher" items={b.passive} kind="passive" todayYmd={todayYmd} timeZone={timeZone} demo={demo} />}
             {counts.done > 0 && <Section title="Done" items={b.done} kind="done" todayYmd={todayYmd} timeZone={timeZone} demo={demo} />}

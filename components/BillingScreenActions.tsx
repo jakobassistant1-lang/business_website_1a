@@ -29,14 +29,14 @@ export function PortalButton({ label }: { label: string }) {
           return;
         }
         // No subscription to fix and no card step to send them to — a human sorts it out.
-        setError("We couldn't find an active subscription for this account — email support@navolearning.com and we'll sort it out.");
+        setError("We couldn’t find an active subscription for this account — email support@navolearning.com and we’ll sort it out.");
         setBusy(false);
         return;
       }
       if (!res.ok || !body.url) throw new Error(body.error ?? "no url");
       window.location.href = body.url;
     } catch (e) {
-      setError(e instanceof Error && e.message !== "no url" ? e.message : "Couldn't open the payment page. Try again in a moment.");
+      setError(e instanceof Error && e.message !== "no url" ? e.message : "Couldn’t open the payment page. Try again in a moment.");
       setBusy(false);
     }
   }
@@ -61,7 +61,7 @@ export function SignOutLink() {
   }
   return (
     <button type="button" onClick={logout} className="font-medium text-muted hover:text-ink hover:underline max-md:tap max-md:inline-flex max-md:items-center">
-      Sign out
+      Log out
     </button>
   );
 }

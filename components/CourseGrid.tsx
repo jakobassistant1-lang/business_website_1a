@@ -2,10 +2,10 @@
 
 // The "By course" overview grid — its own surface (the Courses page, /courses).
 // Each card leads with the student's real Canvas grade (the thing the old page
-// lacked and Canvas itself buries), then the do-next item, and links into the
+// lacked and Canvas itself buries), then its next item, and links into the
 // course's full assignment list at /class/[id].
 //
-// Every count and the "Do next" pick come from lib/courseCounts — the SAME split
+// Every count and the "Next in this course" pick come from lib/courseCounts — the SAME split
 // the course page lists — so a card can never say "Nothing upcoming." beside
 // "3 upcoming". Dates are read in the student's Canvas zone (CalendarData.timeZone).
 //
@@ -82,7 +82,7 @@ export function CourseGrid({ data, demo = false }: { data: CalendarData; demo?: 
 
 function CourseCard({ courseCanvasId, courseName, items, completed, meta, rankedIds, todayYmd, timeZone, anchor, demo }: { courseCanvasId: number; courseName: string; items: CalendarItem[]; completed: CalendarItem[]; meta: CourseMeta | undefined; rankedIds: number[]; todayYmd: string; timeZone: string; anchor?: string; demo?: boolean }) {
   const counts = countsOf(courseBuckets(items, completed, rankedIds));
-  // Do next: the top-RANKED actionable item (past due included — the Focus rule),
+  // Next in this course: the top-RANKED actionable item (past due included — the Focus rule),
   // drawn from exactly the lists counted above, so it exists whenever a count does.
   const next = doNext(items, completed, rankedIds);
 
@@ -95,7 +95,7 @@ function CourseCard({ courseCanvasId, courseName, items, completed, meta, ranked
           grade pill + menu drop below it instead of squeezing "MANAGERIAL ECONOMICS" into a clamp. */}
       <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
         <div className="min-w-0 flex-1 basis-[12rem]">
-          {/* Always two lines tall (`2lh`), so a one-line title's "Do next"
+          {/* Always two lines tall (`2lh`), so a one-line title's "Next in this course"
               row lines up with its neighbours'. */}
           <h2 className="line-clamp-2 min-h-[2lh] break-words text-[17px] font-semibold leading-snug text-ink">
             <Link href={`/class/${courseCanvasId}`} className="after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:outline-none">
@@ -122,7 +122,7 @@ function CourseCard({ courseCanvasId, courseName, items, completed, meta, ranked
 
       {next ? (
         <div className="mt-4">
-          <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">Do next</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">Next in this course</p>
           <div className="mt-0.5 flex items-baseline gap-2">
             <span className="min-w-0 truncate text-[16px] font-medium text-ink">{next.name}</span>
             {next.dueAt && (
@@ -146,7 +146,7 @@ function CourseCard({ courseCanvasId, courseName, items, completed, meta, ranked
       <div className="mt-4 flex items-center justify-between border-t border-line-subtle pt-3 text-[13px]">
         <span className="text-muted">{counts.upcoming} upcoming</span>
         <span className="font-medium text-accent group-hover:underline" aria-hidden>
-          View all →
+          View all
         </span>
       </div>
     </div>

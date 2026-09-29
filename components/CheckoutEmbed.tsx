@@ -21,7 +21,7 @@ export function CheckoutEmbed({ publishableKey, trialDays }: { publishableKey: s
     async function boot() {
       setError(null);
       if (!publishableKey) {
-        setError("Payments aren't configured yet. Please try again later.");
+        setError("Payments aren’t configured yet. Please try again later.");
         return;
       }
       try {
@@ -45,7 +45,7 @@ export function CheckoutEmbed({ publishableKey, trialDays }: { publishableKey: s
         if (cancelled) { checkout.destroy(); return; }
         if (mountRef.current) checkout.mount(mountRef.current);
       } catch {
-        if (!cancelled) setError("Couldn't load the payment form. Check your connection and retry.");
+        if (!cancelled) setError("Couldn’t load the payment form. Try again.");
       }
     }
     boot();

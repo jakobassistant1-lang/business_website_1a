@@ -1,4 +1,4 @@
-import { billingCardState } from "@/lib/subscription";
+import { billingCardState, cancelScheduledText, isTrialing } from "@/lib/subscription";
 import { priceDisplay } from "@/lib/stripe";
 import { formatDateHuman } from "@/lib/calendarDates";
 import { PortalButton } from "@/components/BillingScreenActions";
@@ -27,6 +27,10 @@ export async function BillingCard({ user, enabled, isAdmin, fromPortal }: { user
   }
 
   const price = await priceDisplay().catch(() => null);
+  // A scheduled cancel ends a trial at trialEndsAt (the date the trialing state
+  // shows) and a paid subscription at currentPeriodEnd.
+  const trialing = isTrialing(user.subscriptionStatus);
+  const cancelEnds = trialing ? user.trialEndsAt : user.currentPeriodEnd;
   const plan = price ? `Navo · ${price}` : "Navo";
 
   return (
@@ -49,9 +53,9 @@ export async function BillingCard({ user, enabled, isAdmin, fromPortal }: { user
       {state === "cancel_scheduled" && (
         <>
           <p className="mt-3 text-sm text-muted">
-            Your plan ends{user.currentPeriodEnd ? ` ${day(user.currentPeriodEnd)}` : " at the end of this billing period"} — you won&apos;t be charged again.
+            {cancelScheduledText({ trialing, endsOn: cancelEnds ? day(cancelEnds) : null })}
           </p>
-          <div className="mt-4"><PortalButton label="Keep my plan" /></div>
+          <div className="mt-4"><PortalButton label="Keep my subscription" /></div>
         </>
       )}
       {/* Fallback only: the page already reconciled with Stripe on return; this covers a failed reconcile. */}

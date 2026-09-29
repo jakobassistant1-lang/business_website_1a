@@ -87,7 +87,7 @@ function reasonFor(item: PriorityInput, d: number | null, now: Date, zone: strin
   }
   if (item.pointsPossible !== null) parts.push(`${item.pointsPossible} pts`);
   if (item.atRiskKind === "insufficient_time" && item.shortfallHours > 0) {
-    parts.push(`${item.shortfallHours}h won't fit`);
+    parts.push(`${item.shortfallHours}h won’t fit`);
   }
   return parts.join(" · ");
 }

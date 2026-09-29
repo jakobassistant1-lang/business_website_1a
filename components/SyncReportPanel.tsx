@@ -59,7 +59,7 @@ export function SyncReportPanel({ report, lastCheckedAt }: { report: SyncReport;
           ))}
         </ul>
       ) : (
-        !run && <p className="text-sm text-muted">No courses to refresh this time.</p>
+        !run && <p className="text-sm text-muted">No courses to check this time.</p>
       )}
 
       {report.mode === "quick" && report.courses.length > 0 && (

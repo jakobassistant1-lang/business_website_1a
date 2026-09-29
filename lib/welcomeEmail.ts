@@ -19,7 +19,7 @@ import { sendEmail } from "./email";
 import { appOrigin } from "./appUrl";
 import { logEvent } from "./funnel";
 
-export const WELCOME_SUBJECT = "Welcome to Navo — let's get your week planned";
+export const WELCOME_SUBJECT = "Welcome to Navo — let’s get your week planned";
 
 const SUPPORT_EMAIL = "support@navolearning.com";
 
@@ -36,21 +36,21 @@ export function welcomeEmail({ firstName, appUrl }: { firstName: string; appUrl:
   const link = `${base}/`; // the root routes them to whichever step is next
 
   const steps: [string, string][] = [
-    ["Finish the demo", "a two-minute walkthrough of how your plan works."],
+    ["Finish the demo", "a 2-minute walkthrough of how your plan works."],
     ["Connect Canvas with a token", "Navo reads your real courses and due dates."],
     ["See your plan", "your week, ordered by what actually moves your grade."],
   ];
 
   const text =
     `Hi ${firstName},\n\n` +
-    `Welcome to Navo. Navo reads your Canvas courses and turns everything that's due ` +
+    `Welcome to Navo. Navo reads your Canvas courses and turns everything that’s due ` +
     `into one plan for your week, so you always know what to work on next.\n\n` +
     `Three quick steps to get set up:\n\n` +
     steps.map(([title, detail], i) => `${i + 1}. ${title} — ${detail}`).join("\n") +
     `\n\nFinish setting up: ${link}\n\n` +
     `Stuck on anything, or something looks wrong? Email us at ${SUPPORT_EMAIL} — a real person reads it.\n\n` +
     `— The Navo team\n\n` +
-    `You're getting this because you just created a Navo account. It's a one-time message about your account.`;
+    `You’re getting this because you just created a Navo account. It’s a one-time message about your account.`;
 
   // Inline styles only (email clients strip <style>), a single-column table layout,
   // and a plain-text-shaped body — same voice as the password-reset email.
@@ -67,7 +67,7 @@ export function welcomeEmail({ firstName, appUrl }: { firstName: string; appUrl:
     `<div style="${wrap}">` +
     `<div style="${card}">` +
     `<p style="${p}">Hi ${firstName},</p>` +
-    `<p style="${p}">Welcome to Navo. Navo reads your Canvas courses and turns everything that's due into one plan for your week, so you always know what to work on next.</p>` +
+    `<p style="${p}">Welcome to Navo. Navo reads your Canvas courses and turns everything that’s due into one plan for your week, so you always know what to work on next.</p>` +
     `<p style="${p}"><strong>Three quick steps to get set up:</strong></p>` +
     `<ol style="margin:0 0 24px;padding-left:20px;">` +
     steps.map(([title, detail]) => `<li style="${li}"><strong>${title}</strong> — ${detail}</li>`).join("") +
@@ -76,7 +76,7 @@ export function welcomeEmail({ firstName, appUrl }: { firstName: string; appUrl:
     `<p style="${p}">Stuck on anything, or something looks wrong? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#6a47e0;">${SUPPORT_EMAIL}</a> — a real person reads it.</p>` +
     `<p style="${p}">— The Navo team</p>` +
     `<hr style="border:none;border-top:1px solid #e4e4e7;margin:24px 0;" />` +
-    `<p style="${foot}">You're getting this because you just created a Navo account. It's a one-time message about your account.</p>` +
+    `<p style="${foot}">You’re getting this because you just created a Navo account. It’s a one-time message about your account.</p>` +
     `</div></div>`;
 
   return { subject: WELCOME_SUBJECT, html, text };

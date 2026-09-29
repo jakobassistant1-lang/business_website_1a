@@ -16,7 +16,7 @@ import Link from "next/link";
 import { fmtHours, StudyLeadEditor } from "@/components/calendar/parts";
 import { round1 } from "@/lib/round";
 import { toneSoft } from "@/lib/tone";
-import { NETWORK_ERROR } from "@/lib/messages";
+import { NETWORK_ERROR, SERVER_ERROR } from "@/lib/messages";
 import { TYPE_LABEL, shortCourse, sessionDateLabel, StudyChip, ChevronIcon, ExternalIcon, studySessionCount } from "@/components/studyUi";
 import { nextIndex } from "@/lib/keyboardNav";
 import { DueLabel } from "@/components/DueLabel";
@@ -53,8 +53,9 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
     });
     const json = await res.json().catch(() => null);
     if (res.ok && json?.ok) return { ok: true, content: json.content as T, cached: json.cached === true };
-    // A 5xx with no JSON body (a crashed route) reads like the server was unreachable.
-    if (json === null && res.status >= 500) return { ok: false, error: "network" };
+    // A 5xx with no JSON body (a crashed route) is Navo's failure, not the
+    // student's connection — SERVER_ERROR, never NETWORK_ERROR (#146).
+    if (json === null && res.status >= 500) return { ok: false, error: "server" };
     return { ok: false, error: typeof json?.error === "string" ? json.error : "failed" };
   } catch {
     return { ok: false, error: "network" };
@@ -62,14 +63,15 @@ async function postStudy<T>(body: Record<string, unknown>): Promise<{ ok: true; 
 }
 
 const ERROR_TEXT: Record<string, string> = {
-  no_key: "The AI service isn't configured.",
+  no_key: "The AI service isn’t configured.",
   timeout: "Generation took too long.",
-  http_error: "The AI service didn't answer. Try again in a minute.",
+  http_error: "The AI service didn’t answer. Try again in a minute.",
   bad_response: "The AI answer came back unreadable. Try again.",
   not_connected: "Connect your Canvas account first.",
   network: NETWORK_ERROR,
+  server: SERVER_ERROR,
 };
-const errText = (code: string | null) => (code && ERROR_TEXT[code]) || "This couldn't be generated. Try again.";
+const errText = (code: string | null) => (code && ERROR_TEXT[code]) || "This couldn’t be generated. Try again.";
 
 export function StudyTools({
   assessment,
@@ -182,7 +184,7 @@ export function StudyTools({
 
       {/* Compact test header — same violet language as the hub's hero */}
       <div className="mt-3 rounded-xl bg-accent p-5 text-accent-on shadow-card">
-        <p className="text-[13px] font-semibold text-accent-on">{isNextUp ? "Next up" : "Studying for"}</p>
+        <p className="text-[13px] font-semibold text-accent-on">{isNextUp ? "Next test" : "Studying for"}</p>
         <h1 className="mt-1 text-xl font-bold leading-tight tracking-tight sm:text-2xl">{assessment.name}</h1>
         <p className="mt-0.5 text-sm text-accent-on">
           {TYPE_LABEL[assessment.type]} · {shortCourse(assessment.courseName)}
@@ -333,7 +335,7 @@ function SourceNote({ sparse, sources, excluded = [], noteCount = 0 }: { sparse:
 function StaleNote({ onRegen, label }: { onRegen: () => void; label: string }) {
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] bg-accent-soft px-4 py-2.5 text-[13px] text-accent">
-      <span>You&apos;ve added or changed notes since this was made. Regenerate to include them.</span>
+      <span>You’ve added or changed notes since this was made. Regenerate to include them.</span>
       <button onClick={onRegen} className="max-md:tap inline-flex shrink-0 items-center font-semibold hover:underline max-md:text-[14px]">
         {label}
       </button>
@@ -359,7 +361,7 @@ function PlanSection({
   const header =
     sessions.length > 0
       ? `Your plan has ${studySessionCount(sessions.length)} · ${fmtHours(totalHours)} before the test.`
-      : "No study sessions are scheduled for this test yet. Here's how to use the time you have.";
+      : "No study sessions are scheduled for this test yet. Here’s how to use the time you have.";
 
   return (
     <SectionShell title="How to study this" aside={plan.status === "ready" ? <RegenButton onClick={onRegen} /> : undefined}>
@@ -487,7 +489,7 @@ function QuestionsSection({
       </div>
 
       <div className="mt-4">
-        {questions.status === "idle" && <p className="text-sm text-muted">Pick a question type and generate a practice set from this test&apos;s material.</p>}
+        {questions.status === "idle" && <p className="text-sm text-muted">Pick a question type and generate a practice set from this test’s material.</p>}
         {questions.status === "loading" && <Skeleton lines={5} />}
         {questions.status === "error" && <ErrorBox code={questions.error} onRetry={() => onGenerate(false)} />}
         {ready && (
@@ -498,7 +500,7 @@ function QuestionsSection({
             ))}
             {answered === questions.content!.questions.length && (
               <p className="rounded-[14px] bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-                {correct} of {questions.content!.questions.length} correct. {correct === questions.content!.questions.length ? "You're ready for this one." : "Review the explanations above, then try a new set."}
+                {correct} of {questions.content!.questions.length} correct. {correct === questions.content!.questions.length ? "You’re ready for this one." : "Review the explanations above, then try a new set."}
               </p>
             )}
             <SourceNote sparse={questions.content!.sparse} sources={[]} excluded={questions.content!.excluded} noteCount={questions.content!.noteCount} />

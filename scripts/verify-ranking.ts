@@ -25,6 +25,7 @@ async function main() {
   const isDone = (a: (typeof rows)[number]) => a.submittedAt !== null && a.submissionState !== "unsubmitted";
   const active = rows.filter((a) => !isDone(a));
   const now = new Date();
+  // Map<courseCanvasId, { points, count }> — the posted points per course (lib/rankActive).
   const totals = courseTotalPoints(rows.map((a) => ({ courseCanvasId: a.courseCanvasId, pointsPossible: a.pointsPossible })));
   const shortCourse = (n: string) => n.replace(/^\d+\w*[:-]\s*/, "").split(" · ")[0].slice(0, 22);
 
@@ -32,7 +33,7 @@ async function main() {
   console.log("\nCourses — current grade · late policy · total points:");
   for (const c of courses) {
     const lp = c.latePolicyKind ? `${c.latePolicyKind}${c.latePolicyValue ? ` ${c.latePolicyValue}` : ""}` : "unknown→no-credit";
-    console.log(`  ${shortCourse(c.name).padEnd(22)} grade ${String(c.currentScore ?? "—").padStart(4)} · late ${lp.padEnd(18)} · ${totals.get(c.canvasId) ?? 0} pts`);
+    console.log(`  ${shortCourse(c.name).padEnd(22)} grade ${String(c.currentScore ?? "—").padStart(4)} · late ${lp.padEnd(18)} · ${totals.get(c.canvasId)?.points ?? 0} pts over ${totals.get(c.canvasId)?.count ?? 0} items`);
   }
 
   const toRow = (a: (typeof active)[number]) => ({
@@ -53,7 +54,7 @@ async function main() {
   // Per-item inputs, to read alongside the rank.
   const meta = new Map(active.map((a) => {
     const type = itemType(a.submissionType, a.name);
-    const total = totals.get(a.courseCanvasId) ?? 0;
+    const total = totals.get(a.courseCanvasId)?.points ?? 0;
     const share = total > 0 && a.pointsPossible != null ? a.pointsPossible / total : null;
     return [a.canvasId, { gradePct: resolveWeight(a.gradeWeight ?? share, type) * 100, d: daysUntil(a.dueAt, now), study: isStudyType(type) }];
   }));

@@ -32,6 +32,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ url });
   } catch (e) {
     console.error("billing portal failed", e instanceof Error ? e.message : "unknown error");
-    return NextResponse.json({ error: "Couldn't open the payment page. Try again in a moment." }, { status: 500 });
+    return NextResponse.json({ error: "Couldn’t open the payment page. Try again in a moment." }, { status: 500 });
   }
 }

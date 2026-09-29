@@ -19,7 +19,7 @@ export const navItems: readonly NavItem[] = [
   { href: "/dashboard", label: "Dashboard", tabLabel: "Dashboard", icon: "dashboard" },
   { href: "/plan", label: "Plan", tabLabel: "Plan", icon: "plan" },
   { href: "/study", label: "Study", tabLabel: "Study", icon: "study" },
-  { href: "/courses", label: "Classes", tabLabel: "Classes", icon: "courses" },
+  { href: "/courses", label: "Courses", tabLabel: "Courses", icon: "courses" },
 ];
 
 /** The phone tab bar: exactly the first four daily-use destinations. */
@@ -53,8 +53,8 @@ export function pageTitle(pathname: string): string {
     dashboard: "Dashboard",
     plan: "Plan",
     study: "Study",
-    courses: "Classes",
-    class: "Class",
+    courses: "Courses",
+    class: "Course",
     assignment: "Assignment",
     connections: "Connections",
     settings: "Settings",
@@ -66,7 +66,7 @@ export function pageTitle(pathname: string): string {
 
 /** Which of the four tabs is "current" for a pathname (its href), or null.
  *  Detail routes count for the section they belong to: /assignment/* → Dashboard,
- *  /class/* → Classes, /study/* → Study. Setup/admin routes light no tab. */
+ *  /class/* → Courses, /study/* → Study. Setup/admin routes light no tab. */
 export function activeTabHref(pathname: string): string | null {
   const SECTION: Record<string, string> = {
     dashboard: "/dashboard",

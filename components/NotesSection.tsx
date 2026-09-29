@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Sheet, useIsPhone } from "@/components/Sheet";
+import { NETWORK_ERROR, SERVER_ERROR } from "@/lib/messages";
 
 type NoteSourceKind = "paste" | "pdf" | "docx" | "text" | "image" | "notion";
 interface NotionPageRef {
@@ -35,15 +36,15 @@ const BADGE: Record<NoteSourceKind, string> = {
 };
 
 const ERROR_TEXT: Record<string, string> = {
-  unsupported: "That file type isn't supported. Use a PDF, Word doc, or text file.",
+  unsupported: "That file type isn’t supported. Use a PDF, Word doc, or text file.",
   too_large: "That file is over 10 MB. Try a smaller file, or paste the text instead.",
-  empty: "We couldn't pull readable text from that file. Try pasting the text instead.",
+  empty: "We couldn’t pull readable text from that file. Try pasting the text instead.",
   scanned_pdf: "This PDF looks like scanned images with no selectable text. Add it as photos instead, or paste the text.",
   error: "Something went wrong reading that file. Try again, or paste the text.",
-  limit_reached: "You've reached the max number of notes for this test. Delete one to add another.",
-  network: "Couldn't reach the server. Try again.",
-  unauthorized: "Please sign in again.",
-  not_found: "Couldn't find this test.",
+  limit_reached: "You’ve reached the max number of notes for this test. Delete one to add another.",
+  network: NETWORK_ERROR,
+  unauthorized: "Your session ended. Log in again, then retry.",
+  not_found: "Couldn’t find this test.",
   bad_request: "Something was off with that upload.",
 };
 const errText = (code: unknown) => (typeof code === "string" && ERROR_TEXT[code]) || ERROR_TEXT.error;
@@ -172,7 +173,7 @@ export function NotesSection({
     <section className="card p-6">
       <h2 className="text-lg font-semibold text-ink">Your notes</h2>
       <p className="mt-1 text-sm text-muted">
-        Add your own notes for this test. They&apos;re <span className="font-medium text-ink">always used</span> when Navo builds your
+        Add your own notes for this test. They’re <span className="font-medium text-ink">always used</span> when Navo builds your
         study guide and practice questions — and they come first, ahead of Canvas material.
       </p>
 
@@ -236,7 +237,7 @@ export function NotesSection({
             </button>
           </div>
           {atLimit && (
-            <p className="text-[11px] text-muted">You&apos;ve reached the max of {limit} notes for this test. Delete one to add another.</p>
+            <p className="text-[11px] text-muted">You’ve reached the max of {limit} notes for this test. Delete one to add another.</p>
           )}
         </div>
       )}
@@ -504,17 +505,17 @@ function PasteModal({ phone, busy, onClose, onSave }: { phone: boolean; busy: bo
 }
 
 const TRANSCRIBE_ERR: Record<string, string> = {
-  no_key: "The AI service isn't configured.",
+  no_key: "The AI service isn’t configured.",
   timeout: "Transcription took too long. Try fewer or clearer photos.",
-  http_error: "AI couldn't read those images. Make sure the writing is in focus and well-lit, then try again.",
-  empty: "We couldn't read any text from those photos. Try clearer, well-lit images.",
+  http_error: "AI couldn’t read those images. Make sure the writing is in focus and well-lit, then try again.",
+  empty: "We couldn’t read any text from those photos. Try clearer, well-lit images.",
   unsupported_image: "Use JPEG, PNG, WEBP, or HEIC images.",
   too_large: "One of those images is over 10 MB.",
   too_many_images: "You can add up to 10 images per note.",
-  network: "Couldn't reach the server. Try again.",
-  not_found: "Couldn't find this test.",
+  network: NETWORK_ERROR,
+  not_found: "Couldn’t find this test.",
   bad_request: "Choose at least one image first.",
-  error: "Something went wrong. Try again.",
+  error: SERVER_ERROR,
 };
 const transcribeErr = (code: unknown) => (typeof code === "string" && TRANSCRIBE_ERR[code]) || TRANSCRIBE_ERR.error;
 
@@ -578,7 +579,7 @@ function PhotoModal({
 
   return (
     <NotesModal phone={phone} titleId="photo-notes-title" title="Add photos of handwritten notes" onClose={onClose}>
-      <p className="mt-1 text-[13px] text-muted">We&apos;ll read your handwriting with AI — you can review and fix the text before saving.</p>
+      <p className="mt-1 text-[13px] text-muted">We’ll read your handwriting with AI — you can review and fix the text before saving.</p>
 
       {previews.length > 0 && (
         <div className="mt-3 flex snap-x gap-2 overflow-x-auto">
@@ -669,12 +670,12 @@ function PhotoModal({
 
 const NOTION_ERR: Record<string, string> = {
   not_connected: "Connect your Notion account first.",
-  limit_reached: "You've reached the max number of notes for this test. Delete one to add another.",
+  limit_reached: "You’ve reached the max number of notes for this test. Delete one to add another.",
   empty: "That Notion page has no readable text.",
-  notion_error: "Couldn't reach Notion — try reconnecting.",
-  network: "Couldn't reach the server. Try again.",
+  notion_error: "Couldn’t reach Notion — try reconnecting.",
+  network: NETWORK_ERROR,
   bad_request: "Something was off with that import.",
-  error: "Something went wrong. Try again.",
+  error: SERVER_ERROR,
 };
 const notionErr = (code: unknown) => (typeof code === "string" && NOTION_ERR[code]) || NOTION_ERR.error;
 
@@ -761,7 +762,7 @@ function NotionModal({ phone, canvasId, onClose, onImported }: { phone: boolean;
       {status === "loading" && <p className="mt-4 text-sm text-muted">Loading…</p>}
 
       {status === "unconfigured" && (
-        <p className="mt-4 text-sm text-muted">Notion isn&apos;t set up for Navo yet. For now, use a file or paste your notes instead.</p>
+        <p className="mt-4 text-sm text-muted">Notion isn’t set up for Navo yet. For now, use a file or paste your notes instead.</p>
       )}
 
       {status === "disconnected" && (

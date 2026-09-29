@@ -23,7 +23,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       return;
     }
     if (password !== confirm) {
-      setError("Passwords don't match.");
+      setError("Passwords don’t match.");
       return;
     }
     setBusy(true);

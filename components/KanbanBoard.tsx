@@ -467,7 +467,7 @@ export function KanbanBoard({
                             {task.dueDate && (
                               <span
                                 className={`inline-flex items-center gap-1 truncate text-xs font-medium ${overdue ? "text-danger" : "text-muted"}`}
-                                title={overdue ? "Overdue" : "Due date"}
+                                title={overdue ? "Past due" : "Due date"}
                               >
                                 {fmtDateUTC(task.dueDate)}
                               </span>

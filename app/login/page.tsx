@@ -15,8 +15,8 @@ export const metadata: Metadata = { title: "Log in to Navo" };
 
 // Messages for a Google sign-in that bounced back here (see /api/auth/google/callback).
 const GOOGLE_NOTICES: Record<string, string> = {
-  google: "Google sign-in didn’t complete. Please try again.",
-  google_unverified: "That Google account’s email isn’t verified, so we can’t sign you in with it.",
+  google: "Logging in with Google didn’t finish. Try again.",
+  google_unverified: "That Google account’s email isn’t verified, so Navo can’t log you in with it.",
 };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {

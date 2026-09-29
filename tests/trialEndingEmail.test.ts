@@ -11,6 +11,7 @@ import { sendEmail } from "@/lib/email";
 import { logEvent } from "@/lib/funnel";
 import { priceDisplay } from "@/lib/stripe";
 import { formatDateHuman, formatDateTimeHuman } from "@/lib/calendarDates";
+import { PRICE_FALLBACK } from "@/lib/messages";
 import {
   trialEndingEmail,
   trialEndingSubject,
@@ -47,7 +48,7 @@ describe("trialEndingEmail — the pure builder", () => {
     trialEndingEmail({ firstName: "Ada", price: PRICE, trialEnd: END, appUrl: APP, ...over });
 
   it("subject carries the human charge date (day only); a Date and epoch ms render the same", () => {
-    expect(built().subject).toBe("Your Navo trial ends Thursday, October 9 — here's what happens next");
+    expect(built().subject).toBe("Your Navo trial ends Thursday, October 9 — here’s what happens next");
     expect(trialEndingSubject(END)).toBe(built().subject);
     expect(trialEndingSubject(T * 1000)).toBe(built().subject);
     expect(built().subject).toContain(formatDateHuman(END, { weekday: true }));
@@ -66,13 +67,15 @@ describe("trialEndingEmail — the pure builder", () => {
 
   it("uses the Stripe price string verbatim in html and text", () => {
     const { html, text } = built();
-    expect(text).toContain(`After that, ${PRICE} is charged to the card on file each month.`);
+    expect(text).toContain(`After that, ${PRICE} is charged to the card on file.`);
+    expect(text).not.toContain("each month"); // the price already says /month — once
     expect(html).toContain(`<strong>${PRICE}</strong>`);
   });
 
   it("with the fallback price the copy stays honest and names no number", () => {
     const { html, text } = built({ price: TRIAL_ENDING_PRICE_FALLBACK });
-    expect(text).toContain(`After that, ${TRIAL_ENDING_PRICE_FALLBACK} is charged to the card on file each month.`);
+    expect(text).toContain(`After that, ${TRIAL_ENDING_PRICE_FALLBACK} is charged to the card on file.`);
+    expect(TRIAL_ENDING_PRICE_FALLBACK).toBe(PRICE_FALLBACK); // THE one fallback (#146)
     for (const blob of [text, html]) {
       expect(blob).not.toMatch(/\$\s?\d/);
       expect(blob).not.toMatch(/\b4[.,]99\b/);
@@ -95,11 +98,13 @@ describe("trialEndingEmail — the pure builder", () => {
     expect(text).not.toContain(`${APP}//`);
   });
 
-  it("says cancel is possible anytime ('before then' — the cutoff just stated), that nothing has been charged yet, and that the account keeps everything", () => {
+  it("says only what's true in every state: cancel BEFORE the cutoff and nothing is charged; after it, cancelling stops future charges (#146)", () => {
     const { text, html } = built();
-    expect(text).toContain("cancel anytime");
-    expect(text).toContain("cancel before then and nothing is charged");
-    expect(text).toContain("and you won't be charged.");
+    for (const blob of [text, html]) {
+      expect(blob).toContain("cancel before then and nothing is charged. After that, cancelling stops future charges.");
+      expect(blob).not.toContain("cancel anytime"); // false once the trial has ended
+      expect(blob).not.toMatch(/won.t be charged/);
+    }
     for (const blob of [text, html]) expect(blob).not.toContain("charged again"); // no charge has happened during a trial
     expect(text).toContain("stay exactly where they are");
     expect(html).toContain("stay exactly where they are");
@@ -161,7 +166,7 @@ describe("sendTrialEndingEmail — fire-and-forget", () => {
     expect(send).toHaveBeenCalledTimes(1);
     const msg = send.mock.calls[0][0] as { to: string; subject: string; text: string; html: string };
     expect(msg.to).toBe("ada@school.test");
-    expect(msg.subject).toBe("Your Navo trial ends Thursday, October 9 — here's what happens next");
+    expect(msg.subject).toBe("Your Navo trial ends Thursday, October 9 — here’s what happens next");
     expect(msg.text).toContain(`Your free Navo trial ends ${CUTOFF}.`);
     expect(msg.text).toContain("Hi Ada,");
     expect(msg.text).toContain(PRICE);

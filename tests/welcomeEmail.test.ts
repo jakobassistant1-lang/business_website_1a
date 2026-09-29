@@ -61,7 +61,7 @@ describe("welcomeEmail — the pure builder", () => {
   const built = () => welcomeEmail({ firstName: "Ada", appUrl: APP });
 
   it("uses the agreed subject line", () => {
-    expect(built().subject).toBe("Welcome to Navo — let's get your week planned");
+    expect(built().subject).toBe("Welcome to Navo — let’s get your week planned");
     expect(WELCOME_SUBJECT).toBe(built().subject);
   });
 

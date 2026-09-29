@@ -24,7 +24,7 @@ import {
   MAX_REPORT_ASSIGNMENTS,
   type SyncReportReason,
 } from "@/lib/syncReport";
-import { messageFor } from "@/lib/messages";
+import { CANVAS_FIRST_CHECK_FAILED, messageFor } from "@/lib/messages";
 import { CANVAS_RETRY } from "@/lib/canvas";
 import { runSync } from "@/lib/sync";
 
@@ -118,8 +118,8 @@ describe("reasonText / courseLine / footer", () => {
   });
   it("connection-level reasons reuse the FR-5 copy (single source)", () => {
     for (const r of ["unreachable", "throttled", "invalid_token", "insufficient_scope"] as const) expect(reasonText(r)).toBe(messageFor(r));
-    expect(reasonText("out_of_time")).toBe("Didn't finish this time. It'll refresh on the next sync.");
-    expect(reasonText("restricted")).toBe("Canvas hides this class's assignments.");
+    expect(reasonText("out_of_time")).toBe("Ran out of time. Navo checks it again next time.");
+    expect(reasonText("restricted")).toBe("Canvas hides this course’s assignments.");
   });
   it("status → reason (quick treats 401/403 as a hidden class, not a bad token)", () => {
     expect(reasonForStatus("throttled")).toBe("throttled");
@@ -133,14 +133,15 @@ describe("reasonText / courseLine / footer", () => {
     expect(courseLine({ canvasId: 1, name: "A", assignments: 7, ok: true })).toBe("7 assignments");
     expect(courseLine({ canvasId: 1, name: "A", assignments: 0, ok: false, reason: "out_of_time" })).toBe(reasonText("out_of_time"));
     expect(skippedNonStudentText(0)).toBeNull();
-    expect(skippedNonStudentText(2)).toBe("Skipped 2 non-student course(s)."); // same text the sync message uses
+    expect(skippedNonStudentText(2)).toBe("Skipped 2 courses where you’re not a student."); // same text the sync message uses
+    expect(skippedNonStudentText(1)).toBe("Skipped 1 course where you’re not a student.");
   });
   it("run summary: null on success; FR-5 copy for the run status; unknown status → error copy", () => {
     expect(runSummary({ ok: true, status: "valid", courses: [] })).toBeNull();
     expect(runSummary({ ok: false, status: "bad_domain", courses: [] })).toEqual({ text: messageFor("bad_domain"), reason: "error" });
     expect(runSummary({ ok: false, status: "throttled", courses: [] })).toEqual({ text: messageFor("throttled"), reason: "throttled" });
     expect(runSummary({ ok: false, status: "weird", courses: [] })?.text).toBe(messageFor("error"));
-    expect(runSummary({ ok: false, status: "error", courses: [] })?.text).not.toMatch(/this class/);
+    expect(runSummary({ ok: false, status: "error", courses: [] })?.text).not.toMatch(/this (class|course)/);
   });
   it("run summary: every class Canvas-hidden → matches the rows, never 'isn't responding'", () => {
     const hidden = { canvasId: 1, name: "A", assignments: 0, ok: false, reason: "restricted" as const };
@@ -275,7 +276,7 @@ describe("runSync persists the report (fail-open)", () => {
       [/assignments/, throttle403],
     ]);
     const r = await runSync(1, { mode: "full" });
-    expect(r).toEqual({ ok: false, status: "throttled", message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: null, failedCourses: ["Micro", "Finance"], mode: "full" });
+    expect(r).toEqual({ ok: false, status: "throttled", message: CANVAS_FIRST_CHECK_FAILED, syncedAt: null, failedCourses: ["Micro", "Finance"], mode: "full" });
     expect(parseSyncReport(lastReport())).toMatchObject({
       ok: false,
       status: "throttled",
@@ -293,7 +294,7 @@ describe("runSync persists the report (fail-open)", () => {
       [/assignments/, genuine403],
     ]);
     const r = await runSync(1, { mode: "quick" });
-    expect(r).toEqual({ ok: false, status: "unreachable", message: "Couldn't refresh any courses right now. Showing cached data.", syncedAt: null, failedCourses: ["Stats", "Old class"], mode: "quick" });
+    expect(r).toEqual({ ok: false, status: "unreachable", message: CANVAS_FIRST_CHECK_FAILED, syncedAt: null, failedCourses: ["Stats", "Old class"], mode: "quick" });
     const rep = parseSyncReport(lastReport());
     expect(rep).toMatchObject({
       mode: "quick",
